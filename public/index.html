@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XMirror - X 内容存档</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 20px;
+      padding: 40px;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    .input-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #555;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 14px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    button {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 12px;
+      display: none;
+    }
+    .result.success {
+      display: block;
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+    }
+    .result.error {
+      display: block;
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+    }
+    .result a {
+      color: #667eea;
+      word-break: break-all;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      margin-top: 20px;
+    }
+    .loading.show {
+      display: block;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .history {
+      margin-top: 30px;
+      padding-top: 30px;
+      border-top: 1px solid #e0e0e0;
+    }
+    .history h3 {
+      font-size: 16px;
+      color: #555;
+      margin-bottom: 15px;
+    }
+    .history-item .click-hint { display: none; }
+    .history-item {
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      user-select: none;
+      position: relative;
+      transition: background 0.2s;
+    }
+    .history-item:hover {
+      background: #e9ecef;
+    }
+    .history-item.triple-click {
+      background: #ffe6e6;
+    }
+    .history-item a {
+      color: #667eea;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .history-item .meta {
+      font-size: 12px;
+      color: #999;
+      margin-top: 4px;
+    }
+    .history-item .click-hint {
+      font-size: 11px;
+      color: #ff6b6b;
+      margin-top: 4px;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .history-item.show-hint .click-hint {
+      opacity: 1;
+    }
+    /* 删除确认弹窗 */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.show {
+      display: flex;
+    }
+    .modal {
+      background: white;
+      padding: 30px;
+      border-radius: 16px;
+      max-width: 400px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .modal h3 {
+      margin-bottom: 15px;
+      color: #333;
+    }
+    .modal p {
+      color: #666;
+      margin-bottom: 25px;
+      font-size: 14px;
+    }
+    .modal-buttons {
+      display: flex;
+      gap: 10px;
+    }
+    .modal-buttons button {
+      flex: 1;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .modal-buttons .btn-cancel {
+      background: #e0e0e0;
+      color: #333;
+    }
+    .modal-buttons .btn-delete {
+      background: #ff6b6b;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🐦 XMirror</h1>
+    <p class="subtitle">粘贴 X 链接，生成可访问的镜像页面</p>
+    
+    <div class="input-group">
+      <label>X 链接</label>
+      <input type="text" id="url" placeholder="https://x.com/username/status/1234567890" />
+    </div>
+    
+    <button id="submit" onclick="archive()">生成镜像</button>
+    
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p>正在抓取内容...</p>
+    </div>
+    
+    <div class="result" id="result"></div>
+    
+    <div class="history" id="history" style="display:none;">
+      <h3>📚 最近存档</h3>
+      <div id="historyList"></div>
+    </div>
+  </div>
+
+  <!-- 删除确认弹窗 -->
+  <div class="modal-overlay" id="deleteModal">
+    <div class="modal">
+      <h3>🗑️ 确认删除</h3>
+      <p>确定要删除这篇存档吗？<br>此操作不可恢复。</p>
+      <div class="modal-buttons">
+        <button class="btn-cancel" onclick="closeDeleteModal()">取消</button>
+        <button class="btn-delete" onclick="confirmDelete()">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let clickCounts = new Map();
+    let deleteTargetId = null;
+    
+    async function archive() {
+      const url = document.getElementById('url').value.trim();
+      const result = document.getElementById('result');
+      const loading = document.getElementById('loading');
+      const btn = document.getElementById('submit');
+      
+      if (!url) {
+        result.className = 'result error';
+        result.innerHTML = '请输入 X 链接';
+        return;
+      }
+      
+      btn.disabled = true;
+      loading.className = 'loading show';
+      result.className = 'result';
+      result.innerHTML = '';
+      
+      try {
+        const response = await fetch('/api/archive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          result.className = 'result success';
+          result.innerHTML = `
+            <strong>✅ ${data.message}</strong><br><br>
+            镜像链接：<a href="${data.url}" target="_blank">${window.location.origin}${data.url}</a>
+          `;
+          document.getElementById('url').value = '';
+          loadHistory();
+        } else {
+          result.className = 'result error';
+          result.innerHTML = `<strong>❌ 失败</strong><br>${data.error || '未知错误'}`;
+        }
+      } catch (error) {
+        result.className = 'result error';
+        result.innerHTML = `<strong>❌ 请求失败</strong><br>${error.message}`;
+      } finally {
+        btn.disabled = false;
+        loading.className = 'loading';
+      }
+    }
+    
+    // 处理历史记录点击
+    function handleItemClick(postId, element) {
+      const count = (clickCounts.get(postId) || 0) + 1;
+      clickCounts.set(postId, count);
+      
+      // 显示点击提示
+      element.classList.add('show-hint');
+      const hint = element.querySelector('.click-hint');
+      if (hint) {
+        hint.textContent = `再点击 ${4 - count} 次删除`;
+      }
+      
+      // 视觉反馈
+      if (count >= 2) {
+        element.classList.add('triple-click');
+      }
+      
+      // 3次点击触发删除弹窗
+      if (count >= 3) {
+        deleteTargetId = postId;
+        document.getElementById('deleteModal').classList.add('show');
+        // 重置计数
+        clickCounts.set(postId, 0);
+        element.classList.remove('triple-click', 'show-hint');
+      }
+      
+      // 2秒后重置计数
+      setTimeout(() => {
+        clickCounts.set(postId, 0);
+        element.classList.remove('triple-click', 'show-hint');
+      }, 2000);
+    }
+    
+    function closeDeleteModal() {
+      document.getElementById('deleteModal').classList.remove('show');
+      deleteTargetId = null;
+    }
+    
+    async function confirmDelete() {
+      if (!deleteTargetId) return;
+      
+      try {
+        const response = await fetch('/api/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: deleteTargetId })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          const result = document.getElementById('result');
+          result.className = 'result success';
+          result.innerHTML = '<strong>✅ 已删除</strong>';
+          loadHistory();
+        } else {
+          const result = document.getElementById('result');
+          result.className = 'result error';
+          result.innerHTML = `<strong>❌ 删除失败</strong><br>${data.error || '未知错误'}`;
+        }
+      } catch (error) {
+        const result = document.getElementById('result');
+        result.className = 'result error';
+        result.innerHTML = `<strong>❌ 删除失败</strong><br>${error.message}`;
+      }
+      
+      closeDeleteModal();
+    }
+    
+    async function loadHistory() {
+      try {
+        const response = await fetch('/api/posts');
+        const posts = await response.json();
+        
+        if (posts.length > 0) {
+          document.getElementById('history').style.display = 'block';
+          const historyList = document.getElementById('historyList');
+          historyList.innerHTML = posts.slice(0, 10).map(post => {
+            // 提取标题
+            let title = '';
+            const contentText = post.content || '';
+            const h1Match = contentText.match(/<h1>(.+?)<\/h1>/);
+            if (h1Match) {
+              title = h1Match[1].replace(/【(.+?)】/, '$1');
+            } else {
+              title = contentText.replace(/<[^>]+>/g, '').substring(0, 50);
+              if (contentText.replace(/<[^>]+>/g, '').length > 50) title += '...';
+            }
+            return `
+            <div class="history-item" data-id="${post.id}">
+              <a href="/archives/${post.html_file}" target="_blank">${title || '无标题'}</a>
+              <div class="meta" onclick="handleItemClick(${post.id}, this.parentElement)">${post.author || '未知用户'} · ${new Date(post.created_at).toLocaleString()}</div>
+            </div>
+          `}).join('');
+        } else {
+          document.getElementById('history').style.display = 'none';
+        }
+      } catch (error) {
+        console.error('加载历史失败:', error);
+      }
+    }
+    
+    // 页面加载时获取历史
+    loadHistory();
+    
+    // 回车提交
+    document.getElementById('url').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') archive();
+    });
+    
+    // 点击弹窗外部关闭
+    document.getElementById('deleteModal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) closeDeleteModal();
+    });
+  </script>
+</body>
+</html>
