@@ -11,6 +11,7 @@ app.use(express.json());
 app.use(express.static('public'));
 app.use('/archives', express.static('archives'));
 app.use('/images', express.static('data/images'));
+app.use('/videos', express.static('data/videos'));
 
 const db = new sqlite3.Database('./data/db.sqlite');
 
@@ -48,7 +49,6 @@ async function fetchFromFxTwitter(tweetId) {
       res.on('data', chunk => data.push(chunk));
       res.on('end', () => {
         try {
-          // 使用 Buffer 拼接确保正确处理 UTF-8
           const buffer = Buffer.concat(data);
           const json = JSON.parse(buffer.toString('utf8'));
           if (json.code === 200 && json.tweet) resolve(json.tweet);
@@ -73,7 +73,26 @@ async function downloadImage(url, filename) {
   });
 }
 
-// 安全地转义HTML特殊字符
+async function downloadVideo(url, filename) {
+  return new Promise((resolve, reject) => {
+    const videoDir = path.join(__dirname, 'data', 'videos');
+    if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
+    const filePath = path.join(videoDir, filename);
+    const file = fs.createWriteStream(filePath);
+    https.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`下载失败，状态码: ${response.statusCode}`));
+        return;
+      }
+      response.pipe(file);
+      file.on('finish', () => { file.close(); resolve(`/videos/${filename}`); });
+    }).on('error', (err) => {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      reject(err);
+    });
+  });
+}
+
 function escapeHtml(text) {
   if (!text) return '';
   return text
@@ -84,6 +103,12 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;');
 }
 
+function extractSummary(content) {
+  // 提取纯文本摘要，用于 meta description
+  if (!content) return '';
+  return content.replace(/<[^>]+>/g, '').substring(0, 200);
+}
+
 async function fetchXPost(url) {
   const tweetId = extractTweetId(url);
   if (!tweetId) throw new Error('无法提取推文ID');
@@ -92,35 +117,28 @@ async function fetchXPost(url) {
   const author = tweet.author || {};
   const media = tweet.media || {};
   
-  // 收集所有图片URL到下载列表
   const allImageUrls = [];
   
-  // 1. 封面图
   if (tweet.article?.cover_media?.media_info?.original_img_url) {
     allImageUrls.push(tweet.article.cover_media.media_info.original_img_url);
   }
   
-  // 2. media.photos
   (media.photos || []).forEach(p => { if (p.url) allImageUrls.push(p.url); });
   
-  // 3. media_entities 中的图片
   if (tweet.media_entities) {
     for (const e of tweet.media_entities) {
       if (e.media_info?.original_img_url) allImageUrls.push(e.media_info.original_img_url);
     }
   }
   
-  // 4. article.media_entities 中的图片
   if (tweet.article?.media_entities) {
     for (const e of tweet.article.media_entities) {
       if (e.media_info?.original_img_url) allImageUrls.push(e.media_info.original_img_url);
     }
   }
   
-  // 去重
   const uniqueUrls = [...new Set(allImageUrls)];
   
-  // 下载图片并建立URL到本地路径的映射
   const localImages = [];
   const urlToLocalPath = new Map();
   for (let i = 0; i < uniqueUrls.length; i++) {
@@ -136,21 +154,31 @@ async function fetchXPost(url) {
     }
   }
   
-  // 提取文本并构建HTML内容
+  let localVideoPath = null;
+  const videoUrl = media.videos?.[0]?.url;
+  if (videoUrl) {
+    const videoExt = videoUrl.split('.').pop().split('?')[0] || 'mp4';
+    const videoFilename = `${tweetId}_video.${videoExt}`;
+    try {
+      localVideoPath = await downloadVideo(videoUrl, videoFilename);
+      console.log(`视频下载成功: ${localVideoPath}`);
+    } catch (err) {
+      console.error(`视频下载失败: ${err.message}`);
+      localVideoPath = videoUrl;
+    }
+  }
+  
   let htmlContent = '';
   let title = '';
   
-  // 构建 media_entities 数组用于图片替换
   const allMediaEntities = [
     ...(tweet.article?.media_entities || []),
     ...(tweet.media_entities || [])
   ];
   
   if (tweet.text) {
-    // 普通推文 - 处理文本和图片
     htmlContent = escapeHtml(tweet.text).replace(/\n/g, '<br>');
     
-    // 如果有图片，在文本后面插入
     if (localImages.length > 0) {
       htmlContent += '<br><br>';
       for (const imgPath of localImages) {
@@ -158,12 +186,10 @@ async function fetchXPost(url) {
       }
     }
   } else if (tweet.article) {
-    // 长文章
     title = tweet.article.title || '';
     
     if (tweet.article.content?.blocks) {
       const blocks = tweet.article.content.blocks;
-      // entityMap 是数组格式 [{key, value}, ...]
       const entityMapArray = tweet.article.content.entityMap || [];
       const entityMap = {};
       for (const item of entityMapArray) {
@@ -173,7 +199,6 @@ async function fetchXPost(url) {
       }
       
       for (const block of blocks) {
-        // 处理文本块
         if (block.text) {
           const text = escapeHtml(block.text).replace(/\n/g, '<br>');
           if (block.type === 'header-two') {
@@ -187,7 +212,6 @@ async function fetchXPost(url) {
           }
         }
         
-        // 处理 atomic 类型的图片（在原文位置插入）
         if (block.type === 'atomic' && block.entityRanges) {
           for (const range of block.entityRanges) {
             const entity = entityMap[range.key];
@@ -208,7 +232,6 @@ async function fetchXPost(url) {
       }
     }
     
-    // 替换 XIMGPH_ 占位符
     let imgIndex = 0;
     htmlContent = htmlContent.replace(/XIMGPH_\d+/g, () => {
       const mediaEntity = allMediaEntities[imgIndex];
@@ -226,7 +249,6 @@ async function fetchXPost(url) {
     }
   }
   
-  // 添加标题
   if (title) {
     htmlContent = `<h1>【${escapeHtml(title)}】</h1>` + htmlContent;
   }
@@ -237,21 +259,36 @@ async function fetchXPost(url) {
     author_avatar: author.avatar_url || '',
     content: htmlContent,
     images: localImages,
-    video: media.videos?.[0]?.url || null,
+    video: localVideoPath,
     tweet_time: tweet.created_timestamp
   };
 }
 
 function generateMirrorHtml(post) {
   const content = post.content || '';
-  const videoHtml = post.video ? `<video controls style="max-width:100%"><source src="${post.video}"></video>` : '';
+  const videoHtml = post.video ? `<video controls style="max-width:100%;margin:10px 0;"><source src="${post.video}" type="video/mp4"></video>` : '';
+  
+  // 提取摘要用于 meta 标签
+  const summary = extractSummary(content);
+  const ogImage = post.images && post.images.length > 0 ? post.images[0] : '';
+  const pageTitle = `${escapeHtml(post.author)} - XMirror`;
   
   const html = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${escapeHtml(post.author)} - XMirror</title>
+<title>${pageTitle}</title>
+<meta name="description" content="${escapeHtml(summary)}">
+<meta property="og:title" content="${pageTitle}">
+<meta property="og:description" content="${escapeHtml(summary)}">
+<meta property="og:type" content="article">
+<meta property="og:image" content="${ogImage}">
+<meta property="og:url" content="${post.url}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${pageTitle}">
+<meta name="twitter:description" content="${escapeHtml(summary)}">
+<meta name="twitter:image" content="${ogImage}">
 <style>
 body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:600px;margin:40px auto;padding:20px;background:#f7f9fa}
 .post{background:white;border-radius:16px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
@@ -263,6 +300,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:600px;mar
 .content h1{font-size:20px;font-weight:bold;margin:16px 0}
 .content h2{font-size:18px;font-weight:bold;margin:14px 0}
 .content p{margin:12px 0}
+video{max-width:100%;border-radius:8px}
 .meta{color:#536471;font-size:14px;margin-top:20px;border-top:1px solid #eff3f4;padding-top:16px}
 .source{color:#1d9bf0;text-decoration:none}
 .badge{display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:4px 12px;border-radius:20px;font-size:12px}
@@ -299,13 +337,11 @@ app.post('/api/archive', async (req, res) => {
     const content = await fetchXPost(url);
     if (!content.content && content.images.length===0 && !content.video) return res.status(500).json({error:'未能获取推文内容'});
     
-    // 提取标题
     let title = '';
     const h1Match = content.content.match(/<h1>(.+?)<\/h1>/);
     if (h1Match) {
-      title = h1Match[1].replace(/【(.+?)】/, '$1'); // 去掉【】
+      title = h1Match[1].replace(/【(.+?)】/, '$1');
     } else {
-      // 普通推文，取前50字
       title = content.content.replace(/<[^>]+>/g, '').substring(0, 50);
       if (content.content.replace(/<[^>]+>/g, '').length > 50) title += '...';
     }
@@ -326,23 +362,19 @@ app.post('/api/archive', async (req, res) => {
 
 app.get('/api/posts', (req,res)=>db.all('SELECT * FROM posts ORDER BY created_at DESC',(e,r)=>e?res.status(500).json({error:e.message}):res.json(r)));
 
-// 删除存档
 app.post('/api/delete', async (req, res) => {
   const {id} = req.body;
   if (!id) return res.status(400).json({error:'缺少存档ID'});
   
   try {
-    // 获取存档信息
     const post = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE id=?',[id],(e,row)=>e?j(e):r(row)));
     if (!post) return res.status(404).json({error:'存档不存在'});
     
-    // 删除HTML文件
     const htmlPath = path.join(__dirname,'archives',post.html_file);
     if (fs.existsSync(htmlPath)) {
       fs.unlinkSync(htmlPath);
     }
     
-    // 删除关联的图片
     let images = [];
     try { images = JSON.parse(post.images || '[]'); } catch {}
     for (const imgPath of images) {
@@ -352,7 +384,13 @@ app.post('/api/delete', async (req, res) => {
       }
     }
     
-    // 删除数据库记录
+    if (post.video && post.video.startsWith('/videos/')) {
+      const videoFullPath = path.join(__dirname, post.video.replace(/^\//, ''));
+      if (fs.existsSync(videoFullPath)) {
+        fs.unlinkSync(videoFullPath);
+      }
+    }
+    
     await new Promise((r,j)=>db.run('DELETE FROM posts WHERE id=?',[id],(e)=>e?j(e):r()));
     
     res.json({success:true,message:'删除成功'});
