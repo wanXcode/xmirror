@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: xmirror
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 18
+    disk:
+      name: data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+      - name: archives
+      mountPath: /opt/render/project/src/archives
+      sizeGB: 1
+      - name: public
+      mountPath: /opt/render/project/src/public
+      sizeGB: 1
