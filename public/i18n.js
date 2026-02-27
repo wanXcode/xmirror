@@ -88,6 +88,15 @@ const i18n = {
     this.currentLang = this.detectLanguage();
     document.documentElement.lang = this.currentLang === 'zh' ? 'zh-CN' : 'en';
     this.updatePage();
+    this.updateLangButton();
+  },
+
+  // 更新语言按钮显示
+  updateLangButton() {
+    const langBtn = document.getElementById('lang-btn');
+    if (langBtn) {
+      langBtn.textContent = this.currentLang === 'zh' ? '🌐 EN' : '🌐 中文';
+    }
   },
 
   // 更新页面文本
@@ -188,8 +197,15 @@ const i18n = {
     this.currentLang = lang;
     document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
     this.updatePage();
+    this.updateLangButton();
   }
 };
+
+// 切换语言函数（供按钮调用）
+function toggleLanguage() {
+  const newLang = i18n.currentLang === 'zh' ? 'en' : 'zh';
+  i18n.switchLanguage(newLang);
+}
 
 // 页面加载时初始化
 i18n.init();
