@@ -9,7 +9,7 @@ async function archive() {
   
   if (!url) {
     result.className = 'result error';
-    result.innerHTML = '请输入 X 链接';
+    result.innerHTML = i18n.t('errorEmptyUrl');
     return;
   }
   
@@ -31,17 +31,17 @@ async function archive() {
       result.className = 'result success';
       result.innerHTML = `
         <strong>✅ ${data.message}</strong><br><br>
-        镜像链接：<a href="${data.url}" target="_blank">${window.location.origin}${data.url}</a>
+        ${i18n.t('mirrorLink')}：<a href="${data.url}" target="_blank">${window.location.origin}${data.url}</a>
       `;
       document.getElementById('url').value = '';
       loadHistory();
     } else {
       result.className = 'result error';
-      result.innerHTML = `<strong>❌ 失败</strong><br>${data.error || '未知错误'}`;
+      result.innerHTML = `<strong>❌ ${i18n.t('errorArchive')}</strong><br>${data.error || 'Unknown error'}`;
     }
   } catch (error) {
     result.className = 'result error';
-    result.innerHTML = `<strong>❌ 请求失败</strong><br>${error.message}`;
+    result.innerHTML = `<strong>❌ ${i18n.t('errorRequest')}</strong><br>${error.message}`;
   } finally {
     btn.disabled = false;
     loading.className = 'loading';
@@ -57,7 +57,7 @@ function handleItemClick(postId, element) {
   element.classList.add('show-hint');
   const hint = element.querySelector('.click-hint');
   if (hint) {
-    hint.textContent = `再点击 ${4 - count} 次删除`;
+    hint.textContent = i18n.t('clickHint', 4 - count);
   }
   
   // 视觉反馈
@@ -101,17 +101,17 @@ async function confirmDelete() {
     if (data.success) {
       const result = document.getElementById('result');
       result.className = 'result success';
-      result.innerHTML = '<strong>✅ 已删除</strong>';
+      result.innerHTML = `<strong>${i18n.t('successDeleted')}</strong>`;
       loadHistory();
     } else {
       const result = document.getElementById('result');
       result.className = 'result error';
-      result.innerHTML = `<strong>❌ 删除失败</strong><br>${data.error || '未知错误'}`;
+      result.innerHTML = `<strong>❌ ${i18n.t('errorDelete')}</strong><br>${data.error || 'Unknown error'}`;
     }
   } catch (error) {
     const result = document.getElementById('result');
     result.className = 'result error';
-    result.innerHTML = `<strong>❌ 删除失败</strong><br>${error.message}`;
+    result.innerHTML = `<strong>❌ ${i18n.t('errorDelete')}</strong><br>${error.message}`;
   }
   
   closeDeleteModal();
@@ -138,15 +138,15 @@ async function loadHistory() {
         }
         return `
         <div class="history-item" data-id="${post.id}">
-          <a href="/archives/${post.html_file}" target="_blank">${title || '无标题'}</a>
-          <div class="meta" onclick="handleItemClick(${post.id}, this.parentElement)">${post.author || '未知用户'} · ${new Date(post.created_at).toLocaleString()}</div>
+          <a href="/archives/${post.html_file}" target="_blank">${title || i18n.t('noTitle')}</a>
+          <div class="meta" onclick="handleItemClick(${post.id}, this.parentElement)">${post.author || i18n.t('unknownUser')} · ${new Date(post.created_at).toLocaleString()}</div>
         </div>
       `}).join('');
     } else {
       document.getElementById('history').style.display = 'none';
     }
   } catch (error) {
-    console.error('加载历史失败:', error);
+    console.error('Load history failed:', error);
   }
 }
 
