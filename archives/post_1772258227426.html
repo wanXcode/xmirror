@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>老鬼 - XMirror</title>
+<meta name="description" content="今天来讲一讲 Google 新 IDE Antigravity 背后的故事。几个月前，Windsurf 还是那个被 OpenAI 盯上的“30 亿美金白马”，员工一边加班写 agent，一边在算自己财务自由要买几套房。就在大家以为要被 Sam Altman 收编的前一周，微软开始盯紧这笔交易，Anthropic 也突然断供新 claude 模型使用，Windsurf 里跑得最多的 claude 模">
+<meta property="og:title" content="老鬼 - XMirror">
+<meta property="og:description" content="今天来讲一讲 Google 新 IDE Antigravity 背后的故事。几个月前，Windsurf 还是那个被 OpenAI 盯上的“30 亿美金白马”，员工一边加班写 agent，一边在算自己财务自由要买几套房。就在大家以为要被 Sam Altman 收编的前一周，微软开始盯紧这笔交易，Anthropic 也突然断供新 claude 模型使用，Windsurf 里跑得最多的 claude 模">
+<meta property="og:type" content="article">
+<meta property="og:image" content="/images/1990942071734349844_0.jpg">
+<meta property="og:url" content="https://x.com/laogui/status/1990942071734349844?s=20">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="老鬼 - XMirror">
+<meta name="twitter:description" content="今天来讲一讲 Google 新 IDE Antigravity 背后的故事。几个月前，Windsurf 还是那个被 OpenAI 盯上的“30 亿美金白马”，员工一边加班写 agent，一边在算自己财务自由要买几套房。就在大家以为要被 Sam Altman 收编的前一周，微软开始盯紧这笔交易，Anthropic 也突然断供新 claude 模型使用，Windsurf 里跑得最多的 claude 模">
+<meta name="twitter:image" content="/images/1990942071734349844_0.jpg">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;min-height:100vh;background:linear-gradient(135deg,#667eea 0%,#764ba2 50%,#f093fb 100%);background-size:400% 400%;animation:gradientBG 15s ease infinite;padding:40px 20px;line-height:1.6;position:relative;overflow-x:hidden}@keyframes gradientBG{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}.orb{position:fixed;border-radius:50%;filter:blur(80px);opacity:.5;animation:float 20s infinite ease-in-out;pointer-events:none;z-index:0}.orb-1{width:400px;height:400px;background:rgba(255,255,255,.4);top:-100px;right:-100px;animation-delay:0s}.orb-2{width:300px;height:300px;background:rgba(255,255,255,.3);bottom:-50px;left:-50px;animation-delay:-5s}.orb-3{width:200px;height:200px;background:rgba(255,255,255,.2);top:50%;left:30%;animation-delay:-10s}@keyframes float{0%,100%{transform:translate(0,0) scale(1)}25%{transform:translate(50px,-50px) scale(1.1)}50%{transform:translate(-30px,30px) scale(.9)}75%{transform:translate(30px,50px) scale(1.05)}}
+.post{max-width:600px;margin:0 auto;background:rgba(255,255,255,.15);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.3);border-radius:24px;padding:32px;box-shadow:0 8px 32px rgba(0,0,0,.1),inset 0 1px 0 rgba(255,255,255,.4);position:relative;z-index:1}
+.post::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;border-radius:24px;padding:1px;background:linear-gradient(135deg,rgba(255,255,255,.5),rgba(255,255,255,.1));-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.header{display:flex;align-items:center;margin-bottom:20px;position:relative;z-index:1}
+.avatar{width:52px;height:52px;border-radius:50%;margin-right:14px;object-fit:cover;border:2px solid rgba(255,255,255,.3);box-shadow:0 4px 15px rgba(0,0,0,.2);background:linear-gradient(135deg,#667eea,#764ba2)}
+.author-info{flex:1;position:relative;z-index:1}
+.author{font-weight:700;color:#fff;font-size:17px;text-shadow:0 1px 2px rgba(0,0,0,.1)}
+.handle{color:rgba(255,255,255,.75);font-size:15px}
+.content{margin:20px 0;font-size:17px;color:#fff;line-height:1.7;word-wrap:break-word;position:relative;z-index:1}
+.content h1{font-size:20px;font-weight:bold;margin:16px 0;color:#fff}
+.content h2{font-size:18px;font-weight:bold;margin:14px 0;color:#fff}
+.content p{margin:12px 0;color:#fff}
+.content a{color:rgba(255,255,255,.9);text-decoration:underline;transition:all .3s}
+.content a:hover{color:#fff}
+video{max-width:100%;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.meta{color:rgba(255,255,255,.75);font-size:14px;margin-top:24px;border-top:1px solid rgba(255,255,255,.2);padding-top:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;position:relative;z-index:1}
+.source{color:rgba(255,255,255,.9);text-decoration:none;transition:all .3s}
+.source:hover{text-decoration:underline;color:#fff}
+.badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);color:#fff;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:500;backdrop-filter:blur(10px);transition:all .3s}
+.badge:hover{background:rgba(255,255,255,.3)}
+@media(max-width:600px){body{padding:20px 15px}.post{padding:24px 20px;border-radius:20px}.content{font-size:16px}.meta{flex-direction:column;align-items:flex-start}}
+</style>
+</head>
+<body>
+<div class="orb orb-1"></div><div class="orb orb-2"></div><div class="orb orb-3"></div>
+<div class="post">
+<div class="header"><img class="avatar" src="https://pbs.twimg.com/profile_images/2022944730913611776/pEN-Kh0Q_200x200.jpg" onerror="this.style.display='none'"><div class="author-info"><div class="author">老鬼</div><div class="handle">@laogui</div></div></div>
+<div class="content">今天来讲一讲 Google 新 IDE Antigravity 背后的故事。<br><br>几个月前，Windsurf 还是那个被 OpenAI 盯上的“30 亿美金白马”，员工一边加班写 agent，一边在算自己财务自由要买几套房。<br><br>就在大家以为要被 Sam Altman 收编的前一周，微软开始盯紧这笔交易，Anthropic 也突然断供新 claude 模型使用，Windsurf 里跑得最多的 claude 模型被掐得七零八落。<br><br>72 小时里，OpenAI 的 term sheet 掉在桌上，律师和大股东吵成一团，员工从刷“我们要被收购了”的消息，变成在公司茶水间问一句“我们现在还值几个亿？”。<br><br>接着剧情急转直下：交易黄了，Google 悄悄抛出一份只写着“少数人名字”的人才并购协议，开价 24 亿美金，把 CEO、联合创始人和一小撮顶级工程师直接打包进 DeepMind。<br><br>留下来的两百多人，手里的期权突然从“OpenAI 30 亿想象”变成“这公司会不会明天就关门”，有人在 LinkedIn 上写：原来所谓 startup 梦想，就是在一夜之间学会接受现实。<br><br>直到 Devin 背后的 Cognition 出场，愿意接下残余业务，给所有人取消 cliff、加速归属、要么继续干要么拿 9 个月买断金离开，这支被拆成两半的团队才算从 ICU 推回普通病房。<br><br>而故事的最后一幕，就是你今天看到的 Google Antigravity ——一个披着 VS Code 皮的“agent‑first”IDE，挂着 Gemini 3 的名号，跑着 Windsurf 那帮人脑子里早就打磨好的工作流和 Artifact 设计。<br><br>对于跳去 Google 的那拨人，它是一次站在更大平台上重造理想产品的机会；对留在原公司的人来说，Antigravity 每多火一点，就越像是在提示他们：曾经摆在桌上的那份 OpenAI 收购协议，如果不是半路夭折，今天公司和个人的命运都早已改写。<br><br><img src="/images/1990942071734349844_0.jpg" style="max-width:100%;margin:10px 0;border-radius:8px;"></div>
+
+<div class="meta"><span>原始链接：<a class="source" href="https://x.com/laogui/status/1990942071734349844?s=20" target="_blank">查看原文 ↗</a></span><span class="badge">🐦 XMirror 存档</span></div>
+</div>
+</body>
+</html>

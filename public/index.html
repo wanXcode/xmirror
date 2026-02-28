@@ -58,7 +58,517 @@
     }
   }
   </script>
-  <link rel="stylesheet" href="/style.css">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'SF Pro Display', sans-serif;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+      background-size: 400% 400%;
+      animation: gradientBG 15s ease infinite;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      position: relative;
+      overflow-x: hidden;
+    }
+    
+    @keyframes gradientBG {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+    
+    /* 浮动光球 */
+    .orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.6;
+      animation: float 20s infinite ease-in-out;
+      pointer-events: none;
+    }
+    
+    .orb-1 {
+      width: 400px;
+      height: 400px;
+      background: rgba(255, 255, 255, 0.4);
+      top: -100px;
+      right: -100px;
+      animation-delay: 0s;
+    }
+    
+    .orb-2 {
+      width: 300px;
+      height: 300px;
+      background: rgba(255, 255, 255, 0.3);
+      bottom: -50px;
+      left: -50px;
+      animation-delay: -5s;
+    }
+    
+    .orb-3 {
+      width: 200px;
+      height: 200px;
+      background: rgba(255, 255, 255, 0.2);
+      top: 50%;
+      left: 50%;
+      animation-delay: -10s;
+    }
+    
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      25% { transform: translate(50px, -50px) scale(1.1); }
+      50% { transform: translate(-30px, 30px) scale(0.9); }
+      75% { transform: translate(30px, 50px) scale(1.05); }
+    }
+    
+    /* 语言切换 */
+    .lang-switcher {
+      position: fixed;
+      top: 30px;
+      right: 30px;
+      color: rgba(255, 255, 255, 0.9);
+      cursor: pointer;
+      z-index: 100;
+      padding: 10px 20px;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 20px;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s;
+      font-size: 14px;
+    }
+    
+    .lang-switcher:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+    
+    /* 玻璃卡片容器 */
+    .glass-container {
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 30px;
+      padding: 50px 40px;
+      max-width: 600px;
+      width: 100%;
+      box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.4);
+      position: relative;
+      z-index: 1;
+    }
+    
+    .glass-container::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      border-radius: 30px;
+      padding: 1px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.5), rgba(255,255,255,0.1));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+    
+    /* 头部 */
+    .header {
+      text-align: center;
+      margin-bottom: 35px;
+    }
+    
+    h1 {
+      font-size: 42px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.8) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+      letter-spacing: -1px;
+    }
+    
+    .subtitle {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 16px;
+      font-weight: 400;
+    }
+    
+    /* 输入组 */
+    .input-group {
+      margin-bottom: 20px;
+    }
+    
+    .input-group label {
+      display: block;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 14px;
+      margin-bottom: 8px;
+      padding-left: 5px;
+    }
+    
+    .input-glass {
+      position: relative;
+    }
+    
+    .input-glass input {
+      width: 100%;
+      padding: 18px 24px;
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 16px;
+      color: #fff;
+      font-size: 16px;
+      outline: none;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+    
+    .input-glass input::placeholder {
+      color: rgba(255, 255, 255, 0.75);
+      font-weight: 400;
+    }
+    
+    .input-glass input:focus {
+      background: rgba(255, 255, 255, 0.3);
+      border-color: rgba(255, 255, 255, 0.6);
+      box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+    }
+    
+    /* 按钮 */
+    .btn-glass {
+      width: 100%;
+      padding: 18px;
+      background: rgba(255, 255, 255, 0.9);
+      border: none;
+      border-radius: 16px;
+      color: #764ba2;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+      margin-top: 10px;
+    }
+    
+    .btn-glass:hover {
+      transform: translateY(-2px);
+      background: #fff;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+    }
+    
+    .btn-glass:active {
+      transform: translateY(0);
+    }
+    
+    /* 加载状态 */
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 30px 0;
+    }
+    
+    .loading.active {
+      display: block;
+    }
+    
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .loading p {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 14px;
+    }
+    
+    /* 加载状态 */
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 30px 0;
+    }
+    
+    .loading.show {
+      display: block;
+    }
+    
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .loading p {
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 14px;
+    }
+    
+    /* 历史记录 */
+    .history {
+      margin-top: 30px;
+      padding-top: 30px;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    .history h3 {
+      color: #fff;
+      font-size: 18px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .history-item {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 12px;
+      transition: all 0.3s;
+    }
+    
+    .history-item:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+    
+    .history-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .history-item a {
+      color: #fff;
+      font-size: 15px;
+      font-weight: 500;
+      text-decoration: none;
+      display: block;
+      margin-bottom: 6px;
+      transition: all 0.3s;
+    }
+    
+    .history-item a:hover {
+      color: rgba(255, 255, 255, 0.85);
+    }
+    
+    .history-item .meta {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 13px;
+      transition: all 0.3s;
+    }
+    
+    .history-item .meta:hover {
+      color: rgba(255, 255, 255, 0.9);
+    }
+    
+    .history-item-actions {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .history-item-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.3s;
+      text-decoration: none;
+    }
+    
+    .history-item-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    
+    .history-item-btn.delete {
+      background: rgba(239, 68, 68, 0.3);
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+    
+    .history-item-btn.delete:hover {
+      background: rgba(239, 68, 68, 0.5);
+    }
+    
+    /* 删除确认弹窗 */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(5px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .modal-overlay.show {
+      display: flex;
+    }
+    
+    .modal {
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 20px;
+      padding: 30px;
+      max-width: 360px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+    
+    .modal h3 {
+      color: #333;
+      font-size: 20px;
+      margin-bottom: 15px;
+    }
+    
+    .modal p {
+      color: #666;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 25px;
+    }
+    
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+    }
+    
+    .modal-buttons button {
+      flex: 1;
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .btn-cancel {
+      background: #f3f4f6;
+      color: #666;
+    }
+    
+    .btn-cancel:hover {
+      background: #e5e7eb;
+    }
+    
+    .btn-delete {
+      background: #ef4444;
+      color: #fff;
+    }
+    
+    .btn-delete:hover {
+      background: #dc2626;
+    }
+    
+    /* 结果区域样式 */
+    .result {
+      margin-top: 25px;
+    }
+    
+    .result.error {
+      background: rgba(239, 68, 68, 0.25);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      border-radius: 12px;
+      padding: 15px 20px;
+      color: #fff;
+      font-size: 14px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .result.success {
+      background: rgba(34, 197, 94, 0.25);
+      border: 1px solid rgba(34, 197, 94, 0.5);
+      border-radius: 12px;
+      padding: 15px 20px;
+      color: #fff;
+      font-size: 14px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .result.error strong,
+    .result.success strong {
+      color: #fff;
+    }
+    
+    .result a {
+      color: rgba(255, 255, 255, 0.9);
+      text-decoration: underline;
+      word-break: break-all;
+      overflow-wrap: break-word;
+      display: inline-block;
+      max-width: 100%;
+    }
+    
+    .result a:hover {
+      color: #fff;
+    }
+    
+    /* 响应式 */
+    @media (max-width: 600px) {
+      .glass-container {
+        padding: 35px 25px;
+      }
+      
+      h1 {
+        font-size: 32px;
+      }
+      
+      .lang-switcher {
+        top: 15px;
+        right: 15px;
+        padding: 8px 15px;
+        font-size: 12px;
+      }
+      
+      .history-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      
+      .history-item-actions {
+        width: 100%;
+      }
+    }
+  </style>
 </head>
 <body>
   <!-- 浮动光球背景 -->
@@ -66,29 +576,39 @@
   <div class="orb orb-2"></div>
   <div class="orb orb-3"></div>
   
+  <!-- 语言切换 -->
   <div class="lang-switcher" onclick="toggleLanguage()">
     <span id="lang-btn">🌐 EN</span>
   </div>
-  <div class="container">
-    <h1>🐦 XMirror</h1>
-    <p class="subtitle">粘贴 X 链接，生成可访问的镜像页面</p>
+  
+  <!-- 主容器 -->
+  <div class="glass-container">
+    <div class="header">
+      <h1>🐦 XMirror</h1>
+      <p class="subtitle" data-i18n="subtitle">粘贴 X 链接，生成可访问的镜像页面</p>
+    </div>
     
     <div class="input-group">
-      <label>X 链接</label>
-      <input type="text" id="url" placeholder="https://x.com/username/status/1234567890" />
+      <label data-i18n="inputLabel">X 链接</label>
+      <div class="input-glass">
+        <input type="text" id="url" placeholder="https://x.com/username/status/1234567890" />
+      </div>
     </div>
     
-    <button id="submit" onclick="archive()">生成镜像</button>
+    <button class="btn-glass" id="submit" onclick="archive()" data-i18n="generateBtn">生成镜像</button>
     
+    <!-- 加载状态 -->
     <div class="loading" id="loading">
       <div class="spinner"></div>
-      <p>正在抓取内容...</p>
+      <p data-i18n="loadingText">正在抓取内容...</p>
     </div>
     
+    <!-- 结果区域 -->
     <div class="result" id="result"></div>
     
+    <!-- 历史记录 -->
     <div class="history" id="history" style="display:none;">
-      <h3>📚 最近存档</h3>
+      <h3><span>📚</span> <span data-i18n="historyTitle">最近存档</span></h3>
       <div id="historyList"></div>
     </div>
   </div>
@@ -96,11 +616,11 @@
   <!-- 删除确认弹窗 -->
   <div class="modal-overlay" id="deleteModal">
     <div class="modal">
-      <h3>🗑️ 确认删除</h3>
-      <p>确定要删除这篇存档吗？<br>此操作不可恢复。</p>
+      <h3>🗑️ <span data-i18n="deleteConfirmTitle">确认删除</span></h3>
+      <p data-i18n="deleteConfirmText">确定要删除这篇存档吗？<br>此操作不可恢复。</p>
       <div class="modal-buttons">
-        <button class="btn-cancel" onclick="closeDeleteModal()">取消</button>
-        <button class="btn-delete" onclick="confirmDelete()">删除</button>
+        <button class="btn-cancel" onclick="closeDeleteModal()" data-i18n="cancelBtn">取消</button>
+        <button class="btn-delete" onclick="confirmDelete()" data-i18n="deleteBtn">删除</button>
       </div>
     </div>
   </div>

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XMirror - Dark Tech Edition</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&display=swap');
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Rajdhani', sans-serif;
+      background: #050505;
+      min-height: 100vh;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    /* 电路板背景图案 */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: 
+        linear-gradient(rgba(0, 255, 136, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 255, 136, 0.03) 1px, transparent 1px);
+      background-size: 30px 30px;
+      pointer-events: none;
+    }
+    
+    /* 发光边框效果 */
+    .glow-border {
+      position: relative;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      padding: 60px 50px;
+      max-width: 500px;
+      width: 90%;
+    }
+    
+    .glow-border::before {
+      content: '';
+      position: absolute;
+      top: -1px;
+      left: -1px;
+      right: -1px;
+      bottom: -1px;
+      background: linear-gradient(45deg, #00ff88, #00ccff, #00ff88);
+      z-index: -1;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    
+    .glow-border:hover::before {
+      opacity: 1;
+      animation: borderGlow 2s linear infinite;
+    }
+    
+    @keyframes borderGlow {
+      0%, 100% { filter: hue-rotate(0deg); }
+      50% { filter: hue-rotate(30deg); }
+    }
+    
+    /* 角落装饰 */
+    .corner {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border-color: #00ff88;
+      border-style: solid;
+    }
+    
+    .corner-tl { top: 10px; left: 10px; border-width: 2px 0 0 2px; }
+    .corner-tr { top: 10px; right: 10px; border-width: 2px 2px 0 0; }
+    .corner-bl { bottom: 10px; left: 10px; border-width: 0 0 2px 2px; }
+    .corner-br { bottom: 10px; right: 10px; border-width: 0 2px 2px 0; }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 50px;
+      position: relative;
+    }
+    
+    h1 {
+      font-size: 52px;
+      font-weight: 700;
+      letter-spacing: 8px;
+      color: #00ff88;
+      text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+      position: relative;
+      display: inline-block;
+    }
+    
+    h1::after {
+      content: '';
+      position: absolute;
+      bottom: -5px;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #00ff88, transparent);
+    }
+    
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+      margin-top: 15px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+    }
+    
+    /* 游戏风格输入框 */
+    .input-game {
+      position: relative;
+      margin-bottom: 30px;
+    }
+    
+    .input-game label {
+      display: block;
+      color: #00ff88;
+      font-size: 12px;
+      margin-bottom: 8px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    
+    .input-game input {
+      width: 100%;
+      padding: 16px 20px;
+      background: #111;
+      border: 1px solid #333;
+      color: #00ff88;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 16px;
+      letter-spacing: 1px;
+      outline: none;
+      transition: all 0.3s;
+    }
+    
+    .input-game input:focus {
+      border-color: #00ff88;
+      box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+      background: #151515;
+    }
+    
+    .input-game input::placeholder {
+      color: #444;
+    }
+    
+    /* 像素风格按钮 */
+    .btn-pixel {
+      width: 100%;
+      padding: 18px;
+      background: linear-gradient(180deg, #00ff88 0%, #00cc66 100%);
+      border: none;
+      border-bottom: 4px solid #009944;
+      color: #000;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: all 0.1s;
+      position: relative;
+    }
+    
+    .btn-pixel:hover {
+      background: linear-gradient(180deg, #00ff99 0%, #00dd77 100%);
+      box-shadow: 0 0 30px rgba(0, 255, 136, 0.4);
+    }
+    
+    .btn-pixel:active {
+      border-bottom-width: 2px;
+      transform: translateY(2px);
+    }
+    
+    /* 状态指示灯 */
+    .status-light {
+      position: fixed;
+      top: 30px;
+      right: 30px;
+      width: 12px;
+      height: 12px;
+      background: #00ff88;
+      border-radius: 50%;
+      box-shadow: 0 0 10px #00ff88;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .back-link {
+      position: fixed;
+      top: 30px;
+      left: 30px;
+      color: #666;
+      text-decoration: none;
+      font-size: 14px;
+      padding: 8px 16px;
+      border: 1px solid #333;
+      background: #0a0a0a;
+      transition: all 0.3s;
+    }
+    
+    .back-link:hover {
+      color: #00ff88;
+      border-color: #00ff88;
+      box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="status-light"></div>
+  <a href="../" class="back-link">← BACK</a>
+  
+  <div class="glow-border">
+    <div class="corner corner-tl"></div>
+    <div class="corner corner-tr"></div>
+    <div class="corner corner-bl"></div>
+    <div class="corner corner-br"></div>
+    
+    <div class="header">
+      <h1>XMirror</h1>
+      <p class="subtitle">System Ready</p>
+    </div>
+    
+    <div class="input-game">
+      <label>Target URL</label>
+      <input type="text" placeholder="https://x.com/...">
+    </div>
+    
+    <button class="btn-pixel">Execute Archive</button>
+  </div>
+</body>
+</html>

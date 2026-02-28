@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XMirror - Future Edition</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;500;700&display=swap');
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Exo 2', sans-serif;
+      background: radial-gradient(ellipse at center, #1a1f3c 0%, #0a0e1a 100%);
+      min-height: 100vh;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      perspective: 1000px;
+    }
+    
+    /* 星空背景 */
+    .stars {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    
+    .star {
+      position: absolute;
+      width: 2px;
+      height: 2px;
+      background: #fff;
+      border-radius: 50%;
+      animation: twinkle 3s infinite ease-in-out;
+    }
+    
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.2; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.5); box-shadow: 0 0 10px #fff; }
+    }
+    
+    /* 轨道动画 */
+    .orbit-container {
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      animation: rotate 30s linear infinite;
+    }
+    
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    
+    .orbit {
+      position: absolute;
+      border: 1px solid rgba(100, 200, 255, 0.2);
+      border-radius: 50%;
+    }
+    
+    .orbit-1 { width: 200px; height: 200px; top: 200px; left: 200px; }
+    .orbit-2 { width: 300px; height: 300px; top: 150px; left: 150px; }
+    .orbit-3 { width: 400px; height: 400px; top: 100px; left: 100px; }
+    .orbit-4 { width: 500px; height: 500px; top: 50px; left: 50px; }
+    
+    .planet {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background: radial-gradient(circle, #64c8ff, #0066ff);
+      border-radius: 50%;
+      box-shadow: 0 0 20px #64c8ff;
+    }
+    
+    .planet-1 { top: 95px; left: 195px; }
+    .planet-2 { top: 145px; left: 295px; }
+    .planet-3 { top: 295px; left: 445px; }
+    .planet-4 { top: 45px; left: 245px; }
+    
+    /* 主容器 - 3D悬浮效果 */
+    .future-container {
+      background: linear-gradient(135deg, rgba(26, 31, 60, 0.9), rgba(10, 14, 26, 0.95));
+      border: 1px solid rgba(100, 200, 255, 0.3);
+      border-radius: 20px;
+      padding: 50px 40px;
+      max-width: 500px;
+      width: 90%;
+      position: relative;
+      z-index: 10;
+      transform-style: preserve-3d;
+      box-shadow: 
+        0 20px 60px rgba(0, 0, 0, 0.5),
+        0 0 40px rgba(100, 200, 255, 0.1);
+      animation: float3d 6s ease-in-out infinite;
+    }
+    
+    @keyframes float3d {
+      0%, 100% { transform: translateZ(0) rotateX(0deg); }
+      50% { transform: translateZ(20px) rotateX(2deg); }
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    
+    h1 {
+      font-size: 48px;
+      font-weight: 700;
+      background: linear-gradient(90deg, #64c8ff, #ff6b9d, #64c8ff);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shine 3s linear infinite;
+      letter-spacing: 4px;
+    }
+    
+    @keyframes shine {
+      to { background-position: 200% center; }
+    }
+    
+    .subtitle {
+      color: #64c8ff;
+      font-size: 14px;
+      margin-top: 10px;
+      letter-spacing: 8px;
+      text-transform: uppercase;
+    }
+    
+    /* 输入框 - 科幻风格 */
+    .input-sci-fi {
+      position: relative;
+      margin-bottom: 25px;
+    }
+    
+    .input-sci-fi::before,
+    .input-sci-fi::after {
+      content: '';
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border: 2px solid #64c8ff;
+      transition: all 0.3s;
+    }
+    
+    .input-sci-fi::before {
+      top: -2px;
+      left: -2px;
+      border-right: 0;
+      border-bottom: 0;
+    }
+    
+    .input-sci-fi::after {
+      bottom: -2px;
+      right: -2px;
+      border-left: 0;
+      border-top: 0;
+    }
+    
+    .input-sci-fi input {
+      width: 100%;
+      padding: 18px 20px;
+      background: rgba(0, 20, 40, 0.6);
+      border: 1px solid rgba(100, 200, 255, 0.3);
+      color: #64c8ff;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 16px;
+      outline: none;
+      transition: all 0.3s;
+    }
+    
+    .input-sci-fi input:focus {
+      background: rgba(0, 30, 60, 0.8);
+      border-color: #64c8ff;
+      box-shadow: 0 0 20px rgba(100, 200, 255, 0.3);
+    }
+    
+    .input-sci-fi input:focus ~ ::before,
+    .input-sci-fi input:focus ~ ::after {
+      width: 100%;
+      height: 100%;
+    }
+    
+    /* 全息按钮 */
+    .btn-holo {
+      width: 100%;
+      padding: 18px;
+      background: transparent;
+      border: 1px solid #64c8ff;
+      color: #64c8ff;
+      font-family: 'Exo 2', sans-serif;
+      font-size: 18px;
+      font-weight: 500;
+      letter-spacing: 4px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s;
+      text-transform: uppercase;
+    }
+    
+    .btn-holo::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(100, 200, 255, 0.4), transparent);
+      transition: left 0.5s;
+    }
+    
+    .btn-holo:hover::before {
+      left: 100%;
+    }
+    
+    .btn-holo:hover {
+      background: rgba(100, 200, 255, 0.1);
+      box-shadow: 0 0 30px rgba(100, 200, 255, 0.5);
+      text-shadow: 0 0 10px #64c8ff;
+    }
+    
+    .back-link {
+      position: fixed;
+      top: 30px;
+      left: 30px;
+      color: #64c8ff;
+      text-decoration: none;
+      font-size: 14px;
+      z-index: 100;
+      padding: 10px 20px;
+      border: 1px solid rgba(100, 200, 255, 0.3);
+      background: rgba(0, 0, 0, 0.3);
+      transition: all 0.3s;
+    }
+    
+    .back-link:hover {
+      background: rgba(100, 200, 255, 0.2);
+      box-shadow: 0 0 20px rgba(100, 200, 255, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <a href="../" class="back-link">← RETURN</a>
+  
+  <div class="stars" id="stars"></div>
+  
+  <div class="orbit-container">
+    <div class="orbit orbit-1"></div>
+    <div class="orbit orbit-2"></div>
+    <div class="orbit orbit-3"></div>
+    <div class="orbit orbit-4"></div>
+    <div class="planet planet-1"></div>
+    <div class="planet planet-2"></div>
+    <div class="planet planet-3"></div>
+    <div class="planet planet-4"></div>
+  </div>
+  
+  <div class="future-container">
+    <div class="header">
+      <h1>XMIRROR</h1>
+      <p class="subtitle">Future Archive System</p>
+    </div>
+    
+    <div class="input-sci-fi">
+      <input type="text" placeholder="ENTER X LINK...">
+    </div>
+    
+    <button class="btn-holo">Initialize</button>
+  </div>
+  
+  <script>
+    // 生成星星
+    const starsContainer = document.getElementById('stars');
+    for (let i = 0; i < 100; i++) {
+      const star = document.createElement('div');
+      star.className = 'star';
+      star.style.left = Math.random() * 100 + '%';
+      star.style.top = Math.random() * 100 + '%';
+      star.style.animationDelay = Math.random() * 3 + 's';
+      starsContainer.appendChild(star);
+    }
+  </script>
+</body>
+</html>

@@ -271,7 +271,17 @@ function generateMirrorHtml(post) {
   // 提取摘要用于 meta 标签
   const summary = extractSummary(content);
   const ogImage = post.images && post.images.length > 0 ? post.images[0] : '';
-  const pageTitle = `${escapeHtml(post.author)} - XMirror`;
+  // 提取标题（优先用 h1/h2，否则取内容前40字）
+  let articleTitle = '';
+  const h1Match = content.match(/<h1[^>]*>(.+?)<\/h1>/i);
+  const h2Match = content.match(/<h2[^>]*>(.+?)<\/h2>/i);
+  if (h1Match) articleTitle = h1Match[1].replace(/<[^>]+>/g, '').substring(0, 50);
+  else if (h2Match) articleTitle = h2Match[1].replace(/<[^>]+>/g, '').substring(0, 50);
+  else articleTitle = summary.substring(0, 25);
+  if (articleTitle.length >= 25) articleTitle += "...";
+  const pageTitle = articleTitle ? `${escapeHtml(articleTitle)} | XMirror` : `${escapeHtml(post.author)} | XMirror`;
+  const canonicalUrl = `https://x.5666.net/archives/${post.html_file}`;
+  const createdAt = post.tweet_time || post.created_at || new Date().toISOString();
   
   const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -280,46 +290,149 @@ function generateMirrorHtml(post) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${pageTitle}</title>
 <meta name="description" content="${escapeHtml(summary)}">
+<meta name="keywords" content="X存档,Twitter存档,${escapeHtml(post.author)},推文备份,XMirror">
+<meta name="author" content="${escapeHtml(post.author)}">
+<meta name="robots" content="index, follow">
+<meta name="googlebot" content="index, follow">
+<link rel="canonical" href="${canonicalUrl}">
+
+<!-- Open Graph -->
 <meta property="og:title" content="${pageTitle}">
 <meta property="og:description" content="${escapeHtml(summary)}">
 <meta property="og:type" content="article">
 <meta property="og:image" content="${ogImage}">
-<meta property="og:url" content="${post.url}">
+<meta property="og:url" content="${canonicalUrl}">
+<meta property="og:site_name" content="XMirror">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="${createdAt}">
+<meta property="article:author" content="${escapeHtml(post.author)}">
+
+<!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${pageTitle}">
 <meta name="twitter:description" content="${escapeHtml(summary)}">
 <meta name="twitter:image" content="${ogImage}">
+<meta name="twitter:creator" content="@${escapeHtml(post.author_handle)}">
+<meta name="twitter:domain" content="x.5666.net">
+
+<!-- Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SocialMediaPosting",
+  "headline": "${escapeHtml(summary).substring(0, 60)}",
+  "description": "${escapeHtml(summary)}",
+  "image": "${ogImage}",
+  "url": "${canonicalUrl}",
+  "datePublished": "${createdAt}",
+  "author": {
+    "@type": "Person",
+    "name": "${escapeHtml(post.author)}",
+    "identifier": "@${escapeHtml(post.author_handle)}"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "XMirror",
+    "url": "https://x.5666.net"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "${canonicalUrl}"
+  }
+}
+</script>
+
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:600px;margin:40px auto;padding:20px;background:#f7f9fa}
-.post{background:white;border-radius:16px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
-.header{display:flex;align-items:center;margin-bottom:16px}
-.avatar{width:48px;height:48px;border-radius:50%;margin-right:12px;object-fit:cover;background:#eee}
-.author{font-weight:bold;font-size:16px}
-.handle{color:#536471;font-size:15px}
-.content{margin:16px 0;font-size:17px;line-height:1.6;word-wrap:break-word}
-.content h1{font-size:20px;font-weight:bold;margin:16px 0}
-.content h2{font-size:18px;font-weight:bold;margin:14px 0}
+:root {
+  --bg-color: #ffffff;
+  --text-primary: #0f1419;
+  --text-secondary: #536471;
+  --border-color: #eff3f4;
+  --link-color: #1d9bf0;
+  --hover-bg: rgba(15,20,25,0.1);
+  --card-shadow: 0 0 15px rgba(0,0,0,0.08);
+}
+[data-theme="dark"] {
+  --bg-color: #15202b;
+  --text-primary: #e7e9ea;
+  --text-secondary: #8899a6;
+  --border-color: #38444d;
+  --link-color: #1d9bf0;
+  --hover-bg: rgba(255,255,255,0.1);
+  --card-shadow: 0 0 15px rgba(0,0,0,0.3);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg-color);color:var(--text-primary);min-height:100vh;padding:20px;transition:background .3s,color .3s}
+.theme-toggle{position:fixed;top:20px;right:20px;width:44px;height:44px;border-radius:50%;border:none;background:var(--hover-bg);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;z-index:100;transition:transform .2s}
+.theme-toggle:hover{transform:scale(1.1)}
+.container{max-width:600px;margin:30px auto 20px}
+.post{background:var(--bg-color);border:1px solid var(--border-color);border-radius:16px;padding:20px;box-shadow:var(--card-shadow);transition:border-color .3s}
+.header{display:flex;align-items:flex-start;margin-bottom:12px}
+.avatar{width:48px;height:48px;border-radius:50%;margin-right:12px;object-fit:cover;background:var(--border-color)}
+.author-info{flex:1}
+.author-name{font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:4px}
+.author-handle{color:var(--text-secondary);font-size:15px}
+.content{margin:4px 0;font-size:17px;line-height:1.6;word-wrap:break-word;color:var(--text-primary)}
+.content h1{font-size:20px;font-weight:800;margin:16px 0}
+.content h2{font-size:18px;font-weight:700;margin:14px 0}
 .content p{margin:12px 0}
-video{max-width:100%;border-radius:8px}
-.meta{color:#536471;font-size:14px;margin-top:20px;border-top:1px solid #eff3f4;padding-top:16px}
-.source{color:#1d9bf0;text-decoration:none}
-.badge{display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:4px 12px;border-radius:20px;font-size:12px}
+.content a{color:var(--link-color);text-decoration:none}
+.content a:hover{text-decoration:underline}
+.content img,.media-img{max-width:100%;border-radius:16px;margin:12px 0;border:1px solid var(--border-color)}
+video{max-width:100%;border-radius:16px;margin:12px 0}
+.meta{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);color:var(--text-secondary);font-size:14px}
+.source{color:var(--link-color);text-decoration:none}
+.source:hover{text-decoration:underline}
+.badge{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600}
+.time{display:flex;align-items:center;gap:8px}
+@media(max-width:600px){body{padding:10px}.container{margin:50px 0 10px}.post{border-radius:12px}}
 </style>
 </head>
 <body>
+<button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
+<div class="container">
 <div class="post">
-<div class="header"><img class="avatar" src="${post.author_avatar}" onerror="this.style.display='none'"><div><div class="author">${escapeHtml(post.author)}</div><div class="handle">@${escapeHtml(post.author_handle)}</div></div></div>
+<div class="header">
+<img class="avatar" src="${post.author_avatar}" onerror="this.style.display='none'">
+<div class="author-info">
+<div class="author-name">${escapeHtml(post.author)}</div>
+<div class="author-handle">@${escapeHtml(post.author_handle)}</div>
+</div>
+</div>
 <div class="content">${content}</div>
 ${videoHtml}
-<div class="meta"><span>原始链接：<a class="source" href="${post.url}" target="_blank">查看原文</a></span><span class="badge">🐦 XMirror</span></div>
+<div class="meta">
+<div class="time">
+<span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+<span>·</span>
+<a class="source" href="${post.url}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a>
 </div>
+<span class="badge">🐦 XMirror</span>
+</div>
+</div>
+</div>
+<script>
+function getPreferredTheme() {
+  const saved = localStorage.getItem('xmirror-theme');
+  if (saved) return saved;
+  const hour = new Date().getHours();
+  return (hour >= 6 && hour < 18) ? 'light' : 'dark';
+}
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('xmirror-theme', theme);
+}
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+applyTheme(getPreferredTheme());
+</script>
 </body>
 </html>`;
   
   return html;
-}
-
-app.post('/api/archive', async (req, res) => {
+}app.post('/api/archive', async (req, res) => {
   const {url} = req.body;
   if (!url?.includes('x.com') && !url?.includes('twitter.com')) return res.status(400).json({error:'无效的X链接'});
   

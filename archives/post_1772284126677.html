@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>转译：规范驱动开发错在哪了你唯一能百分百信任的文档... | XMirror</title>
+<meta name="description" content="转译：规范驱动开发错在哪了你唯一能百分百信任的文档，就是代码本身。设计文档、更新日志、README、架构图、入职指南。这些东西写完几乎立刻就过时了。让文档和不断变化的系统保持同步，需要持续投入成本。工程师天生习惯爆发式输出：写文档，发功能，然后做下一个。后续更新属于隐形工作，每天都要和其他任务争夺时间，而且几乎每次都会败下阵来。我们试过流程，试过工具，甚至试图把它塑造成团队价值观。都没用。因为我们">
+<meta name="keywords" content="X存档,Twitter存档,宝玉,推文备份,XMirror">
+<meta name="author" content="宝玉">
+<meta name="robots" content="index, follow">
+<meta name="googlebot" content="index, follow">
+<link rel="canonical" href="https://x.5666.net/archives/undefined">
+
+<!-- Open Graph -->
+<meta property="og:title" content="转译：规范驱动开发错在哪了你唯一能百分百信任的文档... | XMirror">
+<meta property="og:description" content="转译：规范驱动开发错在哪了你唯一能百分百信任的文档，就是代码本身。设计文档、更新日志、README、架构图、入职指南。这些东西写完几乎立刻就过时了。让文档和不断变化的系统保持同步，需要持续投入成本。工程师天生习惯爆发式输出：写文档，发功能，然后做下一个。后续更新属于隐形工作，每天都要和其他任务争夺时间，而且几乎每次都会败下阵来。我们试过流程，试过工具，甚至试图把它塑造成团队价值观。都没用。因为我们">
+<meta property="og:type" content="article">
+<meta property="og:image" content="">
+<meta property="og:url" content="https://x.5666.net/archives/undefined">
+<meta property="og:site_name" content="XMirror">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="1771905958">
+<meta property="article:author" content="宝玉">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="转译：规范驱动开发错在哪了你唯一能百分百信任的文档... | XMirror">
+<meta name="twitter:description" content="转译：规范驱动开发错在哪了你唯一能百分百信任的文档，就是代码本身。设计文档、更新日志、README、架构图、入职指南。这些东西写完几乎立刻就过时了。让文档和不断变化的系统保持同步，需要持续投入成本。工程师天生习惯爆发式输出：写文档，发功能，然后做下一个。后续更新属于隐形工作，每天都要和其他任务争夺时间，而且几乎每次都会败下阵来。我们试过流程，试过工具，甚至试图把它塑造成团队价值观。都没用。因为我们">
+<meta name="twitter:image" content="">
+<meta name="twitter:creator" content="@dotey">
+<meta name="twitter:domain" content="x.5666.net">
+
+<!-- Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SocialMediaPosting",
+  "headline": "转译：规范驱动开发错在哪了你唯一能百分百信任的文档，就是代码本身。设计文档、更新日志、README、架构图、入职指南。这",
+  "description": "转译：规范驱动开发错在哪了你唯一能百分百信任的文档，就是代码本身。设计文档、更新日志、README、架构图、入职指南。这些东西写完几乎立刻就过时了。让文档和不断变化的系统保持同步，需要持续投入成本。工程师天生习惯爆发式输出：写文档，发功能，然后做下一个。后续更新属于隐形工作，每天都要和其他任务争夺时间，而且几乎每次都会败下阵来。我们试过流程，试过工具，甚至试图把它塑造成团队价值观。都没用。因为我们",
+  "image": "",
+  "url": "https://x.5666.net/archives/undefined",
+  "datePublished": "1771905958",
+  "author": {
+    "@type": "Person",
+    "name": "宝玉",
+    "identifier": "@dotey"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "XMirror",
+    "url": "https://x.5666.net"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://x.5666.net/archives/undefined"
+  }
+}
+</script>
+
+<style>
+:root {
+  --bg-color: #ffffff;
+  --text-primary: #0f1419;
+  --text-secondary: #536471;
+  --border-color: #eff3f4;
+  --link-color: #1d9bf0;
+  --hover-bg: rgba(15,20,25,0.1);
+  --card-shadow: 0 0 15px rgba(0,0,0,0.08);
+}
+[data-theme="dark"] {
+  --bg-color: #15202b;
+  --text-primary: #e7e9ea;
+  --text-secondary: #8899a6;
+  --border-color: #38444d;
+  --link-color: #1d9bf0;
+  --hover-bg: rgba(255,255,255,0.1);
+  --card-shadow: 0 0 15px rgba(0,0,0,0.3);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg-color);color:var(--text-primary);min-height:100vh;padding:20px;transition:background .3s,color .3s}
+.theme-toggle{position:fixed;top:20px;right:20px;width:44px;height:44px;border-radius:50%;border:none;background:var(--hover-bg);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;z-index:100;transition:transform .2s}
+.theme-toggle:hover{transform:scale(1.1)}
+.container{max-width:600px;margin:30px auto 20px}
+.post{background:var(--bg-color);border:1px solid var(--border-color);border-radius:16px;padding:20px;box-shadow:var(--card-shadow);transition:border-color .3s}
+.header{display:flex;align-items:flex-start;margin-bottom:12px}
+.avatar{width:48px;height:48px;border-radius:50%;margin-right:12px;object-fit:cover;background:var(--border-color)}
+.author-info{flex:1}
+.author-name{font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:4px}
+.author-handle{color:var(--text-secondary);font-size:15px}
+.content{margin:4px 0;font-size:17px;line-height:1.6;word-wrap:break-word;color:var(--text-primary)}
+.content h1{font-size:20px;font-weight:800;margin:16px 0}
+.content h2{font-size:18px;font-weight:700;margin:14px 0}
+.content p{margin:12px 0}
+.content a{color:var(--link-color);text-decoration:none}
+.content a:hover{text-decoration:underline}
+.content img,.media-img{max-width:100%;border-radius:16px;margin:12px 0;border:1px solid var(--border-color)}
+video{max-width:100%;border-radius:16px;margin:12px 0}
+.meta{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);color:var(--text-secondary);font-size:14px}
+.source{color:var(--link-color);text-decoration:none}
+.source:hover{text-decoration:underline}
+.badge{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600}
+.time{display:flex;align-items:center;gap:8px}
+@media(max-width:600px){body{padding:10px}.container{margin:50px 0 10px}.post{border-radius:12px}}
+</style>
+</head>
+<body>
+<button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
+<div class="container">
+<div class="post">
+<div class="header">
+<img class="avatar" src="https://pbs.twimg.com/profile_images/561086911561736192/6_g58vEs_200x200.jpeg" onerror="this.style.display='none'">
+<div class="author-info">
+<div class="author-name">宝玉</div>
+<div class="author-handle">@dotey</div>
+</div>
+</div>
+<div class="content">转译：规范驱动开发错在哪了<br><br>你唯一能百分百信任的文档，就是代码本身。<br><br>设计文档、更新日志、README、架构图、入职指南。这些东西写完几乎立刻就过时了。<br><br>让文档和不断变化的系统保持同步，需要持续投入成本。工程师天生习惯爆发式输出：写文档，发功能，然后做下一个。后续更新属于隐形工作，每天都要和其他任务争夺时间，而且几乎每次都会败下阵来。我们试过流程，试过工具，甚至试图把它塑造成团队价值观。都没用。因为我们总是在强求人类去做他们骨子里就不愿做的事。<br><br>这正是规范驱动开发经常翻车的地方。理念本身没毛病：与编写代码的 Agent 合作时，先写清楚需求再让它们放手干。这显然比在聊天窗口里随便贴几句提示词然后祈祷奇迹发生要靠谱得多。<br><br>但规范也是文档。文档的下场，我们刚才已经见识过了。<br><br>区别在于代价不同。过时的设计文档只会误导碰巧读到它的下一位工程师。而过时的规范会误导不知变通的 Agent。它们会自信满满地执行一个早已脱离实际的计划，根本不会发现哪里不对。<br><br>因此，在开发 Intent 的过程中，我们反复思考一个问题：如果规范不需要你来维护呢？如果它能自我更新呢？<br><br>这是我们最终的方案。<br><br>规范不再是人类或 Agent 的专属产物。双方都要去读写它。<br><br>你描述想做什么。协调 Agent 草拟规范，拆解任务。你审阅、修改，批准后才开始执行。一旦 Agent 开始干活，它们会将进展同步回规范中：发现了什么、改变了什么、遇到了哪些计划外的限制。你可以随时暂停，重写部分规范，Agent 就会接着新状态继续干。<br><br>回想一下，把任务交给优秀的初级工程师会怎样。你把工单给他们，他们去干活；发现 API 不支持工单里预设的分页方式时，他们会自己更新工单。他们不会等你发现问题，更不会将错就错。他们会跑来告诉你：“之前的假设不对，我改用这种方法了，原因是这样。”你审查他们的更新，批准或驳回。<br><br>这正是我们希望开发者和规范之间建立的关系。因为双方都在维护，工单才不至于“说谎”。<br><br>初级工程师这个比喻比你想的还要贴切。优秀的初级工程师不会把每行代码怎么写都向你汇报。他们只会反馈那些改变了方向的决策：“我发现了一个现成的 auth context，所以直接接入了，没去建新的。”这就是信号。这也正是你期望 Agent 做到的事。把握好这种颗粒度，成了系统设计中真正有趣的难题。细节太多，规范就会变成噪音，让你产生习惯性无视；细节太少，你又要重新去猜到底发生了什么。<br><br>实际任务是这样的。你写道：“在设置页面加个能跟随系统偏好的深色模式开关。”协调 Agent 读取代码库，草拟一份包含三个子任务的规范：添加开关组件、接入 preference store、更新 CSS 变量。<br><br>你扫了一眼，发现漏掉了跨会话保存选择这个细节，于是补上一句。<br><br>你点击批准。<br><br>Agent 开始干活。<br><br>15 分钟后，其中一个 Agent 更新了规范：“在代码库里找到了现成的 Theme Provider。已直接接入，未创建新 store。”<br><br>你审查代码变更（已按 Agent 和任务清晰分组）。<br><br>现在，这份规范反映了实际做出来的东西，而不是最初计划的东西。最重要的是，没人需要专门记着去更新它。<br><br>软件工程中所有“文档优先”的倡议之所以失败，原因如出一辙：它们都要求开发者去做那种没人看见、没人奖励的持续维护工作。<br><br>除非 Agent 也承担起自己那份维护工作，否则规范驱动开发也将重蹈覆辙。<br><br>既然 Agent 会写代码，它们也能更新计划。放手让它们干吧。</div>
+
+<div class="meta">
+<div class="time">
+<span>1月21日 20:11</span>
+<span>·</span>
+<a class="source" href="https://x.com/dotey/status/2026146560862474482?s=20" target="_blank" rel="noopener noreferrer">查看原文 ↗</a>
+</div>
+<span class="badge">🐦 XMirror</span>
+</div>
+</div>
+</div>
+<script>
+function getPreferredTheme() {
+  const saved = localStorage.getItem('xmirror-theme');
+  if (saved) return saved;
+  const hour = new Date().getHours();
+  return (hour >= 6 && hour < 18) ? 'light' : 'dark';
+}
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('xmirror-theme', theme);
+}
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+}
+applyTheme(getPreferredTheme());
+</script>
+</body>
+</html>

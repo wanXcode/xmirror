@@ -1,18 +1,39 @@
 # XMirror 版本说明
 
-## 当前版本：v1.2.0
+## 当前版本：v1.3.0
 
-### v1.2.0 (2026-02-28)
+### v1.3.0 (2026-02-28)
 
 #### 新增
-- 国际化支持（i18n），自动检测浏览器语言（中文/英文）
-- 语言切换按钮，支持手动切换中英文
-- SEO 优化：添加 meta 标签、Open Graph、Twitter Card、结构化数据
-- 分离 CSS 和 JS 文件，提高代码可维护性
+- **国际化支持（i18n）**：自动检测浏览器语言（中文/英文），支持手动切换
+- **首页全新设计（Glassmorphism）**：
+  - 渐变动画背景（紫蓝粉三色）
+  - 浮动光球装饰效果
+  - 毛玻璃卡片容器
+- **内页全新设计（Twitter 原生风格）**：
+  - 深色/浅色自动切换（根据时区 6:00-18:00 为浅色）
+  - 手动切换按钮（右上角 🌓）
+  - localStorage 记住用户偏好
+- **SEO 完整优化**：
+  - Meta 标签（keywords、author、robots、googlebot）
+  - Canonical URL
+  - Open Graph 完整配置（og:site_name、og:locale、article:published_time）
+  - Twitter Card 完整配置（twitter:creator、twitter:domain）
+  - JSON-LD 结构化数据（SocialMediaPosting）
+  - 标题长度优化（30字内，符合 SEO 最佳实践）
 
 #### 优化
 - 首页标题和描述根据语言自动切换
 - 页面加载性能优化（预连接、DNS 预解析）
+- 内页内容区域间距调整（4px）
+- 历史记录 PC 端布局优化（作者/时间在标题下方）
+- 手机端链接自动换行
+
+#### Bug 修复
+- 修复删除弹窗 CSS 类名问题
+- 修复链接下划线样式
+- 修复非链接区域鼠标手型问题
+- 修复输入框为空时的提示样式
 
 ---
 
