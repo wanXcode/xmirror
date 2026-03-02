@@ -209,7 +209,25 @@ async function translateWithSiliconFlow(parts, targetLang) {
     parsed = match ? JSON.parse(match[0]) : {};
   }
 
-  const translations = parsed.translations || parsed.result || parsed.parts;
+  let translations = parsed.translations || parsed.result || parsed.parts || parsed['部分'] || parsed['翻译结果'];
+  if (!Array.isArray(translations) && parsed && typeof parsed === 'object') {
+    for (const value of Object.values(parsed)) {
+      if (Array.isArray(value)) {
+        translations = value;
+        break;
+      }
+    }
+  }
+  if (Array.isArray(translations)) {
+    translations = translations.map(item => {
+      if (typeof item === 'string') return item;
+      if (item && typeof item.translation === 'string') return item.translation;
+      if (item && typeof item.translated === 'string') return item.translated;
+      if (item && typeof item.text === 'string') return item.text;
+      return '';
+    });
+  }
+
   if (!Array.isArray(translations) || translations.length !== parts.length) {
     throw new Error('翻译结果格式异常');
   }
