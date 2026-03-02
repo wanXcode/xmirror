@@ -453,12 +453,8 @@ function generateMirrorHtml(post) {
 .translate-btn{padding:6px 12px;border:1px solid var(--border-color);border-radius:999px;background:var(--hover-bg);color:var(--text-primary);cursor:pointer;font-size:13px}
 .translate-btn[disabled]{opacity:.6;cursor:not-allowed}
 .translate-status{font-size:12px;color:var(--text-secondary)}
-.translate-tabs{display:none;gap:8px;margin-bottom:10px}
-.translate-tabs.show{display:flex}
-.translate-tab{padding:6px 12px;border-radius:999px;border:1px solid var(--border-color);background:transparent;color:var(--text-primary);cursor:pointer}
-.translate-tab.active{background:var(--hover-bg)}
-.translated-content{display:none}
-.translated-content.active{display:block}
+.content-view{display:none}
+.content-view.active{display:block}
 .meta{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);color:var(--text-secondary);font-size:14px}
 .source{color:var(--link-color);text-decoration:none}.source:hover{text-decoration:underline}.badge{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600}
 .time{display:flex;align-items:center;gap:8px}@media(max-width:600px){body{padding:10px}.container{margin:50px 0 10px}.post{border-radius:12px}}
@@ -472,15 +468,11 @@ function generateMirrorHtml(post) {
 <img class="avatar" src="${post.author_avatar}" onerror="this.style.display='none'">
 <div class="author-info"><div class="author-name">${escapeHtml(post.author)}</div><div class="author-handle">@${escapeHtml(post.author_handle)}</div></div></div>
 <div class="translate-toolbar">
-<button id="translateBtn" class="translate-btn" onclick="translatePost()">🌐 翻译为中文</button>
+<button id="translateBtn" class="translate-btn" onclick="toggleTranslate()">🌐 翻译为中文</button>
 <span id="translateStatus" class="translate-status"></span>
 </div>
-<div id="translateTabs" class="translate-tabs">
-<button class="translate-tab active" onclick="switchTab('origin')">原文</button>
-<button class="translate-tab" onclick="switchTab('translated')">译文</button>
-</div>
-<div id="originContent" class="content translated-content active">${content}</div>
-<div id="translatedContent" class="content translated-content"></div>
+<div id="originContent" class="content content-view active">${content}</div>
+<div id="translatedContent" class="content content-view"></div>
 ${videoHtml}
 <div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${post.url}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div><span class="badge">🐦 XMirror</span></div>
 </div></div>
@@ -488,8 +480,10 @@ ${videoHtml}
 function getPreferredTheme(){const saved=localStorage.getItem('xmirror-theme');if(saved)return saved;const hour=new Date().getHours();return(hour>=6&&hour<18)?'light':'dark'}
 function applyTheme(theme){document.documentElement.setAttribute('data-theme',theme);localStorage.setItem('xmirror-theme',theme)}
 function toggleTheme(){const current=document.documentElement.getAttribute('data-theme');applyTheme(current==='dark'?'light':'dark')}
-function switchTab(tab){const tabs=[...document.querySelectorAll('.translate-tab')];tabs.forEach(t=>t.classList.remove('active'));if(tab==='origin'){tabs[0].classList.add('active');document.getElementById('originContent').classList.add('active');document.getElementById('translatedContent').classList.remove('active')}else{tabs[1].classList.add('active');document.getElementById('translatedContent').classList.add('active');document.getElementById('originContent').classList.remove('active')}}
-async function translatePost(){const postEl=document.querySelector('.post');const postId=postEl?.dataset?.postId;const btn=document.getElementById('translateBtn');const status=document.getElementById('translateStatus');if(!postId)return;btn.disabled=true;status.textContent='翻译中...';try{const res=await fetch('/api/translate/'+postId+'?targetLang=zh-CN');const data=await res.json();if(!data.success)throw new Error(data.error||'翻译失败');const html=(data.parts||[]).map(p=>'<p>'+String(p).replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</p>').join('');document.getElementById('translatedContent').innerHTML=html||'<p>暂无译文</p>';document.getElementById('translateTabs').classList.add('show');status.textContent=data.cached?'已显示缓存译文':'翻译完成';switchTab('translated')}catch(e){status.textContent='翻译失败：'+e.message}finally{btn.disabled=false}}
+function showContent(mode){const origin=document.getElementById('originContent');const translated=document.getElementById('translatedContent');if(mode==='translated'){translated.classList.add('active');origin.classList.remove('active')}else{origin.classList.add('active');translated.classList.remove('active')}}
+async function toggleTranslate(){const postEl=document.querySelector('.post');const postId=postEl?.dataset?.postId;const btn=document.getElementById('translateBtn');const status=document.getElementById('translateStatus');const translatedEl=document.getElementById('translatedContent');const hasTranslated=translatedEl.innerHTML.trim().length>0;const showingTranslated=translatedEl.classList.contains('active');if(!postId)return;
+if(hasTranslated){if(showingTranslated){showContent('origin');btn.textContent='🌐 查看译文';status.textContent=''}else{showContent('translated');btn.textContent='📝 查看原文';status.textContent=''}return;}
+btn.disabled=true;status.textContent='翻译中...';try{const res=await fetch('/api/translate/'+postId+'?targetLang=zh-CN');const data=await res.json();if(!data.success)throw new Error(data.error||'翻译失败');const html=(data.parts||[]).map(p=>'<p>'+String(p).replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</p>').join('');translatedEl.innerHTML=html||'<p>暂无译文</p>';showContent('translated');btn.textContent='📝 查看原文';status.textContent=data.cached?'已显示缓存译文':'翻译完成'}catch(e){status.textContent='翻译失败：'+e.message}finally{btn.disabled=false}}
 applyTheme(getPreferredTheme());
 </script>
 </body>
