@@ -3,9 +3,15 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const TRANSLATE_PROVIDER = process.env.TRANSLATE_PROVIDER || 'siliconflow';
+const SILICONFLOW_BASE_URL = (process.env.SILICONFLOW_BASE_URL || 'https://api.siliconflow.cn/v1').replace(/\/$/, '');
+const SILICONFLOW_MODEL = process.env.SILICONFLOW_MODEL || 'Qwen/Qwen2-7B-Instruct';
+const SILICONFLOW_API_KEY = process.env.SILICONFLOW_API_KEY || process.env.OPENAI_API_KEY || '';
 
 app.use(express.json());
 app.use(express.static('public'));
@@ -29,6 +35,22 @@ db.serialize(() => {
     tweet_time TEXT,
     html_file TEXT
   )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS translations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id INTEGER NOT NULL,
+    target_lang TEXT NOT NULL,
+    source_lang TEXT,
+    source_hash TEXT NOT NULL,
+    translated_json TEXT NOT NULL,
+    provider TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(post_id, target_lang, source_hash)
+  )`);
+
+  db.run(`CREATE INDEX IF NOT EXISTS idx_translations_post_lang_hash
+    ON translations(post_id, target_lang, source_hash)`);
 });
 
 function extractTweetId(url) {
@@ -104,41 +126,130 @@ function escapeHtml(text) {
 }
 
 function extractSummary(content) {
-  // 提取纯文本摘要，用于 meta description
   if (!content) return '';
   return content.replace(/<[^>]+>/g, '').substring(0, 200);
+}
+
+function decodeEntities(text = '') {
+  return text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'");
+}
+
+function extractTranslatableParts(content = '') {
+  const withBreaks = content
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|h1|h2|li)>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '• ')
+    .replace(/<img[^>]*>/gi, '\n')
+    .replace(/<video[^>]*>[\s\S]*?<\/video>/gi, '\n');
+
+  const plain = decodeEntities(withBreaks.replace(/<[^>]+>/g, ' '));
+  return plain
+    .split(/\n+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .slice(0, 60);
+}
+
+function sourceHash(parts) {
+  return crypto.createHash('sha256').update(parts.join('\n')).digest('hex');
+}
+
+async function translateWithSiliconFlow(parts, targetLang) {
+  if (!SILICONFLOW_API_KEY) throw new Error('未配置翻译API Key');
+
+  const langName = targetLang === 'zh-CN' ? '简体中文' : (targetLang === 'en' ? 'English' : targetLang);
+  const body = {
+    model: SILICONFLOW_MODEL,
+    temperature: 0.1,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: `你是翻译引擎。把输入数组逐项翻译为${langName}，保持语义准确和分段顺序。不要解释，不要增删段落。` 
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          task: 'translate_array',
+          targetLang,
+          parts
+        })
+      }
+    ]
+  };
+
+  const response = await fetch(`${SILICONFLOW_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${SILICONFLOW_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`翻译服务错误(${response.status}): ${errText.slice(0, 180)}`);
+  }
+
+  const json = await response.json();
+  const text = json?.choices?.[0]?.message?.content || '{}';
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    parsed = match ? JSON.parse(match[0]) : {};
+  }
+
+  const translations = parsed.translations || parsed.result || parsed.parts;
+  if (!Array.isArray(translations) || translations.length !== parts.length) {
+    throw new Error('翻译结果格式异常');
+  }
+
+  return {
+    sourceLang: parsed.sourceLang || 'auto',
+    translations: translations.map(t => String(t || '').trim())
+  };
 }
 
 async function fetchXPost(url) {
   const tweetId = extractTweetId(url);
   if (!tweetId) throw new Error('无法提取推文ID');
-  
+
   const tweet = await fetchFromFxTwitter(tweetId);
   const author = tweet.author || {};
   const media = tweet.media || {};
-  
+
   const allImageUrls = [];
-  
+
   if (tweet.article?.cover_media?.media_info?.original_img_url) {
     allImageUrls.push(tweet.article.cover_media.media_info.original_img_url);
   }
-  
+
   (media.photos || []).forEach(p => { if (p.url) allImageUrls.push(p.url); });
-  
+
   if (tweet.media_entities) {
     for (const e of tweet.media_entities) {
       if (e.media_info?.original_img_url) allImageUrls.push(e.media_info.original_img_url);
     }
   }
-  
+
   if (tweet.article?.media_entities) {
     for (const e of tweet.article.media_entities) {
       if (e.media_info?.original_img_url) allImageUrls.push(e.media_info.original_img_url);
     }
   }
-  
+
   const uniqueUrls = [...new Set(allImageUrls)];
-  
+
   const localImages = [];
   const urlToLocalPath = new Map();
   for (let i = 0; i < uniqueUrls.length; i++) {
@@ -148,12 +259,12 @@ async function fetchXPost(url) {
       const localPath = await downloadImage(uniqueUrls[i], filename);
       localImages.push(localPath);
       urlToLocalPath.set(uniqueUrls[i], localPath);
-    } catch { 
-      localImages.push(uniqueUrls[i]); 
+    } catch {
+      localImages.push(uniqueUrls[i]);
       urlToLocalPath.set(uniqueUrls[i], uniqueUrls[i]);
     }
   }
-  
+
   let localVideoPath = null;
   const videoUrl = media.videos?.[0]?.url;
   if (videoUrl) {
@@ -167,18 +278,18 @@ async function fetchXPost(url) {
       localVideoPath = videoUrl;
     }
   }
-  
+
   let htmlContent = '';
   let title = '';
-  
+
   const allMediaEntities = [
     ...(tweet.article?.media_entities || []),
     ...(tweet.media_entities || [])
   ];
-  
+
   if (tweet.text) {
     htmlContent = escapeHtml(tweet.text).replace(/\n/g, '<br>');
-    
+
     if (localImages.length > 0) {
       htmlContent += '<br><br>';
       for (const imgPath of localImages) {
@@ -187,7 +298,7 @@ async function fetchXPost(url) {
     }
   } else if (tweet.article) {
     title = tweet.article.title || '';
-    
+
     if (tweet.article.content?.blocks) {
       const blocks = tweet.article.content.blocks;
       const entityMapArray = tweet.article.content.entityMap || [];
@@ -197,7 +308,7 @@ async function fetchXPost(url) {
           entityMap[item.key] = item.value;
         }
       }
-      
+
       for (const block of blocks) {
         if (block.text) {
           const text = escapeHtml(block.text).replace(/\n/g, '<br>');
@@ -211,7 +322,7 @@ async function fetchXPost(url) {
             htmlContent += `<p>${text}</p>`;
           }
         }
-        
+
         if (block.type === 'atomic' && block.entityRanges) {
           for (const range of block.entityRanges) {
             const entity = entityMap[range.key];
@@ -231,7 +342,7 @@ async function fetchXPost(url) {
         }
       }
     }
-    
+
     let imgIndex = 0;
     htmlContent = htmlContent.replace(/XIMGPH_\d+/g, () => {
       const mediaEntity = allMediaEntities[imgIndex];
@@ -243,16 +354,16 @@ async function fetchXPost(url) {
       }
       return '';
     });
-    
+
     if (!htmlContent && tweet.article.preview_text) {
       htmlContent = escapeHtml(tweet.article.preview_text).replace(/\n/g, '<br>');
     }
   }
-  
+
   if (title) {
     htmlContent = `<h1>【${escapeHtml(title)}】</h1>` + htmlContent;
   }
-  
+
   return {
     author: author.name || '未知用户',
     author_handle: author.screen_name || 'unknown',
@@ -267,22 +378,20 @@ async function fetchXPost(url) {
 function generateMirrorHtml(post) {
   const content = post.content || '';
   const videoHtml = post.video ? `<video controls style="max-width:100%;margin:10px 0;"><source src="${post.video}" type="video/mp4"></video>` : '';
-  
-  // 提取摘要用于 meta 标签
+
   const summary = extractSummary(content);
   const ogImage = post.images && post.images.length > 0 ? post.images[0] : '';
-  // 提取标题（优先用 h1/h2，否则取内容前40字）
   let articleTitle = '';
   const h1Match = content.match(/<h1[^>]*>(.+?)<\/h1>/i);
   const h2Match = content.match(/<h2[^>]*>(.+?)<\/h2>/i);
   if (h1Match) articleTitle = h1Match[1].replace(/<[^>]+>/g, '').substring(0, 50);
   else if (h2Match) articleTitle = h2Match[1].replace(/<[^>]+>/g, '').substring(0, 50);
   else articleTitle = summary.substring(0, 25);
-  if (articleTitle.length >= 25) articleTitle += "...";
+  if (articleTitle.length >= 25) articleTitle += '...';
   const pageTitle = articleTitle ? `${escapeHtml(articleTitle)} | XMirror` : `${escapeHtml(post.author)} | XMirror`;
   const canonicalUrl = `https://x.5666.net/archives/${post.html_file}`;
   const createdAt = post.tweet_time || post.created_at || new Date().toISOString();
-  
+
   const html = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -295,8 +404,6 @@ function generateMirrorHtml(post) {
 <meta name="robots" content="index, follow">
 <meta name="googlebot" content="index, follow">
 <link rel="canonical" href="${canonicalUrl}">
-
-<!-- Open Graph -->
 <meta property="og:title" content="${pageTitle}">
 <meta property="og:description" content="${escapeHtml(summary)}">
 <meta property="og:type" content="article">
@@ -306,150 +413,155 @@ function generateMirrorHtml(post) {
 <meta property="og:locale" content="zh_CN">
 <meta property="article:published_time" content="${createdAt}">
 <meta property="article:author" content="${escapeHtml(post.author)}">
-
-<!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${pageTitle}">
 <meta name="twitter:description" content="${escapeHtml(summary)}">
 <meta name="twitter:image" content="${ogImage}">
 <meta name="twitter:creator" content="@${escapeHtml(post.author_handle)}">
 <meta name="twitter:domain" content="x.5666.net">
-
-<!-- Structured Data -->
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "SocialMediaPosting",
-  "headline": "${escapeHtml(summary).substring(0, 60)}",
-  "description": "${escapeHtml(summary)}",
-  "image": "${ogImage}",
-  "url": "${canonicalUrl}",
-  "datePublished": "${createdAt}",
-  "author": {
-    "@type": "Person",
-    "name": "${escapeHtml(post.author)}",
-    "identifier": "@${escapeHtml(post.author_handle)}"
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "XMirror",
-    "url": "https://x.5666.net"
-  },
-  "mainEntityOfPage": {
-    "@type": "WebPage",
-    "@id": "${canonicalUrl}"
-  }
-}
-</script>
-
 <style>
-:root {
-  --bg-color: #ffffff;
-  --text-primary: #0f1419;
-  --text-secondary: #536471;
-  --border-color: #eff3f4;
-  --link-color: #1d9bf0;
-  --hover-bg: rgba(15,20,25,0.1);
-  --card-shadow: 0 0 15px rgba(0,0,0,0.08);
-}
-[data-theme="dark"] {
-  --bg-color: #15202b;
-  --text-primary: #e7e9ea;
-  --text-secondary: #8899a6;
-  --border-color: #38444d;
-  --link-color: #1d9bf0;
-  --hover-bg: rgba(255,255,255,0.1);
-  --card-shadow: 0 0 15px rgba(0,0,0,0.3);
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg-color);color:var(--text-primary);min-height:100vh;padding:20px;transition:background .3s,color .3s}
+:root{--bg-color:#ffffff;--text-primary:#0f1419;--text-secondary:#536471;--border-color:#eff3f4;--link-color:#1d9bf0;--hover-bg:rgba(15,20,25,0.1);--card-shadow:0 0 15px rgba(0,0,0,0.08)}
+[data-theme="dark"]{--bg-color:#15202b;--text-primary:#e7e9ea;--text-secondary:#8899a6;--border-color:#38444d;--link-color:#1d9bf0;--hover-bg:rgba(255,255,255,0.1);--card-shadow:0 0 15px rgba(0,0,0,0.3)}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg-color);color:var(--text-primary);min-height:100vh;padding:20px;transition:background .3s,color .3s}
 .theme-toggle{position:fixed;top:20px;right:20px;width:44px;height:44px;border-radius:50%;border:none;background:var(--hover-bg);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;z-index:100;transition:transform .2s}
 .theme-toggle:hover{transform:scale(1.1)}
-.container{max-width:600px;margin:30px auto 20px}
-.post{background:var(--bg-color);border:1px solid var(--border-color);border-radius:16px;padding:20px;box-shadow:var(--card-shadow);transition:border-color .3s}
-.header{display:flex;align-items:flex-start;margin-bottom:12px}
-.avatar{width:48px;height:48px;border-radius:50%;margin-right:12px;object-fit:cover;background:var(--border-color)}
-.author-info{flex:1}
-.author-name{font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:4px}
-.author-handle{color:var(--text-secondary);font-size:15px}
+.container{max-width:600px;margin:30px auto 20px}.post{background:var(--bg-color);border:1px solid var(--border-color);border-radius:16px;padding:20px;box-shadow:var(--card-shadow);transition:border-color .3s}
+.header{display:flex;align-items:flex-start;margin-bottom:12px}.avatar{width:48px;height:48px;border-radius:50%;margin-right:12px;object-fit:cover;background:var(--border-color)}
+.author-info{flex:1}.author-name{font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:4px}.author-handle{color:var(--text-secondary);font-size:15px}
 .content{margin:4px 0;font-size:17px;line-height:1.6;word-wrap:break-word;color:var(--text-primary)}
-.content h1{font-size:20px;font-weight:800;margin:16px 0}
-.content h2{font-size:18px;font-weight:700;margin:14px 0}
-.content p{margin:12px 0}
-.content a{color:var(--link-color);text-decoration:none}
-.content a:hover{text-decoration:underline}
-.content img,.media-img{max-width:100%;border-radius:16px;margin:12px 0;border:1px solid var(--border-color)}
-video{max-width:100%;border-radius:16px;margin:12px 0}
+.content h1{font-size:20px;font-weight:800;margin:16px 0}.content h2{font-size:18px;font-weight:700;margin:14px 0}.content p{margin:12px 0}.content a{color:var(--link-color);text-decoration:none}.content a:hover{text-decoration:underline}
+.content img,.media-img{max-width:100%;border-radius:16px;margin:12px 0;border:1px solid var(--border-color)}video{max-width:100%;border-radius:16px;margin:12px 0}
+.translate-toolbar{display:flex;gap:8px;margin:12px 0;align-items:center;flex-wrap:wrap}
+.translate-btn{padding:6px 12px;border:1px solid var(--border-color);border-radius:999px;background:var(--hover-bg);color:var(--text-primary);cursor:pointer;font-size:13px}
+.translate-btn[disabled]{opacity:.6;cursor:not-allowed}
+.translate-status{font-size:12px;color:var(--text-secondary)}
+.translate-tabs{display:none;gap:8px;margin-bottom:10px}
+.translate-tabs.show{display:flex}
+.translate-tab{padding:6px 12px;border-radius:999px;border:1px solid var(--border-color);background:transparent;color:var(--text-primary);cursor:pointer}
+.translate-tab.active{background:var(--hover-bg)}
+.translated-content{display:none}
+.translated-content.active{display:block}
 .meta{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);color:var(--text-secondary);font-size:14px}
-.source{color:var(--link-color);text-decoration:none}
-.source:hover{text-decoration:underline}
-.badge{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600}
-.time{display:flex;align-items:center;gap:8px}
-@media(max-width:600px){body{padding:10px}.container{margin:50px 0 10px}.post{border-radius:12px}}
+.source{color:var(--link-color);text-decoration:none}.source:hover{text-decoration:underline}.badge{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600}
+.time{display:flex;align-items:center;gap:8px}@media(max-width:600px){body{padding:10px}.container{margin:50px 0 10px}.post{border-radius:12px}}
 </style>
 </head>
 <body>
 <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
 <div class="container">
-<div class="post">
+<div class="post" data-post-id="${post.id}">
 <div class="header">
 <img class="avatar" src="${post.author_avatar}" onerror="this.style.display='none'">
-<div class="author-info">
-<div class="author-name">${escapeHtml(post.author)}</div>
-<div class="author-handle">@${escapeHtml(post.author_handle)}</div>
+<div class="author-info"><div class="author-name">${escapeHtml(post.author)}</div><div class="author-handle">@${escapeHtml(post.author_handle)}</div></div></div>
+<div class="translate-toolbar">
+<button id="translateBtn" class="translate-btn" onclick="translatePost()">🌐 翻译为中文</button>
+<span id="translateStatus" class="translate-status"></span>
 </div>
+<div id="translateTabs" class="translate-tabs">
+<button class="translate-tab active" onclick="switchTab('origin')">原文</button>
+<button class="translate-tab" onclick="switchTab('translated')">译文</button>
 </div>
-<div class="content">${content}</div>
+<div id="originContent" class="content translated-content active">${content}</div>
+<div id="translatedContent" class="content translated-content"></div>
 ${videoHtml}
-<div class="meta">
-<div class="time">
-<span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
-<span>·</span>
-<a class="source" href="${post.url}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a>
-</div>
-<span class="badge">🐦 XMirror</span>
-</div>
-</div>
-</div>
+<div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${post.url}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div><span class="badge">🐦 XMirror</span></div>
+</div></div>
 <script>
-function getPreferredTheme() {
-  const saved = localStorage.getItem('xmirror-theme');
-  if (saved) return saved;
-  const hour = new Date().getHours();
-  return (hour >= 6 && hour < 18) ? 'light' : 'dark';
-}
-function applyTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
-  localStorage.setItem('xmirror-theme', theme);
-}
-function toggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme');
-  applyTheme(current === 'dark' ? 'light' : 'dark');
-}
+function getPreferredTheme(){const saved=localStorage.getItem('xmirror-theme');if(saved)return saved;const hour=new Date().getHours();return(hour>=6&&hour<18)?'light':'dark'}
+function applyTheme(theme){document.documentElement.setAttribute('data-theme',theme);localStorage.setItem('xmirror-theme',theme)}
+function toggleTheme(){const current=document.documentElement.getAttribute('data-theme');applyTheme(current==='dark'?'light':'dark')}
+function switchTab(tab){const tabs=[...document.querySelectorAll('.translate-tab')];tabs.forEach(t=>t.classList.remove('active'));if(tab==='origin'){tabs[0].classList.add('active');document.getElementById('originContent').classList.add('active');document.getElementById('translatedContent').classList.remove('active')}else{tabs[1].classList.add('active');document.getElementById('translatedContent').classList.add('active');document.getElementById('originContent').classList.remove('active')}}
+async function translatePost(){const postEl=document.querySelector('.post');const postId=postEl?.dataset?.postId;const btn=document.getElementById('translateBtn');const status=document.getElementById('translateStatus');if(!postId)return;btn.disabled=true;status.textContent='翻译中...';try{const res=await fetch('/api/translate/'+postId+'?targetLang=zh-CN');const data=await res.json();if(!data.success)throw new Error(data.error||'翻译失败');const html=(data.parts||[]).map(p=>'<p>'+String(p).replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</p>').join('');document.getElementById('translatedContent').innerHTML=html||'<p>暂无译文</p>';document.getElementById('translateTabs').classList.add('show');status.textContent=data.cached?'已显示缓存译文':'翻译完成';switchTab('translated')}catch(e){status.textContent='翻译失败：'+e.message}finally{btn.disabled=false}}
 applyTheme(getPreferredTheme());
 </script>
 </body>
 </html>`;
-  
+
   return html;
-}app.post('/api/archive', async (req, res) => {
+}
+
+async function getPostById(id) {
+  return new Promise((resolve, reject) => {
+    db.get('SELECT * FROM posts WHERE id=?', [id], (err, row) => err ? reject(err) : resolve(row));
+  });
+}
+
+async function upsertTranslation({ postId, targetLang, sourceLang, sourceHashValue, translations }) {
+  const payload = JSON.stringify({ parts: translations });
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO translations(post_id,target_lang,source_lang,source_hash,translated_json,provider)
+       VALUES(?,?,?,?,?,?)
+       ON CONFLICT(post_id,target_lang,source_hash)
+       DO UPDATE SET translated_json=excluded.translated_json, source_lang=excluded.source_lang, provider=excluded.provider, updated_at=CURRENT_TIMESTAMP`,
+      [postId, targetLang, sourceLang, sourceHashValue, payload, TRANSLATE_PROVIDER],
+      (err) => err ? reject(err) : resolve()
+    );
+  });
+}
+
+app.get('/api/translate/:id', async (req, res) => {
+  const postId = Number(req.params.id);
+  const targetLang = req.query.targetLang || 'zh-CN';
+  if (!postId) return res.status(400).json({ success: false, error: '无效 postId' });
+
+  try {
+    const post = await getPostById(postId);
+    if (!post) return res.status(404).json({ success: false, error: '存档不存在' });
+
+    const parts = extractTranslatableParts(post.content || '');
+    if (!parts.length) return res.status(400).json({ success: false, error: '无可翻译内容' });
+
+    const hash = sourceHash(parts);
+    const cached = await new Promise((resolve, reject) => {
+      db.get(
+        'SELECT * FROM translations WHERE post_id=? AND target_lang=? AND source_hash=?',
+        [postId, targetLang, hash],
+        (err, row) => err ? reject(err) : resolve(row)
+      );
+    });
+
+    if (cached) {
+      let translated = [];
+      try {
+        translated = JSON.parse(cached.translated_json || '{}').parts || [];
+      } catch {}
+      if (translated.length === parts.length) {
+        return res.json({ success: true, cached: true, sourceLang: cached.source_lang || 'auto', targetLang, parts: translated });
+      }
+    }
+
+    const result = await translateWithSiliconFlow(parts, targetLang);
+    await upsertTranslation({
+      postId,
+      targetLang,
+      sourceLang: result.sourceLang,
+      sourceHashValue: hash,
+      translations: result.translations
+    });
+
+    res.json({ success: true, cached: false, sourceLang: result.sourceLang, targetLang, parts: result.translations });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message || '翻译失败' });
+  }
+});
+
+app.post('/api/archive', async (req, res) => {
   const {url} = req.body;
   if (!url?.includes('x.com') && !url?.includes('twitter.com')) return res.status(400).json({error:'无效的X链接'});
-  
+
   try {
     const existing = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE url=?',[url],(e,row)=>e?j(e):r(row)));
     if (existing) {
       const htmlPath = path.join(__dirname,'archives',existing.html_file);
-      if (!fs.existsSync(htmlPath)) {
-        const htmlContent = generateMirrorHtml(existing);
-        fs.writeFileSync(htmlPath, htmlContent, 'utf8');
-      }
+      const htmlContent = generateMirrorHtml(existing);
+      fs.writeFileSync(htmlPath, htmlContent, 'utf8');
       return res.json({success:true,id:existing.id,url:`/archives/${existing.html_file}`,message:'已存在',cached:true});
     }
-    
+
     const content = await fetchXPost(url);
     if (!content.content && content.images.length===0 && !content.video) return res.status(500).json({error:'未能获取推文内容'});
-    
+
     let title = '';
     const h1Match = content.content.match(/<h1>(.+?)<\/h1>/);
     if (h1Match) {
@@ -458,14 +570,14 @@ applyTheme(getPreferredTheme());
       title = content.content.replace(/<[^>]+>/g, '').substring(0, 50);
       if (content.content.replace(/<[^>]+>/g, '').length > 50) title += '...';
     }
-    
+
     const timestamp = Date.now();
     const htmlFile = `post_${timestamp}.html`;
-    
+
     const result = await new Promise((r,j)=>db.run('INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file)VALUES(?,?,?,?,?,?,?,?,?)',
       [url,content.author,content.author_handle,content.author_avatar,content.content,JSON.stringify(content.images),content.video,content.tweet_time,htmlFile],function(e){e?j(e):r(this.lastID)}));
-    
-    const htmlContent = generateMirrorHtml({id:result,url,...content});
+
+    const htmlContent = generateMirrorHtml({id:result,url,...content, html_file: htmlFile});
     fs.writeFileSync(path.join(__dirname,'archives',htmlFile), htmlContent, 'utf8');
     res.json({success:true,id:result,url:`/archives/${htmlFile}`,message:'存档成功',author:content.author,title:title,preview:content.content.substring(0,100)});
   } catch(e) {
@@ -478,34 +590,29 @@ app.get('/api/posts', (req,res)=>db.all('SELECT * FROM posts ORDER BY created_at
 app.post('/api/delete', async (req, res) => {
   const {id} = req.body;
   if (!id) return res.status(400).json({error:'缺少存档ID'});
-  
+
   try {
     const post = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE id=?',[id],(e,row)=>e?j(e):r(row)));
     if (!post) return res.status(404).json({error:'存档不存在'});
-    
+
     const htmlPath = path.join(__dirname,'archives',post.html_file);
-    if (fs.existsSync(htmlPath)) {
-      fs.unlinkSync(htmlPath);
-    }
-    
+    if (fs.existsSync(htmlPath)) fs.unlinkSync(htmlPath);
+
     let images = [];
     try { images = JSON.parse(post.images || '[]'); } catch {}
     for (const imgPath of images) {
       const imgFullPath = path.join(__dirname, imgPath.replace(/^\//, ''));
-      if (fs.existsSync(imgFullPath)) {
-        fs.unlinkSync(imgFullPath);
-      }
+      if (fs.existsSync(imgFullPath)) fs.unlinkSync(imgFullPath);
     }
-    
+
     if (post.video && post.video.startsWith('/videos/')) {
       const videoFullPath = path.join(__dirname, post.video.replace(/^\//, ''));
-      if (fs.existsSync(videoFullPath)) {
-        fs.unlinkSync(videoFullPath);
-      }
+      if (fs.existsSync(videoFullPath)) fs.unlinkSync(videoFullPath);
     }
-    
+
     await new Promise((r,j)=>db.run('DELETE FROM posts WHERE id=?',[id],(e)=>e?j(e):r()));
-    
+    await new Promise((r,j)=>db.run('DELETE FROM translations WHERE post_id=?',[id],(e)=>e?j(e):r()));
+
     res.json({success:true,message:'删除成功'});
   } catch(e) {
     res.status(500).json({error:e.message||'删除失败'});

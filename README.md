@@ -14,7 +14,7 @@ X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 
 ## 版本
 
-**当前版本：v1.3.0**
+**当前版本：v1.4.0（开发中）**
 
 ### v1.3.0 更新内容
 - 🖼️ 首页全新 Glassmorphism 设计（渐变背景 + 浮动光球 + 毛玻璃卡片）
@@ -39,6 +39,21 @@ X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 - Node.js + Express
 - SQLite
 - 前端原生 HTML/CSS/JS
+
+## 翻译功能（v1）
+
+- 内页支持 `翻译为中文`
+- 首次翻译调用 SiliconFlow（OpenAI 兼容）
+- 译文落库缓存（`translations` 表），下次优先命中
+
+### 环境变量
+
+```bash
+TRANSLATE_PROVIDER=siliconflow
+SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
+SILICONFLOW_MODEL=Qwen/Qwen2-7B-Instruct
+SILICONFLOW_API_KEY=你的key
+```
 
 ## 部署
 
