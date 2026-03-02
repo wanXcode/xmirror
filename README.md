@@ -14,7 +14,14 @@ X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 
 ## 版本
 
-**当前版本：v1.4.0（开发中）**
+**当前版本：v1.4.0**
+
+### v1.4.0 更新内容
+- 🌐 新增内页翻译能力（SiliconFlow / OpenAI 兼容）
+- 💾 新增译文落库缓存（`translations` 表），重复访问秒开
+- 🔁 交互优化为单按钮切换（首次翻译、后续原文/译文一键切换）
+- ♻️ 老存档页面可批量重渲染，统一升级到新内页模板
+- 🛠️ 支持 systemd 持久化启动（可通过环境变量配置翻译能力）
 
 ### v1.3.0 更新内容
 - 🖼️ 首页全新 Glassmorphism 设计（渐变背景 + 浮动光球 + 毛玻璃卡片）
@@ -57,9 +64,23 @@ SILICONFLOW_API_KEY=你的key
 
 ## 部署
 
+### 方式一：直接启动
+
 ```bash
 npm install
-pm2 start server.js
+node server.js
+```
+
+### 方式二：systemd 持久化启动（推荐）
+
+1) 创建环境变量文件 `/etc/xmirror/xmirror.env`
+2) 配置 `xmirror.service` 指向 `server.js`
+3) 执行：
+
+```bash
+systemctl daemon-reload
+systemctl enable xmirror.service
+systemctl restart xmirror.service
 ```
 
 ---
