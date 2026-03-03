@@ -703,10 +703,24 @@ app.post('/api/archive', async (req, res) => {
     const timestamp = Date.now();
     const htmlFile = `post_${timestamp}.html`;
 
-    const stmt = await runDbWrite(
-      'INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file)VALUES(?,?,?,?,?,?,?,?,?)',
-      [url,content.author,content.author_handle,content.author_avatar,content.content,JSON.stringify(content.images),content.video,content.tweet_time,htmlFile]
-    );
+    let stmt;
+    try {
+      stmt = await runDbWrite(
+        'INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file)VALUES(?,?,?,?,?,?,?,?,?)',
+        [url,content.author,content.author_handle,content.author_avatar,content.content,JSON.stringify(content.images),content.video,content.tweet_time,htmlFile]
+      );
+    } catch (insertErr) {
+      if (String(insertErr.message || '').includes('UNIQUE constraint failed: posts.url')) {
+        const existing2 = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE url=?',[url],(e,row)=>e?j(e):r(row)));
+        if (existing2) {
+          const htmlPath = path.join(ARCHIVES_DIR, existing2.html_file);
+          const htmlContent = generateMirrorHtml(existing2);
+          fs.writeFileSync(htmlPath, htmlContent, 'utf8');
+          return res.json({success:true,id:existing2.id,url:`/archives/${existing2.html_file}`,message:'已存在',cached:true});
+        }
+      }
+      throw insertErr;
+    }
 
     const result = stmt.lastID;
     const htmlContent = generateMirrorHtml({id:result,url,...content, html_file: htmlFile});
