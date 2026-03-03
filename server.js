@@ -14,12 +14,24 @@ const SILICONFLOW_MODEL = process.env.SILICONFLOW_MODEL || 'Qwen/Qwen2-7B-Instru
 const SILICONFLOW_API_KEY = process.env.SILICONFLOW_API_KEY || process.env.OPENAI_API_KEY || '';
 
 app.use(express.json());
-app.use(express.static('public'));
-app.use('/archives', express.static('archives'));
-app.use('/images', express.static('data/images'));
-app.use('/videos', express.static('data/videos'));
 
-const db = new sqlite3.Database('./data/db.sqlite');
+const ROOT_DIR = __dirname;
+const DATA_DIR = process.env.DATA_DIR || path.join(ROOT_DIR, 'data');
+const ARCHIVES_DIR = process.env.ARCHIVES_DIR || path.join(ROOT_DIR, 'archives');
+const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
+
+fs.mkdirSync(DATA_DIR, { recursive: true });
+fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
+fs.mkdirSync(path.join(DATA_DIR, 'images'), { recursive: true });
+fs.mkdirSync(path.join(DATA_DIR, 'videos'), { recursive: true });
+
+app.use(express.static(PUBLIC_DIR));
+app.use('/archives', express.static(ARCHIVES_DIR));
+app.use('/images', express.static(path.join(DATA_DIR, 'images')));
+app.use('/videos', express.static(path.join(DATA_DIR, 'videos')));
+
+const dbPath = process.env.SQLITE_PATH || path.join(DATA_DIR, 'db.sqlite');
+const db = new sqlite3.Database(dbPath);
 
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS posts (
@@ -632,4 +644,7 @@ app.post('/api/delete', async (req, res) => {
 });
 
 app.get('/', (req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
-app.listen(PORT,'0.0.0.0',()=>console.log(`XMirror运行在http://0.0.0.0:${PORT}`));
+app.listen(PORT,'0.0.0.0',()=>{
+  console.log(`XMirror运行在http://0.0.0.0:${PORT}`);
+  console.log(`SQLite: ${dbPath}`);
+});
