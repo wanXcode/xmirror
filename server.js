@@ -592,14 +592,27 @@ function healDbWriteability() {
 
 function runDbWrite(sql, params = []) {
   return new Promise((resolve, reject) => {
-    db.run(sql, params, function(err) {
-      if (!err) return resolve(this);
-      if (!String(err.message || '').includes('SQLITE_READONLY')) return reject(err);
+    const writer = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (openErr) => {
+      if (openErr) return reject(openErr);
 
-      healDbWriteability();
-      db.run(sql, params, function(err2) {
-        if (err2) return reject(err2);
-        resolve(this);
+      writer.run('PRAGMA query_only = OFF');
+      writer.run(sql, params, function(err) {
+        if (!err) {
+          const result = { lastID: this.lastID, changes: this.changes };
+          return writer.close(() => resolve(result));
+        }
+
+        if (!String(err.message || '').includes('SQLITE_READONLY')) {
+          return writer.close(() => reject(err));
+        }
+
+        healDbWriteability();
+        writer.run('PRAGMA query_only = OFF');
+        writer.run(sql, params, function(err2) {
+          if (err2) return writer.close(() => reject(err2));
+          const result2 = { lastID: this.lastID, changes: this.changes };
+          writer.close(() => resolve(result2));
+        });
       });
     });
   });
