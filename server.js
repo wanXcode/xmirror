@@ -1,6 +1,8 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const crypto = require('crypto');
