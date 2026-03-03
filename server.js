@@ -31,7 +31,14 @@ app.use('/images', express.static(path.join(DATA_DIR, 'images')));
 app.use('/videos', express.static(path.join(DATA_DIR, 'videos')));
 
 const dbPath = process.env.SQLITE_PATH || path.join(DATA_DIR, 'db.sqlite');
-const db = new sqlite3.Database(dbPath);
+const db = new sqlite3.Database(
+  dbPath,
+  sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE,
+  (err) => {
+    if (err) console.error('SQLite open error:', err.message);
+    else console.log(`SQLite open ok: ${dbPath}`);
+  }
+);
 
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS posts (
