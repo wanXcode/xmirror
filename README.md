@@ -47,21 +47,6 @@ X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 - SQLite
 - 前端原生 HTML/CSS/JS
 
-## 翻译功能（v1）
-
-- 内页支持 `翻译为中文`
-- 首次翻译调用 SiliconFlow（OpenAI 兼容）
-- 译文落库缓存（`translations` 表），下次优先命中
-
-### 环境变量
-
-```bash
-TRANSLATE_PROVIDER=siliconflow
-SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
-SILICONFLOW_MODEL=Qwen/Qwen2-7B-Instruct
-SILICONFLOW_API_KEY=你的key
-```
-
 ## 部署
 
 ### 方式一：直接启动
