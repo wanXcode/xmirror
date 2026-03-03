@@ -142,6 +142,13 @@ function extractSummary(content) {
   return content.replace(/<[^>]+>/g, '').substring(0, 200);
 }
 
+function detectContentLanguage(content = '') {
+  const text = String(content).replace(/<[^>]+>/g, ' ').trim();
+  if (!text) return 'en';
+  const zhChars = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+  return zhChars > 0 ? 'zh' : 'en';
+}
+
 function decodeEntities(text = '') {
   return text
     .replace(/&nbsp;/g, ' ')
@@ -421,6 +428,7 @@ function generateMirrorHtml(post) {
   const pageTitle = articleTitle ? `${escapeHtml(articleTitle)} | XMirror` : `${escapeHtml(post.author)} | XMirror`;
   const canonicalUrl = `https://x.5666.net/archives/${post.html_file}`;
   const createdAt = post.tweet_time || post.created_at || new Date().toISOString();
+  const sourceLang = detectContentLanguage(content);
 
   const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -475,7 +483,7 @@ function generateMirrorHtml(post) {
 <body>
 <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
 <div class="container">
-<div class="post" data-post-id="${post.id}">
+<div class="post" data-post-id="${post.id}" data-source-lang="${sourceLang}">
 <div class="header">
 <img class="avatar" src="${post.author_avatar}" onerror="this.style.display='none'">
 <div class="author-info"><div class="author-name">${escapeHtml(post.author)}</div><div class="author-handle">@${escapeHtml(post.author_handle)}</div></div></div>
@@ -493,8 +501,8 @@ function getPreferredTheme(){const saved=localStorage.getItem('xmirror-theme');i
 function applyTheme(theme){document.documentElement.setAttribute('data-theme',theme);localStorage.setItem('xmirror-theme',theme)}
 function toggleTheme(){const current=document.documentElement.getAttribute('data-theme');applyTheme(current==='dark'?'light':'dark')}
 function showContent(mode){const origin=document.getElementById('originContent');const translated=document.getElementById('translatedContent');if(mode==='translated'){translated.classList.add('active');origin.classList.remove('active')}else{origin.classList.add('active');translated.classList.remove('active')}}
-function detectOriginLang(){const text=(document.getElementById('originContent')?.textContent||'').trim();if(!text)return 'en';const zhChars=(text.match(/[\u4e00-\u9fff]/g)||[]).length;const latinChars=(text.match(/[A-Za-z]/g)||[]).length;if(zhChars===0&&latinChars===0)return 'en';return zhChars>=latinChars?'zh':'en'}
-function getTranslateConfig(){const originLang=detectOriginLang();const targetLang=originLang==='zh'?'en':'zh-CN';const targetLabel=targetLang==='en'?'英文':'中文';return {originLang,targetLang,targetLabel}}
+function detectOriginLang(){const text=(document.getElementById('originContent')?.textContent||'').trim();if(!text)return 'en';const zhChars=(text.match(/[\u4e00-\u9fff]/g)||[]).length;return zhChars>0?'zh':'en'}
+function getTranslateConfig(){const postEl=document.querySelector('.post');const sourceLangFromServer=postEl?.dataset?.sourceLang;const originLang=(sourceLangFromServer==='zh'||sourceLangFromServer==='en')?sourceLangFromServer:detectOriginLang();const targetLang=originLang==='zh'?'en':'zh-CN';const targetLabel=targetLang==='en'?'英文':'中文';return {originLang,targetLang,targetLabel}}
 function setDefaultTranslateButtonText(){const btn=document.getElementById('translateBtn');if(!btn)return;const cfg=getTranslateConfig();btn.textContent='🌐 翻译为'+cfg.targetLabel}
 async function toggleTranslate(){const postEl=document.querySelector('.post');const postId=postEl?.dataset?.postId;const btn=document.getElementById('translateBtn');const status=document.getElementById('translateStatus');const translatedEl=document.getElementById('translatedContent');const cfg=getTranslateConfig();const hasTranslated=translatedEl.innerHTML.trim().length>0;const showingTranslated=translatedEl.classList.contains('active');if(!postId)return;
 if(hasTranslated){if(showingTranslated){showContent('origin');btn.textContent='🌐 查看'+cfg.targetLabel+'译文';status.textContent=''}else{showContent('translated');btn.textContent='📝 查看原文';status.textContent=''}return;}
