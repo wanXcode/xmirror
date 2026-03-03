@@ -218,14 +218,19 @@ async function translateWithSiliconFlow(parts, targetLang) {
   }
 
   const json = await response.json();
-  const text = json?.choices?.[0]?.message?.content || '{}';
+  const rawContent = json?.choices?.[0]?.message?.content;
+  const text = typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent || {});
 
   let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    parsed = match ? JSON.parse(match[0]) : {};
+  if (rawContent && typeof rawContent === 'object') {
+    parsed = rawContent;
+  } else {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const match = text.match(/\{[\s\S]*\}/);
+      parsed = match ? JSON.parse(match[0]) : {};
+    }
   }
 
   let translations = parsed.translations || parsed.result || parsed.parts || parsed['部分'] || parsed['翻译结果'];
@@ -244,6 +249,42 @@ async function translateWithSiliconFlow(parts, targetLang) {
       if (item && typeof item.translated === 'string') return item.translated;
       if (item && typeof item.text === 'string') return item.text;
       return '';
+    });
+  }
+
+  if (!Array.isArray(translations) || translations.length !== parts.length) {
+    const raw = String(text || '').trim();
+    const cleaned = raw
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```$/i, '')
+      .trim();
+
+    try {
+      const maybeArray = JSON.parse(cleaned);
+      if (Array.isArray(maybeArray)) {
+        translations = maybeArray.map(v => String(v || '').trim());
+      }
+    } catch {}
+
+    if ((!Array.isArray(translations) || translations.length !== parts.length) && cleaned) {
+      const lines = cleaned
+        .split(/\n+/)
+        .map(s => s.replace(/^\s*\d+[\)\.、\-]\s*/, '').trim())
+        .filter(Boolean);
+
+      if (parts.length === 1) {
+        translations = [cleaned];
+      } else if (lines.length === parts.length) {
+        translations = lines;
+      }
+    }
+  }
+
+  if (Array.isArray(translations) && translations.length !== parts.length) {
+    translations = parts.map((src, i) => {
+      const t = translations[i];
+      return String((t == null || t === '') ? src : t).trim();
     });
   }
 
