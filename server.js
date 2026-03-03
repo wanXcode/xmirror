@@ -584,18 +584,36 @@ async function getPostById(id) {
   });
 }
 
+function healDbWriteability() {
+  try { fs.chmodSync(DATA_DIR, 0o777); } catch {}
+  try { fs.chmodSync(dbPath, 0o666); } catch {}
+  try { db.run('PRAGMA query_only = OFF'); } catch {}
+}
+
+function runDbWrite(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function(err) {
+      if (!err) return resolve(this);
+      if (!String(err.message || '').includes('SQLITE_READONLY')) return reject(err);
+
+      healDbWriteability();
+      db.run(sql, params, function(err2) {
+        if (err2) return reject(err2);
+        resolve(this);
+      });
+    });
+  });
+}
+
 async function upsertTranslation({ postId, targetLang, sourceLang, sourceHashValue, translations }) {
   const payload = JSON.stringify({ parts: translations });
-  return new Promise((resolve, reject) => {
-    db.run(
-      `INSERT INTO translations(post_id,target_lang,source_lang,source_hash,translated_json,provider)
-       VALUES(?,?,?,?,?,?)
-       ON CONFLICT(post_id,target_lang,source_hash)
-       DO UPDATE SET translated_json=excluded.translated_json, source_lang=excluded.source_lang, provider=excluded.provider, updated_at=CURRENT_TIMESTAMP`,
-      [postId, targetLang, sourceLang, sourceHashValue, payload, TRANSLATE_PROVIDER],
-      (err) => err ? reject(err) : resolve()
-    );
-  });
+  await runDbWrite(
+    `INSERT INTO translations(post_id,target_lang,source_lang,source_hash,translated_json,provider)
+     VALUES(?,?,?,?,?,?)
+     ON CONFLICT(post_id,target_lang,source_hash)
+     DO UPDATE SET translated_json=excluded.translated_json, source_lang=excluded.source_lang, provider=excluded.provider, updated_at=CURRENT_TIMESTAMP`,
+    [postId, targetLang, sourceLang, sourceHashValue, payload, TRANSLATE_PROVIDER]
+  );
 }
 
 app.get('/api/translate/:id', async (req, res) => {
@@ -651,7 +669,7 @@ app.post('/api/archive', async (req, res) => {
   try {
     const existing = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE url=?',[url],(e,row)=>e?j(e):r(row)));
     if (existing) {
-      const htmlPath = path.join(__dirname,'archives',existing.html_file);
+      const htmlPath = path.join(ARCHIVES_DIR, existing.html_file);
       const htmlContent = generateMirrorHtml(existing);
       fs.writeFileSync(htmlPath, htmlContent, 'utf8');
       return res.json({success:true,id:existing.id,url:`/archives/${existing.html_file}`,message:'已存在',cached:true});
@@ -672,11 +690,14 @@ app.post('/api/archive', async (req, res) => {
     const timestamp = Date.now();
     const htmlFile = `post_${timestamp}.html`;
 
-    const result = await new Promise((r,j)=>db.run('INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file)VALUES(?,?,?,?,?,?,?,?,?)',
-      [url,content.author,content.author_handle,content.author_avatar,content.content,JSON.stringify(content.images),content.video,content.tweet_time,htmlFile],function(e){e?j(e):r(this.lastID)}));
+    const stmt = await runDbWrite(
+      'INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file)VALUES(?,?,?,?,?,?,?,?,?)',
+      [url,content.author,content.author_handle,content.author_avatar,content.content,JSON.stringify(content.images),content.video,content.tweet_time,htmlFile]
+    );
 
+    const result = stmt.lastID;
     const htmlContent = generateMirrorHtml({id:result,url,...content, html_file: htmlFile});
-    fs.writeFileSync(path.join(__dirname,'archives',htmlFile), htmlContent, 'utf8');
+    fs.writeFileSync(path.join(ARCHIVES_DIR, htmlFile), htmlContent, 'utf8');
     res.json({success:true,id:result,url:`/archives/${htmlFile}`,message:'存档成功',author:content.author,title:title,preview:content.content.substring(0,100)});
   } catch(e) {
     res.status(500).json({error:e.message||'抓取失败'});
@@ -693,7 +714,7 @@ app.post('/api/delete', async (req, res) => {
     const post = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE id=?',[id],(e,row)=>e?j(e):r(row)));
     if (!post) return res.status(404).json({error:'存档不存在'});
 
-    const htmlPath = path.join(__dirname,'archives',post.html_file);
+    const htmlPath = path.join(ARCHIVES_DIR, post.html_file);
     if (fs.existsSync(htmlPath)) fs.unlinkSync(htmlPath);
 
     let images = [];
@@ -708,8 +729,8 @@ app.post('/api/delete', async (req, res) => {
       if (fs.existsSync(videoFullPath)) fs.unlinkSync(videoFullPath);
     }
 
-    await new Promise((r,j)=>db.run('DELETE FROM posts WHERE id=?',[id],(e)=>e?j(e):r()));
-    await new Promise((r,j)=>db.run('DELETE FROM translations WHERE post_id=?',[id],(e)=>e?j(e):r()));
+    await runDbWrite('DELETE FROM posts WHERE id=?',[id]);
+    await runDbWrite('DELETE FROM translations WHERE post_id=?',[id]);
 
     res.json({success:true,message:'删除成功'});
   } catch(e) {
