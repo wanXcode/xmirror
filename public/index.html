@@ -543,14 +543,11 @@
     
     /* 响应式 */
     .page-version {
-      position: fixed;
-      left: 50%;
-      bottom: 14px;
-      transform: translateX(-50%);
+      margin-top: 18px;
+      text-align: center;
       color: rgba(255, 255, 255, 0.78);
       font-size: 12px;
       letter-spacing: 0.4px;
-      z-index: 2;
       user-select: none;
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
     }
@@ -629,6 +626,8 @@
       <h3><span>📚</span> <span data-i18n="historyTitle">最近存档</span></h3>
       <div id="historyList"></div>
     </div>
+
+    <div class="page-version">Version v1.3.0</div>
   </div>
 
   <!-- 删除确认弹窗 -->
@@ -642,8 +641,6 @@
       </div>
     </div>
   </div>
-
-  <div class="page-version">Version v1.3.0</div>
 
   <script src="/i18n.js"></script>
   <script src="/app.js"></script>
