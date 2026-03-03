@@ -27,12 +27,19 @@ fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
 fs.mkdirSync(path.join(DATA_DIR, 'images'), { recursive: true });
 fs.mkdirSync(path.join(DATA_DIR, 'videos'), { recursive: true });
 
+for (const dir of [DATA_DIR, ARCHIVES_DIR, path.join(DATA_DIR, 'images'), path.join(DATA_DIR, 'videos')]) {
+  try { fs.chmodSync(dir, 0o777); } catch {}
+}
+
 app.use(express.static(PUBLIC_DIR));
 app.use('/archives', express.static(ARCHIVES_DIR));
 app.use('/images', express.static(path.join(DATA_DIR, 'images')));
 app.use('/videos', express.static(path.join(DATA_DIR, 'videos')));
 
 const dbPath = process.env.SQLITE_PATH || path.join(DATA_DIR, 'db.sqlite');
+if (fs.existsSync(dbPath)) {
+  try { fs.chmodSync(dbPath, 0o666); } catch {}
+}
 const db = new sqlite3.Database(
   dbPath,
   sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE,
@@ -43,6 +50,11 @@ const db = new sqlite3.Database(
 );
 
 db.serialize(() => {
+  db.run('PRAGMA query_only = OFF');
+  db.get('PRAGMA query_only', (e, row) => {
+    if (!e) console.log('SQLite query_only:', row && (row.query_only ?? Object.values(row)[0]));
+  });
+
   db.run(`CREATE TABLE IF NOT EXISTS posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     url TEXT UNIQUE,
