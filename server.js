@@ -32,7 +32,6 @@ for (const dir of [DATA_DIR, ARCHIVES_DIR, path.join(DATA_DIR, 'images'), path.j
 }
 
 app.use(express.static(PUBLIC_DIR));
-app.use('/archives', express.static(ARCHIVES_DIR));
 app.use('/images', express.static(path.join(DATA_DIR, 'images')));
 app.use('/videos', express.static(path.join(DATA_DIR, 'videos')));
 
@@ -48,6 +47,49 @@ const db = new sqlite3.Database(
     else console.log(`SQLite open ok: ${dbPath}`);
   }
 );
+
+const SHORT_CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+function randomShortCode(length = 6) {
+  const bytes = crypto.randomBytes(length);
+  let code = '';
+  for (let i = 0; i < length; i++) {
+    code += SHORT_CODE_CHARS[bytes[i] % SHORT_CODE_CHARS.length];
+  }
+  return code;
+}
+
+async function generateUniqueShortCode(maxRetries = 20) {
+  for (let i = 0; i < maxRetries; i++) {
+    const code = randomShortCode(6);
+    const exists = await new Promise((resolve, reject) => {
+      db.get('SELECT id FROM posts WHERE short_code=?', [code], (err, row) => err ? reject(err) : resolve(!!row));
+    });
+    if (!exists) return code;
+  }
+  throw new Error('短链生成失败：重试次数超限');
+}
+
+async function ensureShortCodeReady() {
+  const columns = await new Promise((resolve, reject) => {
+    db.all('PRAGMA table_info(posts)', (err, rows) => err ? reject(err) : resolve(rows || []));
+  });
+
+  if (!columns.some(col => col.name === 'short_code')) {
+    await runDbWrite('ALTER TABLE posts ADD COLUMN short_code TEXT');
+  }
+
+  await runDbWrite('CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_short_code ON posts(short_code)');
+
+  const missingRows = await new Promise((resolve, reject) => {
+    db.all("SELECT id FROM posts WHERE short_code IS NULL OR short_code=''", (err, rows) => err ? reject(err) : resolve(rows || []));
+  });
+
+  for (const row of missingRows) {
+    const shortCode = await generateUniqueShortCode();
+    await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [shortCode, row.id]);
+  }
+}
 
 db.serialize(() => {
   db.run('PRAGMA query_only = OFF');
@@ -66,7 +108,8 @@ db.serialize(() => {
     video TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     tweet_time TEXT,
-    html_file TEXT
+    html_file TEXT,
+    short_code TEXT UNIQUE
   )`);
 
   db.run(`CREATE TABLE IF NOT EXISTS translations (
@@ -488,7 +531,8 @@ function generateMirrorHtml(post) {
   else articleTitle = summary.substring(0, 25);
   if (articleTitle.length >= 25) articleTitle += '...';
   const pageTitle = articleTitle ? `${escapeHtml(articleTitle)} | XMirror` : `${escapeHtml(post.author)} | XMirror`;
-  const canonicalUrl = `https://x.5666.net/archives/${post.html_file}`;
+  const canonicalPath = post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`;
+  const canonicalUrl = `https://xmirror.app${canonicalPath}`;
   const createdAt = post.tweet_time || post.created_at || new Date().toISOString();
   const sourceLang = detectContentLanguage(content);
 
@@ -518,7 +562,7 @@ function generateMirrorHtml(post) {
 <meta name="twitter:description" content="${escapeHtml(summary)}">
 <meta name="twitter:image" content="${ogImage}">
 <meta name="twitter:creator" content="@${escapeHtml(post.author_handle)}">
-<meta name="twitter:domain" content="x.5666.net">
+<meta name="twitter:domain" content="xmirror.app">
 <style>
 :root{--bg-color:#ffffff;--text-primary:#0f1419;--text-secondary:#536471;--border-color:#eff3f4;--link-color:#1d9bf0;--hover-bg:rgba(15,20,25,0.1);--card-shadow:0 0 15px rgba(0,0,0,0.08)}
 [data-theme="dark"]{--bg-color:#15202b;--text-primary:#e7e9ea;--text-secondary:#8899a6;--border-color:#38444d;--link-color:#1d9bf0;--hover-bg:rgba(255,255,255,0.1);--card-shadow:0 0 15px rgba(0,0,0,0.3)}
@@ -682,10 +726,14 @@ app.post('/api/archive', async (req, res) => {
   try {
     const existing = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE url=?',[url],(e,row)=>e?j(e):r(row)));
     if (existing) {
+      if (!existing.short_code) {
+        existing.short_code = await generateUniqueShortCode();
+        await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing.short_code, existing.id]);
+      }
       const htmlPath = path.join(ARCHIVES_DIR, existing.html_file);
       const htmlContent = generateMirrorHtml(existing);
       fs.writeFileSync(htmlPath, htmlContent, 'utf8');
-      return res.json({success:true,id:existing.id,url:`/archives/${existing.html_file}`,message:'已存在',cached:true});
+      return res.json({success:true,id:existing.id,url:`/${existing.short_code}`,short_code:existing.short_code,message:'已存在',cached:true});
     }
 
     const content = await fetchXPost(url);
@@ -702,36 +750,48 @@ app.post('/api/archive', async (req, res) => {
 
     const timestamp = Date.now();
     const htmlFile = `post_${timestamp}.html`;
+    const shortCode = await generateUniqueShortCode();
 
     let stmt;
     try {
       stmt = await runDbWrite(
-        'INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file)VALUES(?,?,?,?,?,?,?,?,?)',
-        [url,content.author,content.author_handle,content.author_avatar,content.content,JSON.stringify(content.images),content.video,content.tweet_time,htmlFile]
+        'INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file,short_code)VALUES(?,?,?,?,?,?,?,?,?,?)',
+        [url,content.author,content.author_handle,content.author_avatar,content.content,JSON.stringify(content.images),content.video,content.tweet_time,htmlFile,shortCode]
       );
     } catch (insertErr) {
       if (String(insertErr.message || '').includes('UNIQUE constraint failed: posts.url')) {
         const existing2 = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE url=?',[url],(e,row)=>e?j(e):r(row)));
         if (existing2) {
+          if (!existing2.short_code) {
+            existing2.short_code = await generateUniqueShortCode();
+            await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing2.short_code, existing2.id]);
+          }
           const htmlPath = path.join(ARCHIVES_DIR, existing2.html_file);
           const htmlContent = generateMirrorHtml(existing2);
           fs.writeFileSync(htmlPath, htmlContent, 'utf8');
-          return res.json({success:true,id:existing2.id,url:`/archives/${existing2.html_file}`,message:'已存在',cached:true});
+          return res.json({success:true,id:existing2.id,url:`/${existing2.short_code}`,short_code:existing2.short_code,message:'已存在',cached:true});
         }
       }
       throw insertErr;
     }
 
     const result = stmt.lastID;
-    const htmlContent = generateMirrorHtml({id:result,url,...content, html_file: htmlFile});
+    const htmlContent = generateMirrorHtml({id:result,url,...content, html_file: htmlFile, short_code: shortCode});
     fs.writeFileSync(path.join(ARCHIVES_DIR, htmlFile), htmlContent, 'utf8');
-    res.json({success:true,id:result,url:`/archives/${htmlFile}`,message:'存档成功',author:content.author,title:title,preview:content.content.substring(0,100)});
+    res.json({success:true,id:result,url:`/${shortCode}`,short_code:shortCode,message:'存档成功',author:content.author,title:title,preview:content.content.substring(0,100)});
   } catch(e) {
     res.status(500).json({error:e.message||'抓取失败'});
   }
 });
 
-app.get('/api/posts', (req,res)=>db.all('SELECT * FROM posts ORDER BY created_at DESC',(e,r)=>e?res.status(500).json({error:e.message}):res.json(r)));
+app.get('/api/posts', (req,res)=>db.all('SELECT * FROM posts ORDER BY created_at DESC',(e,r)=>{
+  if (e) return res.status(500).json({error:e.message});
+  const rows = (r || []).map(post => ({
+    ...post,
+    short_url: post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`
+  }));
+  res.json(rows);
+}));
 
 app.post('/api/delete', async (req, res) => {
   const {id} = req.body;
@@ -765,8 +825,59 @@ app.post('/api/delete', async (req, res) => {
   }
 });
 
-app.get('/', (req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
-app.listen(PORT,'0.0.0.0',()=>{
-  console.log(`XMirror运行在http://0.0.0.0:${PORT}`);
-  console.log(`SQLite: ${dbPath}`);
+app.get('/archives/:fileName', async (req, res, next) => {
+  const { fileName } = req.params;
+  if (!/^post_\d+\.html$/.test(fileName)) return next();
+
+  try {
+    const post = await new Promise((resolve, reject) => {
+      db.get('SELECT short_code FROM posts WHERE html_file=?', [fileName], (err, row) => err ? reject(err) : resolve(row));
+    });
+
+    if (post?.short_code) {
+      return res.redirect(301, `/${post.short_code}`);
+    }
+  } catch (e) {
+    console.error('旧链接301映射失败:', e.message);
+  }
+
+  return next();
 });
+
+app.use('/archives', express.static(ARCHIVES_DIR));
+
+app.get(/^\/([A-Za-z0-9]{6})$/, async (req, res, next) => {
+  try {
+    const shortCode = req.params[0];
+    const post = await new Promise((resolve, reject) => {
+      db.get('SELECT * FROM posts WHERE short_code=?', [shortCode], (err, row) => err ? reject(err) : resolve(row));
+    });
+
+    if (!post) return next();
+
+    const htmlContent = generateMirrorHtml(post);
+    return res.status(200).send(htmlContent);
+  } catch (e) {
+    console.error('短链访问失败:', e.message);
+    return next();
+  }
+});
+
+app.get('/', (req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
+
+async function startServer() {
+  try {
+    await ensureShortCodeReady();
+    console.log('短链字段与历史数据检查完成');
+  } catch (e) {
+    console.error('短链初始化失败:', e.message);
+    process.exit(1);
+  }
+
+  app.listen(PORT,'0.0.0.0',()=>{
+    console.log(`XMirror运行在http://0.0.0.0:${PORT}`);
+    console.log(`SQLite: ${dbPath}`);
+  });
+}
+
+startServer();

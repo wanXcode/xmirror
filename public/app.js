@@ -136,9 +136,10 @@ async function loadHistory() {
           title = contentText.replace(/<[^>]+>/g, '').substring(0, 50);
           if (contentText.replace(/<[^>]+>/g, '').length > 50) title += '...';
         }
+        const shortUrl = post.short_url || `/archives/${post.html_file}`;
         return `
         <div class="history-item" data-id="${post.id}">
-          <a href="/archives/${post.html_file}" target="_blank">${title || i18n.t('noTitle')}</a>
+          <a href="${shortUrl}" target="_blank">${title || i18n.t('noTitle')}</a>
           <div class="meta" onclick="handleItemClick(${post.id}, this.parentElement)">${post.author || i18n.t('unknownUser')} · ${new Date(post.created_at).toLocaleString()}</div>
         </div>
       `}).join('');
