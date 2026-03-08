@@ -719,68 +719,113 @@ app.get('/api/translate/:id', async (req, res) => {
   }
 });
 
+async function archiveXUrl(url) {
+  const existing = await new Promise((r, j) => db.get('SELECT * FROM posts WHERE url=?', [url], (e, row) => e ? j(e) : r(row)));
+  if (existing) {
+    if (!existing.short_code) {
+      existing.short_code = await generateUniqueShortCode();
+      await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing.short_code, existing.id]);
+    }
+    const htmlPath = path.join(ARCHIVES_DIR, existing.html_file);
+    const htmlContent = generateMirrorHtml(existing);
+    fs.writeFileSync(htmlPath, htmlContent, 'utf8');
+    return { success: true, id: existing.id, url: `/${existing.short_code}`, short_code: existing.short_code, message: '已存在', cached: true };
+  }
+
+  const content = await fetchXPost(url);
+  if (!content.content && content.images.length === 0 && !content.video) {
+    throw new Error('未能获取推文内容');
+  }
+
+  let title = '';
+  const h1Match = content.content.match(/<h1>(.+?)<\/h1>/);
+  if (h1Match) {
+    title = h1Match[1].replace(/【(.+?)】/, '$1');
+  } else {
+    title = content.content.replace(/<[^>]+>/g, '').substring(0, 50);
+    if (content.content.replace(/<[^>]+>/g, '').length > 50) title += '...';
+  }
+
+  const timestamp = Date.now();
+  const htmlFile = `post_${timestamp}.html`;
+  const shortCode = await generateUniqueShortCode();
+
+  let stmt;
+  try {
+    stmt = await runDbWrite(
+      'INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file,short_code)VALUES(?,?,?,?,?,?,?,?,?,?)',
+      [url, content.author, content.author_handle, content.author_avatar, content.content, JSON.stringify(content.images), content.video, content.tweet_time, htmlFile, shortCode]
+    );
+  } catch (insertErr) {
+    if (String(insertErr.message || '').includes('UNIQUE constraint failed: posts.url')) {
+      const existing2 = await new Promise((r, j) => db.get('SELECT * FROM posts WHERE url=?', [url], (e, row) => e ? j(e) : r(row)));
+      if (existing2) {
+        if (!existing2.short_code) {
+          existing2.short_code = await generateUniqueShortCode();
+          await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing2.short_code, existing2.id]);
+        }
+        const htmlPath = path.join(ARCHIVES_DIR, existing2.html_file);
+        const htmlContent = generateMirrorHtml(existing2);
+        fs.writeFileSync(htmlPath, htmlContent, 'utf8');
+        return { success: true, id: existing2.id, url: `/${existing2.short_code}`, short_code: existing2.short_code, message: '已存在', cached: true };
+      }
+    }
+    throw insertErr;
+  }
+
+  const result = stmt.lastID;
+  const htmlContent = generateMirrorHtml({ id: result, url, ...content, html_file: htmlFile, short_code: shortCode });
+  fs.writeFileSync(path.join(ARCHIVES_DIR, htmlFile), htmlContent, 'utf8');
+
+  return {
+    success: true,
+    id: result,
+    url: `/${shortCode}`,
+    short_code: shortCode,
+    message: '存档成功',
+    author: content.author,
+    title,
+    preview: content.content.substring(0, 100)
+  };
+}
+
 app.post('/api/archive', async (req, res) => {
-  const {url} = req.body;
-  if (!url?.includes('x.com') && !url?.includes('twitter.com')) return res.status(400).json({error:'无效的X链接'});
+  const { url } = req.body;
+  if (!url?.includes('x.com') && !url?.includes('twitter.com')) {
+    return res.status(400).json({ error: '无效的X链接' });
+  }
 
   try {
-    const existing = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE url=?',[url],(e,row)=>e?j(e):r(row)));
-    if (existing) {
-      if (!existing.short_code) {
-        existing.short_code = await generateUniqueShortCode();
-        await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing.short_code, existing.id]);
-      }
-      const htmlPath = path.join(ARCHIVES_DIR, existing.html_file);
-      const htmlContent = generateMirrorHtml(existing);
-      fs.writeFileSync(htmlPath, htmlContent, 'utf8');
-      return res.json({success:true,id:existing.id,url:`/${existing.short_code}`,short_code:existing.short_code,message:'已存在',cached:true});
+    const payload = await archiveXUrl(url);
+    return res.json(payload);
+  } catch (e) {
+    return res.status(500).json({ error: e.message || '抓取失败' });
+  }
+});
+
+app.get('/api/archive/quick', async (req, res) => {
+  const rawUrl = (req.query.url || '').toString().trim();
+  const format = (req.query.format || 'redirect').toString().toLowerCase();
+
+  if (!rawUrl.includes('x.com') && !rawUrl.includes('twitter.com')) {
+    return res.status(400).json({ success: false, error: '无效的X链接' });
+  }
+
+  try {
+    const payload = await archiveXUrl(rawUrl);
+    const absoluteUrl = `${req.protocol}://${req.get('host')}${payload.url}`;
+
+    if (format === 'json') {
+      return res.json({ ...payload, absolute_url: absoluteUrl });
     }
 
-    const content = await fetchXPost(url);
-    if (!content.content && content.images.length===0 && !content.video) return res.status(500).json({error:'未能获取推文内容'});
-
-    let title = '';
-    const h1Match = content.content.match(/<h1>(.+?)<\/h1>/);
-    if (h1Match) {
-      title = h1Match[1].replace(/【(.+?)】/, '$1');
-    } else {
-      title = content.content.replace(/<[^>]+>/g, '').substring(0, 50);
-      if (content.content.replace(/<[^>]+>/g, '').length > 50) title += '...';
+    if (format === 'text') {
+      return res.type('text/plain; charset=utf-8').send(absoluteUrl);
     }
 
-    const timestamp = Date.now();
-    const htmlFile = `post_${timestamp}.html`;
-    const shortCode = await generateUniqueShortCode();
-
-    let stmt;
-    try {
-      stmt = await runDbWrite(
-        'INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file,short_code)VALUES(?,?,?,?,?,?,?,?,?,?)',
-        [url,content.author,content.author_handle,content.author_avatar,content.content,JSON.stringify(content.images),content.video,content.tweet_time,htmlFile,shortCode]
-      );
-    } catch (insertErr) {
-      if (String(insertErr.message || '').includes('UNIQUE constraint failed: posts.url')) {
-        const existing2 = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE url=?',[url],(e,row)=>e?j(e):r(row)));
-        if (existing2) {
-          if (!existing2.short_code) {
-            existing2.short_code = await generateUniqueShortCode();
-            await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing2.short_code, existing2.id]);
-          }
-          const htmlPath = path.join(ARCHIVES_DIR, existing2.html_file);
-          const htmlContent = generateMirrorHtml(existing2);
-          fs.writeFileSync(htmlPath, htmlContent, 'utf8');
-          return res.json({success:true,id:existing2.id,url:`/${existing2.short_code}`,short_code:existing2.short_code,message:'已存在',cached:true});
-        }
-      }
-      throw insertErr;
-    }
-
-    const result = stmt.lastID;
-    const htmlContent = generateMirrorHtml({id:result,url,...content, html_file: htmlFile, short_code: shortCode});
-    fs.writeFileSync(path.join(ARCHIVES_DIR, htmlFile), htmlContent, 'utf8');
-    res.json({success:true,id:result,url:`/${shortCode}`,short_code:shortCode,message:'存档成功',author:content.author,title:title,preview:content.content.substring(0,100)});
-  } catch(e) {
-    res.status(500).json({error:e.message||'抓取失败'});
+    return res.redirect(302, absoluteUrl);
+  } catch (e) {
+    return res.status(500).json({ success: false, error: e.message || '抓取失败' });
   }
 });
 

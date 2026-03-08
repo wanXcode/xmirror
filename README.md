@@ -14,7 +14,12 @@ X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 
 ## 版本
 
-**当前版本：v1.4.0**
+**当前版本：v1.5.0**
+
+### v1.5.0 更新内容
+- 🍎 新增 iOS 快捷指令友好接口：`GET /api/archive/quick`
+- 🔗 支持一键把 X 链接转成 xmirror 短链（可返回重定向 / JSON / 纯文本）
+- ♻️ 抽离归档核心逻辑，`/api/archive` 与快捷入口共用同一流程
 
 ### v1.4.0 更新内容
 - 🌐 新增内页翻译能力（SiliconFlow / OpenAI 兼容）
@@ -46,6 +51,42 @@ X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 - Node.js + Express
 - SQLite
 - 前端原生 HTML/CSS/JS
+
+## API 快速说明
+
+### 1) 原有接口（POST）
+
+`POST /api/archive`
+
+请求体：
+
+```json
+{"url":"https://x.com/..."}
+```
+
+### 2) iOS 快捷指令推荐接口（GET）
+
+`GET /api/archive/quick?url=<X链接>&format=<redirect|json|text>`
+
+- `format=redirect`（默认）：直接 302 到镜像短链页面
+- `format=json`：返回 JSON（包含 `absolute_url`）
+- `format=text`：直接返回纯文本短链，适合快捷指令复制到剪贴板
+
+示例：
+
+```bash
+curl "https://xmirror.app/api/archive/quick?url=https%3A%2F%2Fx.com%2Fxxx%2Fstatus%2F123&format=text"
+```
+
+## iOS 快捷指令配置（最简）
+
+1. 动作：获取剪贴板（得到 X 链接）
+2. 动作：URL 编码（对链接编码）
+3. 动作：文本（拼接）
+   - `https://xmirror.app/api/archive/quick?url=<编码后的链接>&format=text`
+4. 动作：获取 URL 内容（GET）
+5. 动作：复制到剪贴板（内容即 xmirror 存档短链）
+6. 可选：显示通知（“已生成并复制 xmirror 链接”）
 
 ## 部署
 
