@@ -273,6 +273,56 @@
     .btn-glass:active {
       transform: translateY(0);
     }
+
+    /* iOS 快捷指令入口 */
+    .shortcut-card {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      background: rgba(255, 255, 255, 0.14);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .shortcut-copy {
+      min-width: 0;
+      color: rgba(255, 255, 255, 0.92);
+      line-height: 1.35;
+    }
+
+    .shortcut-copy .title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .shortcut-copy .desc {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.82);
+    }
+
+    .shortcut-link {
+      flex-shrink: 0;
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 600;
+      text-decoration: none;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      padding: 6px 10px;
+      background: rgba(255, 255, 255, 0.12);
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .shortcut-link:hover {
+      background: rgba(255, 255, 255, 0.24);
+      border-color: rgba(255, 255, 255, 0.55);
+    }
     
     /* 加载状态 */
     .loading {
@@ -568,6 +618,15 @@
         font-size: 12px;
       }
       
+      .shortcut-card {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .shortcut-link {
+        text-align: center;
+      }
+
       .history-item {
         flex-direction: column;
         align-items: flex-start;
@@ -611,6 +670,19 @@
     </div>
     
     <button class="btn-glass" id="submit" onclick="archive()" data-i18n="generateBtn">生成镜像</button>
+
+    <div class="shortcut-card">
+      <div class="shortcut-copy">
+        <div class="title">🍎 iPhone 一键存档快捷指令</div>
+        <div class="desc">复制 X 链接后，一键生成 xmirror 存档链接</div>
+      </div>
+      <a
+        class="shortcut-link"
+        href="https://www.icloud.com/shortcuts/7cea5ee04b41456fb3416086334f5d50"
+        target="_blank"
+        rel="noopener noreferrer"
+      >立即安装 ↗</a>
+    </div>
     
     <!-- 加载状态 -->
     <div class="loading" id="loading">
