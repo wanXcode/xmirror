@@ -181,7 +181,16 @@ async function loadHistory(reset = false) {
   try {
     const response = await fetch(`/api/posts?limit=${PAGE_SIZE}&offset=${historyOffset}`);
     const data = await response.json();
-    const posts = data.posts || [];
+
+    // 兼容旧接口（直接返回数组）和新接口（返回分页对象）
+    let posts = [];
+    if (Array.isArray(data)) {
+      posts = data.slice(historyOffset, historyOffset + PAGE_SIZE);
+      historyHasMore = historyOffset + posts.length < data.length;
+    } else {
+      posts = data.posts || [];
+      historyHasMore = !!data.has_more;
+    }
 
     if (historyOffset === 0 && posts.length === 0) {
       document.getElementById('history').style.display = 'none';
@@ -195,7 +204,6 @@ async function loadHistory(reset = false) {
     historyList.insertAdjacentHTML('beforeend', renderHistoryItems(posts));
 
     historyOffset += posts.length;
-    historyHasMore = !!data.has_more;
   } catch (error) {
     console.error('Load history failed:', error);
   } finally {
