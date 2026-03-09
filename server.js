@@ -533,6 +533,7 @@ function generateMirrorHtml(post) {
   const pageTitle = articleTitle ? `${escapeHtml(articleTitle)} | XMirror` : `${escapeHtml(post.author)} | XMirror`;
   const canonicalPath = post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`;
   const canonicalUrl = `https://xmirror.app${canonicalPath}`;
+  const refererPath = post.short_code ? `/${post.short_code}/referer` : post.url;
   const createdAt = post.tweet_time || post.created_at || new Date().toISOString();
   const sourceLang = detectContentLanguage(content);
 
@@ -600,7 +601,7 @@ function generateMirrorHtml(post) {
 <div id="originContent" class="content content-view active">${content}</div>
 <div id="translatedContent" class="content content-view"></div>
 ${videoHtml}
-<div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${post.url}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div><span class="badge">🐦 XMirror</span></div>
+<div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div><span class="badge">🐦 XMirror</span></div>
 </div></div>
 <script>
 function getPreferredTheme(){const saved=localStorage.getItem('xmirror-theme');if(saved)return saved;const hour=new Date().getHours();return(hour>=6&&hour<18)?'light':'dark'}
@@ -907,6 +908,22 @@ app.get('/archives/:fileName', async (req, res, next) => {
 });
 
 app.use('/archives', express.static(ARCHIVES_DIR));
+
+app.get(/^\/([A-Za-z0-9]{6})\/referer$/, async (req, res, next) => {
+  try {
+    const shortCode = req.params[0];
+    const post = await new Promise((resolve, reject) => {
+      db.get('SELECT url FROM posts WHERE short_code=?', [shortCode], (err, row) => err ? reject(err) : resolve(row));
+    });
+
+    if (!post?.url) return next();
+
+    return res.redirect(302, post.url);
+  } catch (e) {
+    console.error('中转链接跳转失败:', e.message);
+    return next();
+  }
+});
 
 app.get(/^\/([A-Za-z0-9]{6})$/, async (req, res, next) => {
   try {
