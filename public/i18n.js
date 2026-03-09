@@ -23,7 +23,9 @@ const i18n = {
       placeholderUrl: 'https://x.com/username/status/1234567890',
       btnGenerate: '生成镜像',
       loadingText: '正在抓取内容...',
-      historyTitle: '📚 最近存档',
+      historyTitle: '最近存档',
+      historyLoadingMore: '正在努力加载',
+      historyNoMore: '已经到底啦',
       unknownUser: '未知用户',
       noTitle: '无标题',
       
@@ -51,7 +53,9 @@ const i18n = {
       placeholderUrl: 'https://x.com/username/status/1234567890',
       btnGenerate: 'Generate Mirror',
       loadingText: 'Fetching content...',
-      historyTitle: '📚 Recent Archives',
+      historyTitle: 'Recent Archives',
+      historyLoadingMore: 'Loading more...',
+      historyNoMore: 'You have reached the end',
       unknownUser: 'Unknown User',
       noTitle: 'No Title',
       
@@ -126,8 +130,13 @@ const i18n = {
     if (loadingText) loadingText.textContent = this.t('loadingText');
     
     // 更新历史标题
-    const historyTitle = document.querySelector('.history h3');
+    const historyTitle = document.querySelector('[data-i18n="historyTitle"]');
     if (historyTitle) historyTitle.textContent = this.t('historyTitle');
+
+    const historyLoading = document.getElementById('historyLoading');
+    if (historyLoading && historyLoading.style.display !== 'none') {
+      historyLoading.textContent = this.t('historyLoadingMore');
+    }
     
     // 更新删除弹窗
     const modalTitle = document.querySelector('.modal h3');

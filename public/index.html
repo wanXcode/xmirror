@@ -471,6 +471,19 @@
     .history-item-btn.delete:hover {
       background: rgba(239, 68, 68, 0.5);
     }
+
+    .history-loading {
+      display: none;
+      text-align: center;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 13px;
+      padding: 10px 0 4px;
+    }
+
+    .history-sentinel {
+      width: 100%;
+      height: 1px;
+    }
     
     /* 删除确认弹窗 */
     .modal-overlay {
@@ -697,6 +710,8 @@
     <div class="history" id="history" style="display:none;">
       <h3><span>📚</span> <span data-i18n="historyTitle">最近存档</span></h3>
       <div id="historyList"></div>
+      <div class="history-loading" id="historyLoading">正在努力加载</div>
+      <div class="history-sentinel" id="historySentinel"></div>
     </div>
 
     <div class="page-version">Version v1.3.0</div>

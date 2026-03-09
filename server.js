@@ -829,14 +829,31 @@ app.get('/api/archive/quick', async (req, res) => {
   }
 });
 
-app.get('/api/posts', (req,res)=>db.all('SELECT * FROM posts ORDER BY created_at DESC',(e,r)=>{
-  if (e) return res.status(500).json({error:e.message});
-  const rows = (r || []).map(post => ({
-    ...post,
-    short_url: post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`
-  }));
-  res.json(rows);
-}));
+app.get('/api/posts', (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+  db.all(
+    'SELECT * FROM posts ORDER BY created_at DESC LIMIT ? OFFSET ?',
+    [limit + 1, offset],
+    (e, r) => {
+      if (e) return res.status(500).json({ error: e.message });
+
+      const hasMore = (r || []).length > limit;
+      const pageRows = (r || []).slice(0, limit).map(post => ({
+        ...post,
+        short_url: post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`
+      }));
+
+      res.json({
+        posts: pageRows,
+        limit,
+        offset,
+        has_more: hasMore
+      });
+    }
+  );
+});
 
 app.post('/api/delete', async (req, res) => {
   const {id} = req.body;
