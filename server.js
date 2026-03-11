@@ -219,6 +219,24 @@ async function fetchHtml(url, extraHeaders = {}) {
   });
 }
 
+async function fetchText(url, extraHeaders = {}) {
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 XMirror/1.6',
+      'Accept': 'text/plain,text/markdown,text/html;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      ...extraHeaders
+    },
+    redirect: 'follow'
+  });
+
+  if (!response.ok) {
+    throw new Error(`抓取失败，状态码: ${response.status}`);
+  }
+
+  return await response.text();
+}
+
 async function downloadImage(url, filename) {
   return new Promise((resolve, reject) => {
     const filePath = path.join(__dirname, 'data', 'images', filename);
@@ -607,6 +625,58 @@ async function fetchXPost(url) {
   };
 }
 
+async function fetchWechatArticleViaReader(url, fallbackMeta = {}) {
+  const markdown = await fetchText(`https://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`);
+  const lines = String(markdown || '').split(/\r?\n/);
+  const titleLine = lines.find(line => line.trim().startsWith('Title:')) || '';
+  const title = titleLine.replace(/^Title:\s*/i, '').trim() || fallbackMeta.title || '微信公众号文章';
+
+  const imageMatches = [...markdown.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1]);
+  const uniqueUrls = [...new Set(imageMatches)];
+  const localImages = [];
+
+  for (let i = 0; i < uniqueUrls.length; i++) {
+    const currentUrl = uniqueUrls[i];
+    const extMatch = currentUrl.match(/\.(jpg|jpeg|png|gif|webp|bmp)(?:$|\?)/i);
+    const ext = (extMatch?.[1] || 'jpg').toLowerCase();
+    const filename = `wechat_${Date.now()}_${i}.${ext}`;
+    try {
+      localImages.push(await downloadImage(currentUrl, filename));
+    } catch {
+      localImages.push(currentUrl);
+    }
+  }
+
+  let imgIndex = 0;
+  const bodyHtml = markdown
+    .replace(/^Title:.*$/im, '')
+    .replace(/^URL Source:.*$/im, '')
+    .replace(/^Markdown Content:\s*/im, '')
+    .trim()
+    .split(/\n{2,}/)
+    .map(block => block.trim())
+    .filter(Boolean)
+    .map(block => {
+      if (/^!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/.test(block)) {
+        const src = localImages[imgIndex++] || RegExp.$1;
+        return `<p><img src="${src}" style="max-width:100%;height:auto;" /></p>`;
+      }
+      return `<p>${escapeHtml(block)}</p>`;
+    })
+    .join('');
+
+  return {
+    author: fallbackMeta.author || '微信公众号',
+    author_handle: fallbackMeta.authorHandle || 'weixin',
+    author_avatar: fallbackMeta.authorAvatar || '',
+    content: `<h1>【${escapeHtml(title)}】</h1>${bodyHtml}`,
+    images: localImages,
+    video: null,
+    tweet_time: fallbackMeta.articleTime ? (String(fallbackMeta.articleTime).length === 10 ? new Date(Number(fallbackMeta.articleTime) * 1000).toISOString() : fallbackMeta.articleTime) : null,
+    source_type: 'wechat'
+  };
+}
+
 async function fetchWechatArticle(url) {
   const html = await fetchHtml(url, { Referer: 'https://mp.weixin.qq.com/' });
 
@@ -633,7 +703,10 @@ async function fetchWechatArticle(url) {
     || extractByRegex(html, /<div[^>]*id=["']js_content["'][^>]*>([\s\S]*?)<\/div>\s*<script/i)
     || extractByRegex(html, /<div[^>]*id=["']img-content["'][^>]*>([\s\S]*?)<div[^>]*class=["']original_area_primary["']/i);
 
-  if (!bodyHtml) throw new Error('未解析到公众号正文');
+  const denied = /未知错误|暂无权限查看此页面内容|失效的验证页面/.test(html);
+  if (!bodyHtml || denied) {
+    return await fetchWechatArticleViaReader(url, { title, author, authorHandle, authorAvatar, articleTime });
+  }
 
   const imageCandidates = [];
   const imgRegex = /<img[^>]+(?:data-src|src)=["']([^"']+)["'][^>]*>/gi;
