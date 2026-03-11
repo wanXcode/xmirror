@@ -628,9 +628,12 @@ async function fetchXPost(url) {
 
 async function fetchWechatArticleViaScrapling(url, fallbackMeta = {}) {
   const scriptPath = path.join(ROOT_DIR, 'scripts', 'wechat_fetch.py');
+  const pythonBin = fs.existsSync(path.join(ROOT_DIR, '.venv', 'bin', 'python3'))
+    ? path.join(ROOT_DIR, '.venv', 'bin', 'python3')
+    : 'python3';
 
   const raw = await new Promise((resolve, reject) => {
-    execFile('python3', [scriptPath, url, '30000'], { timeout: 45000 }, (error, stdout, stderr) => {
+    execFile(pythonBin, [scriptPath, url, '30000'], { timeout: 45000 }, (error, stdout, stderr) => {
       if (error) return reject(new Error(stderr || error.message || 'scrapling 执行失败'));
       resolve(stdout);
     });
