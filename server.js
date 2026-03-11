@@ -700,7 +700,11 @@ function generateMirrorHtml(post) {
   if (!Array.isArray(parsedImages)) parsedImages = [];
 
   const summary = extractSummary(content);
-  const ogImage = parsedImages.length > 0 ? parsedImages[0] : '';
+  const firstImageFromContent = (() => {
+    const match = content.match(/<img[^>]+src=["']([^"']+)["']/i);
+    return match?.[1] || '';
+  })();
+  const ogImage = firstImageFromContent || parsedImages[0] || post.author_avatar || '';
   let articleTitle = '';
   const h1Match = content.match(/<h1[^>]*>(.+?)<\/h1>/i);
   const h2Match = content.match(/<h2[^>]*>(.+?)<\/h2>/i);
