@@ -1049,12 +1049,18 @@ app.get('/api/translate/:id', async (req, res) => {
   }
 });
 
+function isBadWechatCache(post) {
+  if (!post || post.source_type !== 'wechat') return false;
+  const text = `${post.author || ''}\n${post.content || ''}`;
+  return /Weixin Official Accounts Platform|requiring CAPTCHA|环境异常|暂无权限查看此页面内容|失效的验证页面/.test(text);
+}
+
 async function archiveUrl(url) {
   const sourceType = detectUrlType(url);
   if (!sourceType) throw new Error('暂不支持该链接类型');
 
   const existing = await new Promise((r, j) => db.get('SELECT * FROM posts WHERE url=?', [url], (e, row) => e ? j(e) : r(row)));
-  if (existing) {
+  if (existing && !isBadWechatCache(existing)) {
     if (!existing.short_code) {
       existing.short_code = await generateUniqueShortCode();
       await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing.short_code, existing.id]);
@@ -1082,6 +1088,28 @@ async function archiveUrl(url) {
   const timestamp = Date.now();
   const htmlFile = `post_${timestamp}.html`;
   const shortCode = await generateUniqueShortCode();
+
+  if (existing && isBadWechatCache(existing)) {
+    const repairedShortCode = existing.short_code || await generateUniqueShortCode();
+    await runDbWrite(
+      'UPDATE posts SET author=?, author_handle=?, author_avatar=?, content=?, images=?, video=?, tweet_time=?, short_code=?, source_type=? WHERE id=?',
+      [content.author, content.author_handle, content.author_avatar, content.content, JSON.stringify(content.images), content.video, content.tweet_time, repairedShortCode, content.source_type || sourceType, existing.id]
+    );
+    const repairedPost = { ...existing, ...content, short_code: repairedShortCode, source_type: content.source_type || sourceType };
+    const htmlContent = generateMirrorHtml(repairedPost);
+    fs.writeFileSync(path.join(ARCHIVES_DIR, existing.html_file), htmlContent, 'utf8');
+    return {
+      success: true,
+      id: existing.id,
+      url: `/${repairedShortCode}`,
+      short_code: repairedShortCode,
+      message: '已修复旧缓存',
+      author: content.author,
+      title,
+      preview: stripHtml(content.content).substring(0, 100),
+      source_type: content.source_type || sourceType
+    };
+  }
 
   let stmt;
   try {
