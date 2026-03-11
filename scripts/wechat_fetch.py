@@ -3,22 +3,33 @@ import sys
 import re
 import json
 import html2text
-from scrapling.fetchers import Fetcher
+from bs4 import BeautifulSoup
+from curl_cffi import requests
 
 
 def fix_lazy_images(html_raw: str) -> str:
-    return re.sub(
+    html_raw = re.sub(
         r'<img([^>]*?)\sdata-src="([^"]+)"([^>]*?)>',
         lambda m: f'<img{m.group(1)} src="{m.group(2)}"{m.group(3)}>',
         html_raw,
     )
+    return html_raw
 
 
-def extract_meta(page, selectors):
+def clean_node_html(node) -> str:
+    html_raw = str(node)
+    html_raw = fix_lazy_images(html_raw)
+    html_raw = re.sub(r'<script[\s\S]*?</script>', '', html_raw, flags=re.I)
+    html_raw = re.sub(r'<style[\s\S]*?</style>', '', html_raw, flags=re.I)
+    html_raw = re.sub(r'<iframe[\s\S]*?</iframe>', '', html_raw, flags=re.I)
+    return html_raw
+
+
+def find_text(soup, selectors):
     for selector in selectors:
-        els = page.css(selector)
-        if els:
-            txt = els[0].text.strip()
+        node = soup.select_one(selector)
+        if node:
+            txt = node.get_text(' ', strip=True)
             if txt:
                 return txt
     return ''
@@ -32,44 +43,56 @@ def main():
     url = sys.argv[1]
     max_chars = int(sys.argv[2]) if len(sys.argv) > 2 else 30000
 
-    page = Fetcher(auto_match=False).get(
+    resp = requests.get(
         url,
-        headers={"Referer": "https://www.google.com/search?q=site"}
+        impersonate='chrome124',
+        timeout=30,
+        allow_redirects=True,
+        headers={
+            'Referer': 'https://www.google.com/search?q=site',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        },
     )
+    resp.raise_for_status()
 
-    content_html = ''
+    html = resp.text
+    soup = BeautifulSoup(html, 'lxml')
+
+    title = find_text(soup, ['h1#activity-name', 'h1.rich_media_title', 'title'])
+    author = find_text(soup, ['#js_name', '.profile_nickname']) or '微信公众号'
+
+    content_node = None
     used_selector = ''
     for selector in ['div#js_content', 'div.rich_media_content', 'article', 'main']:
-        els = page.css(selector)
-        if els:
-            html_raw = fix_lazy_images(els[0].html_content)
-            if len(re.sub(r'<[^>]+>', '', html_raw).strip()) > 100:
-                content_html = html_raw
+        node = soup.select_one(selector)
+        if node:
+            text_len = len(node.get_text(' ', strip=True))
+            if text_len > 100:
+                content_node = node
                 used_selector = selector
                 break
 
-    if not content_html:
-        content_html = fix_lazy_images(page.html_content)
+    if content_node is None:
+        content_node = soup.body or soup
         used_selector = 'body(fallback)'
+
+    html_raw = clean_node_html(content_node)
 
     h = html2text.HTML2Text()
     h.ignore_links = False
     h.ignore_images = False
     h.body_width = 0
-    markdown = h.handle(content_html)
+    markdown = h.handle(html_raw)
     markdown = re.sub(r'\n{3,}', '\n\n', markdown).strip()[:max_chars]
 
     image_urls = re.findall(r'!\[[^\]]*\]\((https?://[^)\s]+)\)', markdown)
 
-    title = extract_meta(page, ['h1#activity-name', 'h1.rich_media_title', 'title'])
-    author = extract_meta(page, ['#js_name', '.profile_nickname']) or '微信公众号'
-
     print(json.dumps({
-        "title": title,
-        "author": author,
-        "markdown": markdown,
-        "images": image_urls,
-        "selector": used_selector,
+        'title': title,
+        'author': author,
+        'markdown': markdown,
+        'images': image_urls,
+        'selector': used_selector,
     }, ensure_ascii=False))
 
 
