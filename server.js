@@ -693,8 +693,14 @@ function generateMirrorHtml(post) {
   const content = post.content || '';
   const videoHtml = post.video ? `<video controls style="max-width:100%;margin:10px 0;"><source src="${post.video}" type="video/mp4"></video>` : '';
 
+  let parsedImages = post.images || [];
+  if (typeof parsedImages === 'string') {
+    try { parsedImages = JSON.parse(parsedImages); } catch { parsedImages = []; }
+  }
+  if (!Array.isArray(parsedImages)) parsedImages = [];
+
   const summary = extractSummary(content);
-  const ogImage = post.images && post.images.length > 0 ? post.images[0] : '';
+  const ogImage = parsedImages.length > 0 ? parsedImages[0] : '';
   let articleTitle = '';
   const h1Match = content.match(/<h1[^>]*>(.+?)<\/h1>/i);
   const h2Match = content.match(/<h2[^>]*>(.+?)<\/h2>/i);
