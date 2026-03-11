@@ -18,9 +18,9 @@ const i18n = {
   translations: {
     zh: {
       title: '🐦 XMirror',
-      subtitle: '粘贴 X / 公众号文章链接，生成可访问的镜像页面',
-      labelUrl: '链接',
-      placeholderUrl: 'https://x.com/username/status/1234567890 或 https://mp.weixin.qq.com/s/...',
+      subtitle: '粘贴 X 链接，生成可访问的镜像页面',
+      labelUrl: 'X 链接',
+      placeholderUrl: 'https://x.com/username/status/1234567890',
       btnGenerate: '生成镜像',
       loadingText: '正在抓取内容...',
       historyTitle: '最近存档',
@@ -30,7 +30,7 @@ const i18n = {
       noTitle: '无标题',
       
       // 提示信息
-      errorEmptyUrl: '请输入 X / 公众号文章链接',
+      errorEmptyUrl: '请输入 X 链接',
       errorArchive: '失败',
       errorRequest: '请求失败',
       successDeleted: '✅ 已删除',
@@ -48,9 +48,9 @@ const i18n = {
     },
     en: {
       title: '🐦 XMirror',
-      subtitle: 'Paste X or WeChat article link to generate accessible mirror page',
-      labelUrl: 'Link',
-      placeholderUrl: 'https://x.com/username/status/1234567890 or https://mp.weixin.qq.com/s/...',
+      subtitle: 'Paste X link to generate accessible mirror page',
+      labelUrl: 'X Link',
+      placeholderUrl: 'https://x.com/username/status/1234567890',
       btnGenerate: 'Generate Mirror',
       loadingText: 'Fetching content...',
       historyTitle: 'Recent Archives',
@@ -60,7 +60,7 @@ const i18n = {
       noTitle: 'No Title',
       
       // Messages
-      errorEmptyUrl: 'Please enter an X or WeChat article link',
+      errorEmptyUrl: 'Please enter X link',
       errorArchive: 'Failed',
       errorRequest: 'Request failed',
       successDeleted: '✅ Deleted',
@@ -161,23 +161,23 @@ const i18n = {
     
     // 更新 title
     document.title = isZh 
-      ? 'XMirror - X / 微信公众号内容存档工具 | 永久保存内容与图片'
-      : 'XMirror - X / WeChat Content Archiver | Save Posts and Images';
+      ? 'XMirror - X/Twitter 内容存档工具 | 永久保存推文、图片和视频'
+      : 'XMirror - X/Twitter Content Archiver | Save Tweets, Images & Videos';
     
     // 更新 description
     const descMeta = document.querySelector('meta[name="description"]');
     if (descMeta) {
       descMeta.content = isZh
-        ? 'XMirror 支持归档 X(Twitter) 与微信公众号文章，可永久保存正文、图片与镜像页面，方便分享与检索。'
-        : 'XMirror archives X(Twitter) posts and WeChat articles, preserving content, images, and accessible mirror pages for sharing and retrieval.';
+        ? 'XMirror 是一款专业的 X(Twitter) 内容存档工具，可永久保存推文、图片和视频，生成可访问的镜像页面。支持钉钉/微信卡片分享，防止内容丢失。'
+        : 'XMirror is a professional X(Twitter) content archiving tool that permanently saves tweets, images, and videos, generating accessible mirror pages.';
     }
     
     // 更新 keywords
     const keywordsMeta = document.querySelector('meta[name="keywords"]');
     if (keywordsMeta) {
       keywordsMeta.content = isZh
-        ? 'X存档,Twitter存档,微信公众号存档,微信文章备份,内容镜像,社交媒体备份'
-        : 'X archive,Twitter archive,WeChat article archive,WeChat backup,content mirror,social media backup';
+        ? 'X存档,Twitter存档,推文备份,内容镜像,X内容保存,Twitter备份工具,推文存档,社交媒体备份'
+        : 'X archive,Twitter archive,tweet backup,content mirror,X content save,Twitter backup tool,tweet archive,social media backup';
     }
     
     // 更新 og:locale
@@ -188,16 +188,16 @@ const i18n = {
     const ogDesc = document.querySelector('meta[property="og:description"]');
     if (ogDesc) {
       ogDesc.content = isZh
-        ? '支持 X(Twitter) 与微信公众号文章的内容存档，永久保存正文与图片。'
-        : 'Archive X(Twitter) posts and WeChat articles, preserving content and images.';
+        ? '专业的 X(Twitter) 内容存档工具，永久保存推文、图片和视频，生成可访问的镜像页面。'
+        : 'Professional X(Twitter) content archiving tool that permanently saves tweets, images, and videos.';
     }
     
     // 更新 twitter:description
     const twDesc = document.querySelector('meta[name="twitter:description"]');
     if (twDesc) {
       twDesc.content = isZh
-        ? '支持 X(Twitter) 与微信公众号文章的内容存档，永久保存正文与图片。'
-        : 'Archive X(Twitter) posts and WeChat articles, preserving content and images.';
+        ? '专业的 X(Twitter) 内容存档工具，永久保存推文、图片和视频。'
+        : 'Professional X(Twitter) content archiving tool that permanently saves tweets, images, and videos.';
     }
   },
 

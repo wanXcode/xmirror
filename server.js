@@ -5,9 +5,7 @@ const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const https = require('https');
-const http = require('http');
 const crypto = require('crypto');
-const { execFile } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -80,9 +78,6 @@ async function ensureShortCodeReady() {
   if (!columns.some(col => col.name === 'short_code')) {
     await runDbWrite('ALTER TABLE posts ADD COLUMN short_code TEXT');
   }
-  if (!columns.some(col => col.name === 'source_type')) {
-    await runDbWrite("ALTER TABLE posts ADD COLUMN source_type TEXT DEFAULT 'x'");
-  }
 
   await runDbWrite('CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_short_code ON posts(short_code)');
 
@@ -114,8 +109,7 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     tweet_time TEXT,
     html_file TEXT,
-    short_code TEXT UNIQUE,
-    source_type TEXT DEFAULT 'x'
+    short_code TEXT UNIQUE
   )`);
 
   db.run(`CREATE TABLE IF NOT EXISTS translations (
@@ -134,24 +128,6 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_translations_post_lang_hash
     ON translations(post_id, target_lang, source_hash)`);
 });
-
-function detectUrlType(rawUrl = '') {
-  let parsed;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return null;
-  }
-
-  const host = parsed.hostname.toLowerCase();
-  if (host === 'x.com' || host === 'www.x.com' || host === 'twitter.com' || host === 'www.twitter.com') {
-    return 'x';
-  }
-  if (host === 'mp.weixin.qq.com') {
-    return 'wechat';
-  }
-  return null;
-}
 
 function extractTweetId(url) {
   const match = url.match(/status\/(\d+)/);
@@ -182,60 +158,6 @@ async function fetchFromFxTwitter(tweetId) {
     req.setTimeout(15000, () => { req.destroy(); reject(new Error('超时')); });
     req.end();
   });
-}
-
-async function fetchHtml(url, extraHeaders = {}) {
-  return new Promise((resolve, reject) => {
-    const client = url.startsWith('http://') ? http : https;
-    const req = client.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0 XMirror/1.6',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        'Cache-Control': 'no-cache',
-        ...extraHeaders
-      }
-    }, (res) => {
-      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
-        const nextUrl = new URL(res.headers.location, url).toString();
-        res.resume();
-        return resolve(fetchHtml(nextUrl, extraHeaders));
-      }
-
-      if (res.statusCode !== 200) {
-        res.resume();
-        return reject(new Error(`抓取失败，状态码: ${res.statusCode}`));
-      }
-
-      const chunks = [];
-      res.on('data', chunk => chunks.push(chunk));
-      res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    });
-
-    req.on('error', reject);
-    req.setTimeout(20000, () => {
-      req.destroy();
-      reject(new Error('抓取超时'));
-    });
-  });
-}
-
-async function fetchText(url, extraHeaders = {}) {
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 XMirror/1.6',
-      'Accept': 'text/plain,text/markdown,text/html;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-      ...extraHeaders
-    },
-    redirect: 'follow'
-  });
-
-  if (!response.ok) {
-    throw new Error(`抓取失败，状态码: ${response.status}`);
-  }
-
-  return await response.text();
 }
 
 async function downloadImage(url, filename) {
@@ -277,37 +199,6 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
-}
-
-function stripHtml(html = '') {
-  return decodeEntities(String(html).replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
-}
-
-function parseMetaContent(html = '', key = '', attr = 'property') {
-  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const patterns = [
-    new RegExp(`<meta[^>]+${attr}=["']${escapedKey}["'][^>]+content=["']([^"']*)["'][^>]*>`, 'i'),
-    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+${attr}=["']${escapedKey}["'][^>]*>`, 'i')
-  ];
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match?.[1]) return decodeEntities(match[1].trim());
-  }
-  return '';
-}
-
-function extractByRegex(html = '', regex) {
-  const match = html.match(regex);
-  return match?.[1] ? decodeEntities(match[1].trim()) : '';
-}
-
-function absolutizeUrl(url, baseUrl) {
-  if (!url) return '';
-  try {
-    return new URL(url, baseUrl).toString();
-  } catch {
-    return url;
-  }
 }
 
 function extractSummary(content) {
@@ -626,229 +517,12 @@ async function fetchXPost(url) {
   };
 }
 
-async function fetchWechatArticleViaScrapling(url, fallbackMeta = {}) {
-  const scriptPath = path.join(ROOT_DIR, 'scripts', 'wechat_fetch.py');
-  const pythonBin = fs.existsSync(path.join(ROOT_DIR, '.venv', 'bin', 'python3'))
-    ? path.join(ROOT_DIR, '.venv', 'bin', 'python3')
-    : 'python3';
-
-  const raw = await new Promise((resolve, reject) => {
-    execFile(pythonBin, [scriptPath, url, '30000'], { timeout: 45000 }, (error, stdout, stderr) => {
-      if (error) return reject(new Error(stderr || error.message || 'scrapling 执行失败'));
-      resolve(stdout);
-    });
-  });
-
-  let parsed;
-  try {
-    parsed = JSON.parse(String(raw || '').trim());
-  } catch {
-    throw new Error('scrapling 输出解析失败');
-  }
-
-  const title = parsed.title || fallbackMeta.title || '微信公众号文章';
-  const author = parsed.author || fallbackMeta.author || '微信公众号';
-  const markdown = String(parsed.markdown || '').trim();
-  if (!markdown || markdown.length < 100) throw new Error('scrapling 正文不足');
-
-  const imageUrls = Array.isArray(parsed.images) ? [...new Set(parsed.images)] : [];
-  const localImages = [];
-  for (let i = 0; i < imageUrls.length; i++) {
-    const currentUrl = imageUrls[i];
-    const extMatch = currentUrl.match(/\.(jpg|jpeg|png|gif|webp|bmp)(?:$|\?)/i);
-    const ext = (extMatch?.[1] || 'jpg').toLowerCase();
-    const filename = `wechat_${Date.now()}_${i}.${ext}`;
-    try {
-      localImages.push(await downloadImage(currentUrl, filename));
-    } catch {
-      localImages.push(currentUrl);
-    }
-  }
-
-  let imgIndex = 0;
-  const bodyHtml = markdown
-    .split(/\n{2,}/)
-    .map(block => block.trim())
-    .filter(Boolean)
-    .map(block => {
-      if (/^!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/.test(block)) {
-        const src = localImages[imgIndex++] || RegExp.$1;
-        return `<p><img src="${src}" style="max-width:100%;height:auto;" /></p>`;
-      }
-      return `<p>${escapeHtml(block)}</p>`;
-    })
-    .join('');
-
-  return {
-    author,
-    author_handle: fallbackMeta.authorHandle || 'weixin',
-    author_avatar: fallbackMeta.authorAvatar || '',
-    content: `<h1>【${escapeHtml(title)}】</h1>${bodyHtml}`,
-    images: localImages,
-    video: null,
-    tweet_time: fallbackMeta.articleTime ? (String(fallbackMeta.articleTime).length === 10 ? new Date(Number(fallbackMeta.articleTime) * 1000).toISOString() : fallbackMeta.articleTime) : null,
-    source_type: 'wechat'
-  };
-}
-
-async function fetchWechatArticleViaReader(url, fallbackMeta = {}) {
-  const markdown = await fetchText(`https://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`);
-  const lines = String(markdown || '').split(/\r?\n/);
-  const titleLine = lines.find(line => line.trim().startsWith('Title:')) || '';
-  const title = titleLine.replace(/^Title:\s*/i, '').trim() || fallbackMeta.title || '微信公众号文章';
-
-  const imageMatches = [...markdown.matchAll(/!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g)].map(m => m[1]);
-  const uniqueUrls = [...new Set(imageMatches)];
-  const localImages = [];
-
-  for (let i = 0; i < uniqueUrls.length; i++) {
-    const currentUrl = uniqueUrls[i];
-    const extMatch = currentUrl.match(/\.(jpg|jpeg|png|gif|webp|bmp)(?:$|\?)/i);
-    const ext = (extMatch?.[1] || 'jpg').toLowerCase();
-    const filename = `wechat_${Date.now()}_${i}.${ext}`;
-    try {
-      localImages.push(await downloadImage(currentUrl, filename));
-    } catch {
-      localImages.push(currentUrl);
-    }
-  }
-
-  let imgIndex = 0;
-  const bodyHtml = markdown
-    .replace(/^Title:.*$/im, '')
-    .replace(/^URL Source:.*$/im, '')
-    .replace(/^Markdown Content:\s*/im, '')
-    .trim()
-    .split(/\n{2,}/)
-    .map(block => block.trim())
-    .filter(Boolean)
-    .map(block => {
-      if (/^!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/.test(block)) {
-        const src = localImages[imgIndex++] || RegExp.$1;
-        return `<p><img src="${src}" style="max-width:100%;height:auto;" /></p>`;
-      }
-      return `<p>${escapeHtml(block)}</p>`;
-    })
-    .join('');
-
-  return {
-    author: fallbackMeta.author || '微信公众号',
-    author_handle: fallbackMeta.authorHandle || 'weixin',
-    author_avatar: fallbackMeta.authorAvatar || '',
-    content: `<h1>【${escapeHtml(title)}】</h1>${bodyHtml}`,
-    images: localImages,
-    video: null,
-    tweet_time: fallbackMeta.articleTime ? (String(fallbackMeta.articleTime).length === 10 ? new Date(Number(fallbackMeta.articleTime) * 1000).toISOString() : fallbackMeta.articleTime) : null,
-    source_type: 'wechat'
-  };
-}
-
-async function fetchWechatArticle(url) {
-  const html = await fetchHtml(url, { Referer: 'https://mp.weixin.qq.com/' });
-
-  const title = parseMetaContent(html, 'og:title')
-    || extractByRegex(html, /<h1[^>]*id=["']activity-name["'][^>]*>([\s\S]*?)<\/h1>/i)
-    || extractByRegex(html, /var\s+msg_title\s*=\s*'([^']*)'/i)
-    || extractByRegex(html, /window\.__INITIAL_STATE__\s*=\s*.*?"title":"([^"]+)"/i)
-    || '微信公众号文章';
-
-  const author = parseMetaContent(html, 'og:article:author')
-    || extractByRegex(html, /<span[^>]*class=["']profile_nickname["'][^>]*>([\s\S]*?)<\/span>/i)
-    || extractByRegex(html, /id=["']js_name["'][^>]*>([\s\S]*?)<\/strong>/i)
-    || extractByRegex(html, /var\s+nickname\s*=\s*htmlDecode\("([^"]*)"\)/i)
-    || '微信公众号';
-
-  const authorHandle = extractByRegex(html, /var\s+user_name\s*=\s*"([^"]+)"/i)
-    || 'weixin';
-
-  const authorAvatar = parseMetaContent(html, 'og:image') || '';
-  const articleTime = parseMetaContent(html, 'og:article:published_time')
-    || extractByRegex(html, /var\s+ct\s*=\s*"?(\d{10})"?;/i);
-
-  let bodyHtml = extractByRegex(html, /<div[^>]*id=["']js_content["'][^>]*>([\s\S]*?)<\/div>\s*<section/i)
-    || extractByRegex(html, /<div[^>]*id=["']js_content["'][^>]*>([\s\S]*?)<\/div>\s*<script/i)
-    || extractByRegex(html, /<div[^>]*id=["']img-content["'][^>]*>([\s\S]*?)<div[^>]*class=["']original_area_primary["']/i);
-
-  const denied = /未知错误|暂无权限查看此页面内容|失效的验证页面/.test(html);
-  if (!bodyHtml || denied) {
-    try {
-      return await fetchWechatArticleViaScrapling(url, { title, author, authorHandle, authorAvatar, articleTime });
-    } catch (scraplingError) {
-      console.error('scrapling 抓取公众号失败，降级 reader:', scraplingError.message);
-      return await fetchWechatArticleViaReader(url, { title, author, authorHandle, authorAvatar, articleTime });
-    }
-  }
-
-  const imageCandidates = [];
-  const imgRegex = /<img[^>]+(?:data-src|src)=["']([^"']+)["'][^>]*>/gi;
-  let imgMatch;
-  while ((imgMatch = imgRegex.exec(bodyHtml)) !== null) {
-    const imgUrl = absolutizeUrl(imgMatch[1], url);
-    if (imgUrl && !imgUrl.startsWith('data:')) imageCandidates.push(imgUrl);
-  }
-
-  const uniqueUrls = [...new Set(imageCandidates)];
-  const urlToLocalPath = new Map();
-  const localImages = [];
-
-  for (let i = 0; i < uniqueUrls.length; i++) {
-    const currentUrl = uniqueUrls[i];
-    const extMatch = currentUrl.match(/\.(jpg|jpeg|png|gif|webp|bmp)(?:$|\?)/i);
-    const ext = (extMatch?.[1] || 'jpg').toLowerCase();
-    const filename = `wechat_${Date.now()}_${i}.${ext}`;
-    try {
-      const localPath = await downloadImage(currentUrl, filename);
-      urlToLocalPath.set(currentUrl, localPath);
-      localImages.push(localPath);
-    } catch {
-      urlToLocalPath.set(currentUrl, currentUrl);
-      localImages.push(currentUrl);
-    }
-  }
-
-  bodyHtml = bodyHtml
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
-    .replace(/<section[^>]*class=["'][^"']*(?:reward_area|qr_code_pc_outer|js_cpc_area|original_area_primary)[^"']*["'][\s\S]*?<\/section>/gi, '')
-    .replace(/\s(on\w+|data-(?:s|r|w|ratio|type|linktype|srcid|copyright|wxsrc|backhsrc))=["'][^"']*["']/gi, '')
-    .replace(/<img([^>]+?)(?:data-src|src)=["']([^"']+)["']([^>]*)>/gi, (_, pre, src, post) => {
-      const absUrl = absolutizeUrl(src, url);
-      const finalSrc = urlToLocalPath.get(absUrl) || absUrl;
-      return `<img${pre}src="${finalSrc}"${post}>`;
-    });
-
-  const safeTitle = escapeHtml(title);
-  const finalHtml = `<h1>【${safeTitle}】</h1>${bodyHtml}`;
-
-  return {
-    author,
-    author_handle: authorHandle,
-    author_avatar: authorAvatar,
-    content: finalHtml,
-    images: localImages,
-    video: null,
-    tweet_time: articleTime ? (String(articleTime).length === 10 ? new Date(Number(articleTime) * 1000).toISOString() : articleTime) : null,
-    source_type: 'wechat'
-  };
-}
-
 function generateMirrorHtml(post) {
   const content = post.content || '';
   const videoHtml = post.video ? `<video controls style="max-width:100%;margin:10px 0;"><source src="${post.video}" type="video/mp4"></video>` : '';
 
-  let parsedImages = post.images || [];
-  if (typeof parsedImages === 'string') {
-    try { parsedImages = JSON.parse(parsedImages); } catch { parsedImages = []; }
-  }
-  if (!Array.isArray(parsedImages)) parsedImages = [];
-
   const summary = extractSummary(content);
-  const firstImageFromContent = (() => {
-    const match = content.match(/<img[^>]+src=["']([^"']+)["']/i);
-    return match?.[1] || '';
-  })();
-  const ogImage = firstImageFromContent || parsedImages[0] || post.author_avatar || '';
+  const ogImage = post.images && post.images.length > 0 ? post.images[0] : '';
   let articleTitle = '';
   const h1Match = content.match(/<h1[^>]*>(.+?)<\/h1>/i);
   const h2Match = content.match(/<h2[^>]*>(.+?)<\/h2>/i);
@@ -862,9 +536,6 @@ function generateMirrorHtml(post) {
   const refererPath = post.short_code ? `/${post.short_code}/referer` : post.url;
   const createdAt = post.tweet_time || post.created_at || new Date().toISOString();
   const sourceLang = detectContentLanguage(content);
-  const sourceType = post.source_type === 'wechat' ? 'wechat' : 'x';
-  const sourceLabel = sourceType === 'wechat' ? '公众号原文' : '查看原文';
-  const brandLabel = sourceType === 'wechat' ? '🟢 WeChat Archive' : '🐦 XMirror';
 
   const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -873,7 +544,7 @@ function generateMirrorHtml(post) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${pageTitle}</title>
 <meta name="description" content="${escapeHtml(summary)}">
-<meta name="keywords" content="${sourceType === 'wechat' ? '微信公众号存档,微信文章备份,公众号文章镜像' : 'X存档,Twitter存档,推文备份'},${escapeHtml(post.author)},XMirror">
+<meta name="keywords" content="X存档,Twitter存档,${escapeHtml(post.author)},推文备份,XMirror">
 <meta name="author" content="${escapeHtml(post.author)}">
 <meta name="robots" content="index, follow">
 <meta name="googlebot" content="index, follow">
@@ -930,7 +601,7 @@ function generateMirrorHtml(post) {
 <div id="originContent" class="content content-view active">${content}</div>
 <div id="translatedContent" class="content content-view"></div>
 ${videoHtml}
-<div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">${sourceLabel} ↗</a></div><span class="badge">${brandLabel}</span></div>
+<div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div><span class="badge">🐦 XMirror</span></div>
 </div></div>
 <script>
 function getPreferredTheme(){const saved=localStorage.getItem('xmirror-theme');if(saved)return saved;const hour=new Date().getHours();return(hour>=6&&hour<18)?'light':'dark'}
@@ -1049,18 +720,9 @@ app.get('/api/translate/:id', async (req, res) => {
   }
 });
 
-function isBadWechatCache(post) {
-  if (!post || post.source_type !== 'wechat') return false;
-  const text = `${post.author || ''}\n${post.content || ''}`;
-  return /Weixin Official Accounts Platform|requiring CAPTCHA|环境异常|暂无权限查看此页面内容|失效的验证页面/.test(text);
-}
-
-async function archiveUrl(url) {
-  const sourceType = detectUrlType(url);
-  if (!sourceType) throw new Error('暂不支持该链接类型');
-
+async function archiveXUrl(url) {
   const existing = await new Promise((r, j) => db.get('SELECT * FROM posts WHERE url=?', [url], (e, row) => e ? j(e) : r(row)));
-  if (existing && !isBadWechatCache(existing)) {
+  if (existing) {
     if (!existing.short_code) {
       existing.short_code = await generateUniqueShortCode();
       await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing.short_code, existing.id]);
@@ -1068,54 +730,32 @@ async function archiveUrl(url) {
     const htmlPath = path.join(ARCHIVES_DIR, existing.html_file);
     const htmlContent = generateMirrorHtml(existing);
     fs.writeFileSync(htmlPath, htmlContent, 'utf8');
-    return { success: true, id: existing.id, url: `/${existing.short_code}`, short_code: existing.short_code, message: '已存在', cached: true, source_type: existing.source_type || sourceType };
+    return { success: true, id: existing.id, url: `/${existing.short_code}`, short_code: existing.short_code, message: '已存在', cached: true };
   }
 
-  const content = sourceType === 'wechat' ? await fetchWechatArticle(url) : await fetchXPost(url);
+  const content = await fetchXPost(url);
   if (!content.content && content.images.length === 0 && !content.video) {
-    throw new Error(sourceType === 'wechat' ? '未能获取公众号内容' : '未能获取推文内容');
+    throw new Error('未能获取推文内容');
   }
 
   let title = '';
-  const h1Match = content.content.match(/<h1[^>]*>(.+?)<\/h1>/i);
+  const h1Match = content.content.match(/<h1>(.+?)<\/h1>/);
   if (h1Match) {
     title = h1Match[1].replace(/【(.+?)】/, '$1');
   } else {
-    title = stripHtml(content.content).substring(0, 50);
-    if (stripHtml(content.content).length > 50) title += '...';
+    title = content.content.replace(/<[^>]+>/g, '').substring(0, 50);
+    if (content.content.replace(/<[^>]+>/g, '').length > 50) title += '...';
   }
 
   const timestamp = Date.now();
   const htmlFile = `post_${timestamp}.html`;
   const shortCode = await generateUniqueShortCode();
 
-  if (existing && isBadWechatCache(existing)) {
-    const repairedShortCode = existing.short_code || await generateUniqueShortCode();
-    await runDbWrite(
-      'UPDATE posts SET author=?, author_handle=?, author_avatar=?, content=?, images=?, video=?, tweet_time=?, short_code=?, source_type=? WHERE id=?',
-      [content.author, content.author_handle, content.author_avatar, content.content, JSON.stringify(content.images), content.video, content.tweet_time, repairedShortCode, content.source_type || sourceType, existing.id]
-    );
-    const repairedPost = { ...existing, ...content, short_code: repairedShortCode, source_type: content.source_type || sourceType };
-    const htmlContent = generateMirrorHtml(repairedPost);
-    fs.writeFileSync(path.join(ARCHIVES_DIR, existing.html_file), htmlContent, 'utf8');
-    return {
-      success: true,
-      id: existing.id,
-      url: `/${repairedShortCode}`,
-      short_code: repairedShortCode,
-      message: '已修复旧缓存',
-      author: content.author,
-      title,
-      preview: stripHtml(content.content).substring(0, 100),
-      source_type: content.source_type || sourceType
-    };
-  }
-
   let stmt;
   try {
     stmt = await runDbWrite(
-      'INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file,short_code,source_type)VALUES(?,?,?,?,?,?,?,?,?,?,?)',
-      [url, content.author, content.author_handle, content.author_avatar, content.content, JSON.stringify(content.images), content.video, content.tweet_time, htmlFile, shortCode, content.source_type || sourceType]
+      'INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file,short_code)VALUES(?,?,?,?,?,?,?,?,?,?)',
+      [url, content.author, content.author_handle, content.author_avatar, content.content, JSON.stringify(content.images), content.video, content.tweet_time, htmlFile, shortCode]
     );
   } catch (insertErr) {
     if (String(insertErr.message || '').includes('UNIQUE constraint failed: posts.url')) {
@@ -1128,7 +768,7 @@ async function archiveUrl(url) {
         const htmlPath = path.join(ARCHIVES_DIR, existing2.html_file);
         const htmlContent = generateMirrorHtml(existing2);
         fs.writeFileSync(htmlPath, htmlContent, 'utf8');
-        return { success: true, id: existing2.id, url: `/${existing2.short_code}`, short_code: existing2.short_code, message: '已存在', cached: true, source_type: existing2.source_type || sourceType };
+        return { success: true, id: existing2.id, url: `/${existing2.short_code}`, short_code: existing2.short_code, message: '已存在', cached: true };
       }
     }
     throw insertErr;
@@ -1146,19 +786,18 @@ async function archiveUrl(url) {
     message: '存档成功',
     author: content.author,
     title,
-    preview: stripHtml(content.content).substring(0, 100),
-    source_type: content.source_type || sourceType
+    preview: content.content.substring(0, 100)
   };
 }
 
 app.post('/api/archive', async (req, res) => {
   const { url } = req.body;
-  if (!detectUrlType(url || '')) {
-    return res.status(400).json({ error: '仅支持 X/Twitter 或微信公众号文章链接' });
+  if (!url?.includes('x.com') && !url?.includes('twitter.com')) {
+    return res.status(400).json({ error: '无效的X链接' });
   }
 
   try {
-    const payload = await archiveUrl(url);
+    const payload = await archiveXUrl(url);
     return res.json(payload);
   } catch (e) {
     return res.status(500).json({ error: e.message || '抓取失败' });
@@ -1169,12 +808,12 @@ app.get('/api/archive/quick', async (req, res) => {
   const rawUrl = (req.query.url || '').toString().trim();
   const format = (req.query.format || 'redirect').toString().toLowerCase();
 
-  if (!detectUrlType(rawUrl)) {
-    return res.status(400).json({ success: false, error: '仅支持 X/Twitter 或微信公众号文章链接' });
+  if (!rawUrl.includes('x.com') && !rawUrl.includes('twitter.com')) {
+    return res.status(400).json({ success: false, error: '无效的X链接' });
   }
 
   try {
-    const payload = await archiveUrl(rawUrl);
+    const payload = await archiveXUrl(rawUrl);
     const absoluteUrl = `${req.protocol}://${req.get('host')}${payload.url}`;
 
     if (format === 'json') {

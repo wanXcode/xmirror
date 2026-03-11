@@ -1,25 +1,20 @@
 # XMirror 🐦
 
-X(Twitter) / 微信公众号内容存档工具 - 生成可访问的镜像页面
+X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 
 ## 功能
 
-- 📥 输入 X 链接或微信公众号文章链接，自动抓取内容
+- 📥 输入 X 链接，自动抓取推文内容
 - 🖼️ 图片本地化存储，避免外链失效
-- 🎬 视频下载和本地播放（X）
-- 📝 支持普通推文、长文章(Article) 与微信公众号正文
+- 🎬 视频下载和本地播放
+- 📝 支持普通推文和长文章(Article)
 - 🔍 正确的 UTF-8 编码处理，无乱码
 - 📚 历史记录管理
 - 💬 钉钉/微信卡片支持（Open Graph 标签）
 
 ## 版本
 
-**当前版本：v1.6.0**
-
-### v1.6.0 更新内容
-- 🟢 新增微信公众号文章归档支持（`mp.weixin.qq.com`）
-- 🖼️ 支持公众号文章图片本地化与分享卡片首图
-- ♻️ 前后端输入提示与接口文案同步扩展为 X / 微信双来源
+**当前版本：v1.5.0**
 
 ### v1.5.0 更新内容
 - 🍎 新增 iOS 快捷指令友好接口：`GET /api/archive/quick`
@@ -56,7 +51,6 @@ X(Twitter) / 微信公众号内容存档工具 - 生成可访问的镜像页面
 - Node.js + Express
 - SQLite
 - 前端原生 HTML/CSS/JS
-- Python3 + curl_cffi + BeautifulSoup + html2text（用于微信公众号正文提取）
 
 ## API 快速说明
 
@@ -70,15 +64,9 @@ X(Twitter) / 微信公众号内容存档工具 - 生成可访问的镜像页面
 {"url":"https://x.com/..."}
 ```
 
-或：
-
-```json
-{"url":"https://mp.weixin.qq.com/s/..."}
-```
-
 ### 2) iOS 快捷指令推荐接口（GET）
 
-`GET /api/archive/quick?url=<X链接或公众号文章链接>&format=<redirect|json|text>`
+`GET /api/archive/quick?url=<X链接>&format=<redirect|json|text>`
 
 - `format=redirect`（默认）：直接 302 到镜像短链页面
 - `format=json`：返回 JSON（包含 `absolute_url`）
@@ -106,7 +94,6 @@ curl "https://xmirror.app/api/archive/quick?url=https%3A%2F%2Fx.com%2Fxxx%2Fstat
 
 ```bash
 npm install
-pip3 install curl_cffi beautifulsoup4 lxml html2text
 node server.js
 ```
 
