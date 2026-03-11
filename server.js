@@ -7,6 +7,7 @@ const fs = require('fs');
 const https = require('https');
 const http = require('http');
 const crypto = require('crypto');
+const { execFile } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -625,6 +626,68 @@ async function fetchXPost(url) {
   };
 }
 
+async function fetchWechatArticleViaScrapling(url, fallbackMeta = {}) {
+  const scriptPath = path.join(ROOT_DIR, 'scripts', 'wechat_fetch.py');
+
+  const raw = await new Promise((resolve, reject) => {
+    execFile('python3', [scriptPath, url, '30000'], { timeout: 45000 }, (error, stdout, stderr) => {
+      if (error) return reject(new Error(stderr || error.message || 'scrapling 执行失败'));
+      resolve(stdout);
+    });
+  });
+
+  let parsed;
+  try {
+    parsed = JSON.parse(String(raw || '').trim());
+  } catch {
+    throw new Error('scrapling 输出解析失败');
+  }
+
+  const title = parsed.title || fallbackMeta.title || '微信公众号文章';
+  const author = parsed.author || fallbackMeta.author || '微信公众号';
+  const markdown = String(parsed.markdown || '').trim();
+  if (!markdown || markdown.length < 100) throw new Error('scrapling 正文不足');
+
+  const imageUrls = Array.isArray(parsed.images) ? [...new Set(parsed.images)] : [];
+  const localImages = [];
+  for (let i = 0; i < imageUrls.length; i++) {
+    const currentUrl = imageUrls[i];
+    const extMatch = currentUrl.match(/\.(jpg|jpeg|png|gif|webp|bmp)(?:$|\?)/i);
+    const ext = (extMatch?.[1] || 'jpg').toLowerCase();
+    const filename = `wechat_${Date.now()}_${i}.${ext}`;
+    try {
+      localImages.push(await downloadImage(currentUrl, filename));
+    } catch {
+      localImages.push(currentUrl);
+    }
+  }
+
+  let imgIndex = 0;
+  const bodyHtml = markdown
+    .split(/\n{2,}/)
+    .map(block => block.trim())
+    .filter(Boolean)
+    .map(block => {
+      if (/^!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/.test(block)) {
+        const src = localImages[imgIndex++] || RegExp.$1;
+        return `<p><img src="${src}" style="max-width:100%;height:auto;" /></p>`;
+      }
+      return `<p>${escapeHtml(block)}</p>`;
+    })
+    .join('');
+
+  return {
+    author,
+    author_handle: fallbackMeta.authorHandle || 'weixin',
+    author_avatar: fallbackMeta.authorAvatar || '',
+    content: `<h1>【${escapeHtml(title)}】</h1>${bodyHtml}`,
+    images: localImages,
+    video: null,
+    tweet_time: fallbackMeta.articleTime ? (String(fallbackMeta.articleTime).length === 10 ? new Date(Number(fallbackMeta.articleTime) * 1000).toISOString() : fallbackMeta.articleTime) : null,
+    source_type: 'wechat'
+  };
+}
+
 async function fetchWechatArticleViaReader(url, fallbackMeta = {}) {
   const markdown = await fetchText(`https://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`);
   const lines = String(markdown || '').split(/\r?\n/);
@@ -705,7 +768,12 @@ async function fetchWechatArticle(url) {
 
   const denied = /未知错误|暂无权限查看此页面内容|失效的验证页面/.test(html);
   if (!bodyHtml || denied) {
-    return await fetchWechatArticleViaReader(url, { title, author, authorHandle, authorAvatar, articleTime });
+    try {
+      return await fetchWechatArticleViaScrapling(url, { title, author, authorHandle, authorAvatar, articleTime });
+    } catch (scraplingError) {
+      console.error('scrapling 抓取公众号失败，降级 reader:', scraplingError.message);
+      return await fetchWechatArticleViaReader(url, { title, author, authorHandle, authorAvatar, articleTime });
+    }
   }
 
   const imageCandidates = [];

@@ -56,6 +56,7 @@ X(Twitter) / 微信公众号内容存档工具 - 生成可访问的镜像页面
 - Node.js + Express
 - SQLite
 - 前端原生 HTML/CSS/JS
+- Python3 + scrapling + html2text（用于微信公众号正文提取）
 
 ## API 快速说明
 
@@ -105,6 +106,7 @@ curl "https://xmirror.app/api/archive/quick?url=https%3A%2F%2Fx.com%2Fxxx%2Fstat
 
 ```bash
 npm install
+pip3 install scrapling html2text
 node server.js
 ```
 
