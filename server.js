@@ -770,13 +770,19 @@ function requireAdmin(req, res, next) {
   return next();
 }
 
-function readRecentModerationLogs(limit = 50) {
+function readRecentModerationLogs(limit = 50, action = '') {
   try {
     if (!fs.existsSync(MODERATION_LOG_PATH)) return [];
     const lines = fs.readFileSync(MODERATION_LOG_PATH, 'utf8').split('\n').filter(Boolean);
-    return lines.slice(-limit).reverse().map((line) => {
+    let logs = lines.map((line) => {
       try { return JSON.parse(line); } catch { return null; }
     }).filter(Boolean);
+
+    if (action) {
+      logs = logs.filter(log => log.action === action);
+    }
+
+    return logs.slice(-limit).reverse();
   } catch (err) {
     console.warn('读取 moderation logs 失败:', err.message);
     return [];
@@ -976,7 +982,8 @@ app.post('/api/admin/moderation/settings', requireAdmin, (req, res) => {
 
 app.get('/api/admin/moderation/logs', requireAdmin, (req, res) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
-  return res.json({ success: true, logs: readRecentModerationLogs(limit) });
+  const action = (req.query.action || '').toString().trim();
+  return res.json({ success: true, logs: readRecentModerationLogs(limit, action) });
 });
 
 app.post('/api/delete', async (req, res) => {

@@ -6,23 +6,27 @@
   <title>XMirror Moderation Admin</title>
   <style>
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;background:#0f172a;color:#e2e8f0}
-    .wrap{max-width:980px;margin:0 auto;padding:24px}
+    .wrap{max-width:1100px;margin:0 auto;padding:24px}
     .card{background:#111827;border:1px solid #334155;border-radius:16px;padding:20px;margin-bottom:16px}
     h1,h2{margin:0 0 12px}
     .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-    input,button,select{border-radius:10px;border:1px solid #475569;padding:10px 12px;font-size:14px}
-    input{background:#0b1220;color:#fff;min-width:280px}
+    input,button,select,textarea{border-radius:10px;border:1px solid #475569;padding:10px 12px;font-size:14px}
+    input,textarea{background:#0b1220;color:#fff}
+    input{min-width:280px}
+    textarea{width:100%;min-height:90px;resize:vertical}
     button{background:#2563eb;color:#fff;cursor:pointer}
     button.secondary{background:#334155}
-    .status-on{color:#22c55e;font-weight:700}
-    .status-off{color:#f59e0b;font-weight:700}
+    button.ghost{background:#0b1220;border:1px solid #334155}
+    .status-on{color:#22c55e;font-weight:700}.status-off{color:#f59e0b;font-weight:700}
     .muted{color:#94a3b8;font-size:13px}
     table{width:100%;border-collapse:collapse;font-size:13px}
     th,td{border-top:1px solid #334155;padding:10px 8px;text-align:left;vertical-align:top}
     th{color:#cbd5e1}
-    code{background:#0b1220;padding:2px 6px;border-radius:6px}
+    code{background:#0b1220;padding:2px 6px;border-radius:6px;word-break:break-all}
     .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#1e293b;margin-right:6px;margin-bottom:4px}
     .ok{color:#22c55e}.reject{color:#f87171}
+    .url{max-width:280px;word-break:break-all}
+    .tools{display:flex;gap:8px;flex-wrap:wrap}
   </style>
 </head>
 <body>
@@ -32,9 +36,12 @@
       <div class="row">
         <input id="token" type="password" placeholder="输入 MODERATION_ADMIN_TOKEN" />
         <button onclick="saveTokenAndReload()">连接后台</button>
+        <button class="ghost" onclick="toggleTokenVisibility()">显示 / 隐藏 token</button>
+        <button class="ghost" onclick="copyToken()">复制 token</button>
+        <button class="secondary" onclick="clearToken()">清空</button>
         <button class="secondary" onclick="refreshAll()">刷新</button>
       </div>
-      <p class="muted">这是 xmirror 的简易审核后台。当前支持：开关新增审核、查看最近审核日志。</p>
+      <p class="muted">这是 xmirror 的简易审核后台。当前支持：开关新增审核、查看最近审核日志、按 reject 过滤命中记录。</p>
       <div id="flash" class="muted"></div>
     </div>
 
@@ -51,11 +58,18 @@
     <div class="card">
       <div class="row" style="justify-content:space-between">
         <h2>最近审核日志</h2>
-        <select id="limit" onchange="loadLogs()">
-          <option value="20">20</option>
-          <option value="50" selected>50</option>
-          <option value="100">100</option>
-        </select>
+        <div class="tools">
+          <select id="actionFilter" onchange="loadLogs()">
+            <option value="">全部</option>
+            <option value="reject">只看 reject</option>
+            <option value="allow">只看 allow</option>
+          </select>
+          <select id="limit" onchange="loadLogs()">
+            <option value="20">20</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
       </div>
       <table>
         <thead>
@@ -64,15 +78,24 @@
         <tbody id="logsBody"></tbody>
       </table>
     </div>
+
+    <div class="card">
+      <h2>选中日志详情</h2>
+      <textarea id="detailBox" readonly placeholder="点上面的某一行，这里会显示完整 URL、分数、命中规则和原始记录。"></textarea>
+    </div>
   </div>
   <script>
     const tokenInput = document.getElementById('token');
     tokenInput.value = localStorage.getItem('xmirror_admin_token') || '';
+    let currentLogs = [];
 
     function getToken(){ return tokenInput.value.trim(); }
     function setFlash(msg, isError=false){ const el=document.getElementById('flash'); el.textContent=msg||''; el.style.color=isError?'#fca5a5':'#94a3b8'; }
     function authHeaders(){ return { 'Content-Type':'application/json', 'x-admin-token': getToken() }; }
     function saveTokenAndReload(){ localStorage.setItem('xmirror_admin_token', getToken()); refreshAll(); }
+    function clearToken(){ tokenInput.value=''; localStorage.removeItem('xmirror_admin_token'); setFlash('已清空本地 token'); }
+    function toggleTokenVisibility(){ tokenInput.type = tokenInput.type === 'password' ? 'text' : 'password'; }
+    async function copyToken(){ try { await navigator.clipboard.writeText(getToken()); setFlash('token 已复制'); } catch(e){ setFlash('复制失败：' + e.message, true); } }
     async function api(url, options={}){
       const res = await fetch(url, { ...options, headers: { ...(options.headers||{}), ...authHeaders() } });
       const data = await res.json().catch(()=>({ error:'响应解析失败' }));
@@ -97,21 +120,31 @@
       if(!matched.length) return '<span class="muted">-</span>';
       return matched.map(item => `<span class="pill">${item.type}: ${item.value || item.label || ''}${item.score?` (+${item.score})`:''}</span>`).join('');
     }
+    function showDetails(index){
+      const log = currentLogs[index];
+      if(!log) return;
+      document.getElementById('detailBox').value = JSON.stringify(log, null, 2);
+    }
     async function loadLogs(){
       try {
         const limit = document.getElementById('limit').value;
-        const data = await api('/api/admin/moderation/logs?limit=' + encodeURIComponent(limit));
-        const rows = (data.logs || []).map(log => `
-          <tr>
+        const action = document.getElementById('actionFilter').value;
+        const qs = new URLSearchParams({ limit });
+        if (action) qs.set('action', action);
+        const data = await api('/api/admin/moderation/logs?' + qs.toString());
+        currentLogs = data.logs || [];
+        const rows = currentLogs.map((log, index) => `
+          <tr onclick="showDetails(${index})" style="cursor:pointer">
             <td>${log.ts || '-'}</td>
             <td class="${log.action === 'reject' ? 'reject' : 'ok'}">${log.action || '-'}</td>
             <td>${log.stage || '-'}</td>
             <td><code>${log.authorHandle || log.handle || '-'}</code></td>
-            <td style="word-break:break-all">${log.url || '-'}</td>
+            <td class="url">${log.url || '-'}</td>
             <td>${renderMatched(log.matched || [])}</td>
           </tr>
         `).join('');
         document.getElementById('logsBody').innerHTML = rows || '<tr><td colspan="6" class="muted">暂无日志</td></tr>';
+        document.getElementById('detailBox').value = currentLogs.length ? JSON.stringify(currentLogs[0], null, 2) : '';
       } catch (e) { setFlash(e.message, true); }
     }
     async function refreshAll(){
