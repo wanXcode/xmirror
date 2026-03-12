@@ -6,6 +6,7 @@ const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const https = require('https');
 const crypto = require('crypto');
+const { createModerator, ModerationRejectError } = require('./lib/moderation');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,6 +22,10 @@ const ROOT_DIR = __dirname;
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT_DIR, 'data');
 const ARCHIVES_DIR = process.env.ARCHIVES_DIR || path.join(ROOT_DIR, 'archives');
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
+const moderator = createModerator({
+  rulesPath: path.join(ROOT_DIR, 'config', 'moderation-rules.json'),
+  logPath: path.join(DATA_DIR, 'moderation.log.jsonl')
+});
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
@@ -720,7 +725,31 @@ app.get('/api/translate/:id', async (req, res) => {
   }
 });
 
+function safeUnlink(filePath) {
+  if (!filePath) return;
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch (err) {
+    console.warn('清理文件失败:', filePath, err.message);
+  }
+}
+
+function cleanupFetchedAssets(content = {}) {
+  const imagePaths = Array.isArray(content.images) ? content.images : [];
+  for (const imagePath of imagePaths) {
+    if (typeof imagePath === 'string' && imagePath.startsWith('/images/')) {
+      safeUnlink(path.join(DATA_DIR, imagePath.replace(/^\//, '')));
+    }
+  }
+
+  if (typeof content.video === 'string' && content.video.startsWith('/videos/')) {
+    safeUnlink(path.join(DATA_DIR, content.video.replace(/^\//, '')));
+  }
+}
+
 async function archiveXUrl(url) {
+  moderator.precheckUrl(url);
+
   const existing = await new Promise((r, j) => db.get('SELECT * FROM posts WHERE url=?', [url], (e, row) => e ? j(e) : r(row)));
   if (existing) {
     if (!existing.short_code) {
@@ -736,6 +765,20 @@ async function archiveXUrl(url) {
   const content = await fetchXPost(url);
   if (!content.content && content.images.length === 0 && !content.video) {
     throw new Error('未能获取推文内容');
+  }
+
+  try {
+    moderator.moderateArchivedContent({
+      url,
+      authorHandle: content.author_handle,
+      authorName: content.author,
+      content: content.content
+    });
+  } catch (err) {
+    if (err instanceof ModerationRejectError) {
+      cleanupFetchedAssets(content);
+    }
+    throw err;
   }
 
   let title = '';
@@ -800,7 +843,8 @@ app.post('/api/archive', async (req, res) => {
     const payload = await archiveXUrl(url);
     return res.json(payload);
   } catch (e) {
-    return res.status(500).json({ error: e.message || '抓取失败' });
+    const status = e instanceof ModerationRejectError ? 400 : 500;
+    return res.status(status).json({ error: e.message || '抓取失败' });
   }
 });
 
@@ -826,7 +870,8 @@ app.get('/api/archive/quick', async (req, res) => {
 
     return res.redirect(302, absoluteUrl);
   } catch (e) {
-    return res.status(500).json({ success: false, error: e.message || '抓取失败' });
+    const status = e instanceof ModerationRejectError ? 400 : 500;
+    return res.status(status).json({ success: false, error: e.message || '抓取失败' });
   }
 });
 
