@@ -15,6 +15,7 @@ const TRANSLATE_PROVIDER = process.env.TRANSLATE_PROVIDER || 'siliconflow';
 const SILICONFLOW_BASE_URL = (process.env.SILICONFLOW_BASE_URL || 'https://api.siliconflow.cn/v1').replace(/\/$/, '');
 const SILICONFLOW_MODEL = process.env.SILICONFLOW_MODEL || 'Qwen/Qwen2-7B-Instruct';
 const SILICONFLOW_API_KEY = process.env.SILICONFLOW_API_KEY || process.env.OPENAI_API_KEY || '';
+const MODERATION_ADMIN_TOKEN = process.env.MODERATION_ADMIN_TOKEN || '';
 
 app.use(express.json());
 
@@ -26,6 +27,8 @@ const moderator = createModerator({
   rulesPath: path.join(ROOT_DIR, 'config', 'moderation-rules.json'),
   logPath: path.join(DATA_DIR, 'moderation.log.jsonl')
 });
+const MODERATION_SETTINGS_PATH = path.join(DATA_DIR, 'moderation-settings.json');
+const MODERATION_LOG_PATH = path.join(DATA_DIR, 'moderation.log.jsonl');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
@@ -725,6 +728,61 @@ app.get('/api/translate/:id', async (req, res) => {
   }
 });
 
+function getModerationSettings() {
+  try {
+    if (!fs.existsSync(MODERATION_SETTINGS_PATH)) {
+      const defaults = { enabled: true, updated_at: new Date().toISOString() };
+      fs.writeFileSync(MODERATION_SETTINGS_PATH, JSON.stringify(defaults, null, 2), 'utf8');
+      return defaults;
+    }
+
+    const raw = fs.readFileSync(MODERATION_SETTINGS_PATH, 'utf8');
+    const parsed = JSON.parse(raw || '{}');
+    return {
+      enabled: parsed.enabled !== false,
+      updated_at: parsed.updated_at || new Date().toISOString()
+    };
+  } catch (err) {
+    console.warn('读取 moderation settings 失败:', err.message);
+    return { enabled: true, updated_at: new Date().toISOString() };
+  }
+}
+
+function setModerationSettings(nextSettings = {}) {
+  const payload = {
+    enabled: nextSettings.enabled !== false,
+    updated_at: new Date().toISOString()
+  };
+  fs.writeFileSync(MODERATION_SETTINGS_PATH, JSON.stringify(payload, null, 2), 'utf8');
+  return payload;
+}
+
+function requireAdmin(req, res, next) {
+  if (!MODERATION_ADMIN_TOKEN) {
+    return res.status(503).json({ error: '后台未配置 MODERATION_ADMIN_TOKEN' });
+  }
+
+  const token = req.get('x-admin-token') || req.query.token || req.body?.token;
+  if (token !== MODERATION_ADMIN_TOKEN) {
+    return res.status(403).json({ error: '无权限访问后台' });
+  }
+
+  return next();
+}
+
+function readRecentModerationLogs(limit = 50) {
+  try {
+    if (!fs.existsSync(MODERATION_LOG_PATH)) return [];
+    const lines = fs.readFileSync(MODERATION_LOG_PATH, 'utf8').split('\n').filter(Boolean);
+    return lines.slice(-limit).reverse().map((line) => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter(Boolean);
+  } catch (err) {
+    console.warn('读取 moderation logs 失败:', err.message);
+    return [];
+  }
+}
+
 function safeUnlink(filePath) {
   if (!filePath) return;
   try {
@@ -748,7 +806,10 @@ function cleanupFetchedAssets(content = {}) {
 }
 
 async function archiveXUrl(url) {
-  moderator.precheckUrl(url);
+  const moderationSettings = getModerationSettings();
+  if (moderationSettings.enabled) {
+    moderator.precheckUrl(url);
+  }
 
   const existing = await new Promise((r, j) => db.get('SELECT * FROM posts WHERE url=?', [url], (e, row) => e ? j(e) : r(row)));
   if (existing) {
@@ -767,18 +828,20 @@ async function archiveXUrl(url) {
     throw new Error('未能获取推文内容');
   }
 
-  try {
-    moderator.moderateArchivedContent({
-      url,
-      authorHandle: content.author_handle,
-      authorName: content.author,
-      content: content.content
-    });
-  } catch (err) {
-    if (err instanceof ModerationRejectError) {
-      cleanupFetchedAssets(content);
+  if (moderationSettings.enabled) {
+    try {
+      moderator.moderateArchivedContent({
+        url,
+        authorHandle: content.author_handle,
+        authorName: content.author,
+        content: content.content
+      });
+    } catch (err) {
+      if (err instanceof ModerationRejectError) {
+        cleanupFetchedAssets(content);
+      }
+      throw err;
     }
-    throw err;
   }
 
   let title = '';
@@ -899,6 +962,21 @@ app.get('/api/posts', (req, res) => {
       });
     }
   );
+});
+
+app.get('/api/admin/moderation/settings', requireAdmin, (req, res) => {
+  return res.json({ success: true, settings: getModerationSettings() });
+});
+
+app.post('/api/admin/moderation/settings', requireAdmin, (req, res) => {
+  const enabled = req.body?.enabled !== false;
+  const settings = setModerationSettings({ enabled });
+  return res.json({ success: true, settings });
+});
+
+app.get('/api/admin/moderation/logs', requireAdmin, (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+  return res.json({ success: true, logs: readRecentModerationLogs(limit) });
 });
 
 app.post('/api/delete', async (req, res) => {
