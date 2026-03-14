@@ -375,6 +375,16 @@ async function fetchXPost(url) {
   if (!tweetId) throw new Error('无法提取推文ID');
 
   const tweet = await fetchFromFxTwitter(tweetId);
+
+  // X 平台官方成人内容标记检测
+  if (tweet.possibly_sensitive === true) {
+    throw new ModerationRejectError("该推文被 X 平台标记为成人内容，无法存档", {
+      stage: "x_platform_flag",
+      url,
+      tweetId,
+      possibly_sensitive: true
+    });
+  }
   const author = tweet.author || {};
   const media = tweet.media || {};
 
