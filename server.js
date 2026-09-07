@@ -7,6 +7,7 @@ const fs = require('fs');
 const https = require('https');
 const crypto = require('crypto');
 const { createModerator, ModerationRejectError } = require('./lib/moderation');
+const { isBrokenArticleArchive, normalizeXTimestamp, renderTweetContent } = require('./lib/x-post');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -439,90 +440,7 @@ async function fetchXPost(url) {
     }
   }
 
-  let htmlContent = '';
-  let title = '';
-
-  const allMediaEntities = [
-    ...(tweet.article?.media_entities || []),
-    ...(tweet.media_entities || [])
-  ];
-
-  if (tweet.text) {
-    htmlContent = escapeHtml(tweet.text).replace(/\n/g, '<br>');
-
-    if (localImages.length > 0) {
-      htmlContent += '<br><br>';
-      for (const imgPath of localImages) {
-        htmlContent += `<img src="${imgPath}" style="max-width:100%;margin:10px 0;border-radius:8px;">`;
-      }
-    }
-  } else if (tweet.article) {
-    title = tweet.article.title || '';
-
-    if (tweet.article.content?.blocks) {
-      const blocks = tweet.article.content.blocks;
-      const entityMapArray = tweet.article.content.entityMap || [];
-      const entityMap = {};
-      for (const item of entityMapArray) {
-        if (item.key !== undefined && item.value !== undefined) {
-          entityMap[item.key] = item.value;
-        }
-      }
-
-      for (const block of blocks) {
-        if (block.text) {
-          const text = escapeHtml(block.text).replace(/\n/g, '<br>');
-          if (block.type === 'header-two') {
-            htmlContent += `<h2>${text}</h2>`;
-          } else if (block.type === 'ordered-list-item') {
-            htmlContent += `<p>1. ${text}</p>`;
-          } else if (block.type === 'unordered-list-item') {
-            htmlContent += `<p>• ${text}</p>`;
-          } else {
-            htmlContent += `<p>${text}</p>`;
-          }
-        }
-
-        if (block.type === 'atomic' && block.entityRanges) {
-          for (const range of block.entityRanges) {
-            const entity = entityMap[range.key];
-            if (entity?.type === 'MEDIA' && entity.data?.mediaItems) {
-              for (const item of entity.data.mediaItems) {
-                if (item.mediaId) {
-                  const mediaEntity = allMediaEntities.find(m => m.media_id === item.mediaId || m.id?.includes(item.mediaId));
-                  if (mediaEntity?.media_info?.original_img_url) {
-                    const originalUrl = mediaEntity.media_info.original_img_url;
-                    const localPath = urlToLocalPath.get(originalUrl) || originalUrl;
-                    htmlContent += `<img src="${localPath}" style="max-width:100%;margin:10px 0;border-radius:8px;">`;
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    let imgIndex = 0;
-    htmlContent = htmlContent.replace(/XIMGPH_\d+/g, () => {
-      const mediaEntity = allMediaEntities[imgIndex];
-      imgIndex++;
-      if (mediaEntity?.media_info?.original_img_url) {
-        const originalUrl = mediaEntity.media_info.original_img_url;
-        const localPath = urlToLocalPath.get(originalUrl) || originalUrl;
-        return `<img src="${localPath}" style="max-width:100%;margin:10px 0;border-radius:8px;">`;
-      }
-      return '';
-    });
-
-    if (!htmlContent && tweet.article.preview_text) {
-      htmlContent = escapeHtml(tweet.article.preview_text).replace(/\n/g, '<br>');
-    }
-  }
-
-  if (title) {
-    htmlContent = `<h1>【${escapeHtml(title)}】</h1>` + htmlContent;
-  }
+  const { htmlContent } = renderTweetContent({ tweet, localImages, urlToLocalPath, escapeHtml });
 
   return {
     author: author.name || '未知用户',
@@ -531,7 +449,7 @@ async function fetchXPost(url) {
     content: htmlContent,
     images: localImages,
     video: localVideoPath,
-    tweet_time: tweet.created_timestamp
+    tweet_time: normalizeXTimestamp(tweet.created_timestamp)
   };
 }
 
@@ -552,7 +470,7 @@ function generateMirrorHtml(post) {
   const canonicalPath = post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`;
   const canonicalUrl = `https://xmirror.app${canonicalPath}`;
   const refererPath = post.short_code ? `/${post.short_code}/referer` : post.url;
-  const createdAt = post.tweet_time || post.created_at || new Date().toISOString();
+  const createdAt = normalizeXTimestamp(post.tweet_time, post.created_at || new Date().toISOString());
   const sourceLang = detectContentLanguage(content);
 
   const html = `<!DOCTYPE html>
@@ -829,6 +747,25 @@ async function archiveXUrl(url) {
 
   const existing = await new Promise((r, j) => db.get('SELECT * FROM posts WHERE url=?', [url], (e, row) => e ? j(e) : r(row)));
   if (existing) {
+    // Repair archives created by the old X Article precedence bug while keeping
+    // their original id, file name, and short code.
+    if (isBrokenArticleArchive(existing.content)) {
+      const refreshed = await fetchXPost(url);
+      if (moderationSettings.enabled) {
+        moderator.moderateArchivedContent({
+          url,
+          authorHandle: refreshed.author_handle,
+          authorName: refreshed.author,
+          content: refreshed.content
+        });
+      }
+      await runDbWrite(
+        'UPDATE posts SET author=?,author_handle=?,author_avatar=?,content=?,images=?,video=?,tweet_time=? WHERE id=?',
+        [refreshed.author, refreshed.author_handle, refreshed.author_avatar, refreshed.content,
+          JSON.stringify(refreshed.images), refreshed.video, refreshed.tweet_time, existing.id]
+      );
+      Object.assign(existing, refreshed, { images: JSON.stringify(refreshed.images) });
+    }
     if (!existing.short_code) {
       existing.short_code = await generateUniqueShortCode();
       await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing.short_code, existing.id]);
