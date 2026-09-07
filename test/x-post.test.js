@@ -1,6 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { isBrokenArticleArchive, normalizeXTimestamp, renderTweetContent } = require('../lib/x-post');
+const {
+  canonicalizeXPostUrl,
+  extractXPostId,
+  isBrokenArticleArchive,
+  normalizeXTimestamp,
+  renderTweetContent
+} = require('../lib/x-post');
 
 const escapeHtml = text => String(text)
   .replace(/&/g, '&amp;')
@@ -51,4 +57,33 @@ test('broken article-only archives are detected for one-time refresh', () => {
   const broken = 'https://x.com/i/article/2095431394029707267<br><br><img src="/images/a.jpg">';
   assert.equal(isBrokenArticleArchive(broken), true);
   assert.equal(isBrokenArticleArchive('<p>正常正文</p><img src="/images/a.jpg">'), false);
+});
+
+test('x.com and twitter.com variants share one canonical post URL', () => {
+  const variants = [
+    'https://x.com/example/status/123456789?s=20',
+    'https://twitter.com/example/status/123456789',
+    'https://www.twitter.com/example/status/123456789/photo/1',
+    'https://mobile.x.com/example/status/123456789#content'
+  ];
+
+  assert.deepEqual(
+    variants.map(canonicalizeXPostUrl),
+    variants.map(() => 'https://x.com/i/status/123456789')
+  );
+});
+
+test('X Article URLs expose the same post identity', () => {
+  assert.equal(extractXPostId('https://x.com/example/article/2095447620210868382'), '2095447620210868382');
+  assert.equal(
+    canonicalizeXPostUrl('https://x.com/example/article/2095447620210868382'),
+    'https://x.com/i/status/2095447620210868382'
+  );
+});
+
+test('non-X hosts are rejected even when their path looks like a tweet', () => {
+  assert.throws(
+    () => canonicalizeXPostUrl('https://example.com/user/status/123456789'),
+    /无效的X链接/
+  );
 });

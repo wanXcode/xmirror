@@ -7,7 +7,13 @@ const fs = require('fs');
 const https = require('https');
 const crypto = require('crypto');
 const { createModerator, ModerationRejectError } = require('./lib/moderation');
-const { isBrokenArticleArchive, normalizeXTimestamp, renderTweetContent } = require('./lib/x-post');
+const {
+  canonicalizeXPostUrl,
+  extractXPostId,
+  isBrokenArticleArchive,
+  normalizeXTimestamp,
+  renderTweetContent
+} = require('./lib/x-post');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -139,8 +145,7 @@ db.serialize(() => {
 });
 
 function extractTweetId(url) {
-  const match = url.match(/status\/(\d+)/);
-  return match ? match[1] : null;
+  return extractXPostId(url);
 }
 
 async function fetchFromFxTwitter(tweetId) {
@@ -740,20 +745,31 @@ function cleanupFetchedAssets(content = {}) {
 }
 
 async function archiveXUrl(url) {
+  const canonicalUrl = canonicalizeXPostUrl(url);
+  const tweetId = extractTweetId(canonicalUrl);
   const moderationSettings = getModerationSettings();
   if (moderationSettings.enabled) {
-    moderator.precheckUrl(url);
+    moderator.precheckUrl(canonicalUrl);
   }
 
-  const existing = await new Promise((r, j) => db.get('SELECT * FROM posts WHERE url=?', [url], (e, row) => e ? j(e) : r(row)));
+  const existing = await new Promise((resolve, reject) => {
+    db.all(
+      'SELECT * FROM posts WHERE url=? OR url LIKE ? OR url LIKE ? ORDER BY id ASC',
+      [canonicalUrl, `%/status/${tweetId}%`, `%/article/${tweetId}%`],
+      (err, rows) => {
+        if (err) return reject(err);
+        resolve((rows || []).find(row => extractTweetId(row.url) === tweetId));
+      }
+    );
+  });
   if (existing) {
     // Repair archives created by the old X Article precedence bug while keeping
     // their original id, file name, and short code.
     if (isBrokenArticleArchive(existing.content)) {
-      const refreshed = await fetchXPost(url);
+      const refreshed = await fetchXPost(canonicalUrl);
       if (moderationSettings.enabled) {
         moderator.moderateArchivedContent({
-          url,
+          url: canonicalUrl,
           authorHandle: refreshed.author_handle,
           authorName: refreshed.author,
           content: refreshed.content
@@ -776,7 +792,7 @@ async function archiveXUrl(url) {
     return { success: true, id: existing.id, url: `/${existing.short_code}`, short_code: existing.short_code, message: '已存在', cached: true };
   }
 
-  const content = await fetchXPost(url);
+  const content = await fetchXPost(canonicalUrl);
   if (!content.content && content.images.length === 0 && !content.video) {
     throw new Error('未能获取推文内容');
   }
@@ -784,7 +800,7 @@ async function archiveXUrl(url) {
   if (moderationSettings.enabled) {
     try {
       moderator.moderateArchivedContent({
-        url,
+        url: canonicalUrl,
         authorHandle: content.author_handle,
         authorName: content.author,
         content: content.content
@@ -814,11 +830,11 @@ async function archiveXUrl(url) {
   try {
     stmt = await runDbWrite(
       'INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file,short_code)VALUES(?,?,?,?,?,?,?,?,?,?)',
-      [url, content.author, content.author_handle, content.author_avatar, content.content, JSON.stringify(content.images), content.video, content.tweet_time, htmlFile, shortCode]
+      [canonicalUrl, content.author, content.author_handle, content.author_avatar, content.content, JSON.stringify(content.images), content.video, content.tweet_time, htmlFile, shortCode]
     );
   } catch (insertErr) {
     if (String(insertErr.message || '').includes('UNIQUE constraint failed: posts.url')) {
-      const existing2 = await new Promise((r, j) => db.get('SELECT * FROM posts WHERE url=?', [url], (e, row) => e ? j(e) : r(row)));
+      const existing2 = await new Promise((r, j) => db.get('SELECT * FROM posts WHERE url=?', [canonicalUrl], (e, row) => e ? j(e) : r(row)));
       if (existing2) {
         if (!existing2.short_code) {
           existing2.short_code = await generateUniqueShortCode();
@@ -834,7 +850,7 @@ async function archiveXUrl(url) {
   }
 
   const result = stmt.lastID;
-  const htmlContent = generateMirrorHtml({ id: result, url, ...content, html_file: htmlFile, short_code: shortCode });
+  const htmlContent = generateMirrorHtml({ id: result, url: canonicalUrl, ...content, html_file: htmlFile, short_code: shortCode });
   fs.writeFileSync(path.join(ARCHIVES_DIR, htmlFile), htmlContent, 'utf8');
 
   return {
