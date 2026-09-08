@@ -14,7 +14,12 @@ X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 
 ## 版本
 
-**当前版本：v1.5.1**
+**当前版本：v1.5.2**
+
+### v1.5.2 更新内容
+- 🛡️ 修复“操作 + 购买”触发内容审核的误判，同时保留明确成人语境拦截
+- 🧭 新增历史重复存档合并与短码别名，旧链接在合并后继续有效
+- 🚀 生产部署改为 `releases/current/shared` 分离布局，支持数据库快照、原子切换和失败回滚
 
 ### v1.5.1 更新内容
 - 📝 修复 X Article 被错误存档为内部链接和图片列表的问题
@@ -96,6 +101,8 @@ curl "https://xmirror.app/api/archive/quick?url=https%3A%2F%2Fx.com%2Fxxx%2Fstat
 6. 可选：显示通知（“已生成并复制 xmirror 链接”）
 
 ## 部署
+
+生产环境应将代码 release 与数据库、媒体、存档和 `.env` 分离。VPS 的推荐目录结构、安全发布、回滚步骤见 [`ops/DEPLOYMENT.md`](ops/DEPLOYMENT.md)，不要用 `git pull` 或 `rsync --delete` 直接覆盖运行目录。
 
 ### 方式一：直接启动
 

@@ -78,7 +78,12 @@ async function generateUniqueShortCode(maxRetries = 20) {
   for (let i = 0; i < maxRetries; i++) {
     const code = randomShortCode(6);
     const exists = await new Promise((resolve, reject) => {
-      db.get('SELECT id FROM posts WHERE short_code=?', [code], (err, row) => err ? reject(err) : resolve(!!row));
+      db.get(
+        `SELECT 1 FROM posts WHERE short_code=?
+         UNION ALL SELECT 1 FROM post_aliases WHERE alias_code=? LIMIT 1`,
+        [code, code],
+        (err, row) => err ? reject(err) : resolve(!!row)
+      );
     });
     if (!exists) return code;
   }
@@ -142,6 +147,15 @@ db.serialize(() => {
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_translations_post_lang_hash
     ON translations(post_id, target_lang, source_hash)`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS post_aliases (
+    alias_code TEXT PRIMARY KEY,
+    target_post_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.run(`CREATE INDEX IF NOT EXISTS idx_post_aliases_target
+    ON post_aliases(target_post_id)`);
 });
 
 function extractTweetId(url) {
@@ -973,8 +987,9 @@ app.post('/api/delete', async (req, res) => {
       if (fs.existsSync(videoFullPath)) fs.unlinkSync(videoFullPath);
     }
 
-    await runDbWrite('DELETE FROM posts WHERE id=?',[id]);
     await runDbWrite('DELETE FROM translations WHERE post_id=?',[id]);
+    await runDbWrite('DELETE FROM post_aliases WHERE target_post_id=?',[id]);
+    await runDbWrite('DELETE FROM posts WHERE id=?',[id]);
 
     res.json({success:true,message:'删除成功'});
   } catch(e) {
@@ -1007,7 +1022,14 @@ app.get(/^\/([A-Za-z0-9]{6})\/referer$/, async (req, res, next) => {
   try {
     const shortCode = req.params[0];
     const post = await new Promise((resolve, reject) => {
-      db.get('SELECT url FROM posts WHERE short_code=?', [shortCode], (err, row) => err ? reject(err) : resolve(row));
+      db.get(
+        `SELECT url FROM posts WHERE short_code=?
+         UNION ALL
+         SELECT p.url FROM post_aliases a JOIN posts p ON p.id=a.target_post_id
+         WHERE a.alias_code=? LIMIT 1`,
+        [shortCode, shortCode],
+        (err, row) => err ? reject(err) : resolve(row)
+      );
     });
 
     if (!post?.url) return next();
@@ -1023,7 +1045,14 @@ app.get(/^\/([A-Za-z0-9]{6})$/, async (req, res, next) => {
   try {
     const shortCode = req.params[0];
     const post = await new Promise((resolve, reject) => {
-      db.get('SELECT * FROM posts WHERE short_code=?', [shortCode], (err, row) => err ? reject(err) : resolve(row));
+      db.get(
+        `SELECT * FROM posts WHERE short_code=?
+         UNION ALL
+         SELECT p.* FROM post_aliases a JOIN posts p ON p.id=a.target_post_id
+         WHERE a.alias_code=? LIMIT 1`,
+        [shortCode, shortCode],
+        (err, row) => err ? reject(err) : resolve(row)
+      );
     });
 
     if (!post) return next();
