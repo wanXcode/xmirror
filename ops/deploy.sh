@@ -93,7 +93,8 @@ rollback() {
   if [[ -n "$previous_target" ]]; then
     ln -s "$previous_target" "$APP_ROOT/.current-rollback"
     mv -Tf "$APP_ROOT/.current-rollback" "$APP_ROOT/current"
-    XMIRROR_APP_ROOT="$APP_ROOT" "$PM2_BIN" startOrReload "$APP_ROOT/current/ops/ecosystem.config.cjs" --update-env || true
+    "$PM2_BIN" delete xmirror >/dev/null 2>&1 || true
+    XMIRROR_APP_ROOT="$APP_ROOT" "$PM2_BIN" start "$APP_ROOT/current/ops/ecosystem.config.cjs" --update-env || true
   else
     rm -f -- "$APP_ROOT/current"
     if [[ -n "$legacy_entrypoint" ]]; then
@@ -105,7 +106,8 @@ rollback() {
 }
 trap rollback ERR
 
-XMIRROR_APP_ROOT="$APP_ROOT" "$PM2_BIN" startOrReload "$APP_ROOT/current/ops/ecosystem.config.cjs" --update-env
+"$PM2_BIN" delete xmirror >/dev/null 2>&1 || true
+XMIRROR_APP_ROOT="$APP_ROOT" "$PM2_BIN" start "$APP_ROOT/current/ops/ecosystem.config.cjs" --update-env
 healthy=''
 for attempt in {1..10}; do
   if curl --fail --silent --show-error --max-time 5 "$HEALTH_URL" >/dev/null; then

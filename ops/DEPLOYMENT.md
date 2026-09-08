@@ -70,8 +70,9 @@ curl -fsS https://xmirror.app/ | grep -o 'Version v[0-9.]*' | head -1
 ```bash
 sudo ln -s /opt/xmirror/releases/<release> /opt/xmirror/.current-rollback
 sudo mv -Tf /opt/xmirror/.current-rollback /opt/xmirror/current
+sudo /usr/local/node/bin/pm2 delete xmirror
 sudo XMIRROR_APP_ROOT=/opt/xmirror /usr/local/node/bin/pm2 \
-  startOrReload /opt/xmirror/current/ops/ecosystem.config.cjs --update-env
+  start /opt/xmirror/current/ops/ecosystem.config.cjs --update-env
 ```
 
 代码回滚不会改变数据库。如需恢复数据库，应先停止服务，并由运维明确选择 `recovery_snapshots/` 中的副本；不要在运行中的 SQLite 上直接覆盖。
