@@ -505,6 +505,7 @@ function generateMirrorHtml(post) {
 <meta name="twitter:image" content="${ogImage}">
 <meta name="twitter:creator" content="@${escapeHtml(post.author_handle)}">
 <meta name="twitter:domain" content="xmirror.app">
+<script defer data-domain="xmirror.app" src="https://a.zhxs.me/js/script.js"></script>
 <style>
 :root{--bg-color:#ffffff;--text-primary:#0f1419;--text-secondary:#536471;--border-color:#eff3f4;--link-color:#1d9bf0;--hover-bg:rgba(15,20,25,0.1);--card-shadow:0 0 15px rgba(0,0,0,0.08)}
 [data-theme="dark"]{--bg-color:#15202b;--text-primary:#e7e9ea;--text-secondary:#8899a6;--border-color:#38444d;--link-color:#1d9bf0;--hover-bg:rgba(255,255,255,0.1);--card-shadow:0 0 15px rgba(0,0,0,0.3)}
