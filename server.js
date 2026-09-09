@@ -523,25 +523,7 @@ function generateMirrorHtml(post) {
 ${videoHtml}
 <div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div><span class="badge">🐦 XMirror</span></div>
 </div></div>
-<script>
-function getPreferredTheme(){const saved=localStorage.getItem('xmirror-theme');if(saved)return saved;const hour=new Date().getHours();return(hour>=6&&hour<18)?'light':'dark'}
-function applyTheme(theme){document.documentElement.setAttribute('data-theme',theme);localStorage.setItem('xmirror-theme',theme)}
-function toggleTheme(){const current=document.documentElement.getAttribute('data-theme');applyTheme(current==='dark'?'light':'dark')}
-function showContent(mode){const origin=document.getElementById('originContent');const translated=document.getElementById('translatedContent');const isTranslated=mode==='translated';translated.classList.toggle('active',isTranslated);origin.classList.toggle('active',!isTranslated);translated.setAttribute('aria-hidden',String(!isTranslated));origin.setAttribute('aria-hidden',String(isTranslated))}
-function detectOriginLang(){const text=(document.getElementById('originContent')?.textContent||'').trim();if(!text)return 'en';if(/[\u3040-\u30ff\u31f0-\u31ff]/.test(text))return 'ja';if(/[\uac00-\ud7af\u1100-\u11ff]/.test(text))return 'ko';const zhChars=(text.match(/[\u3400-\u9fff]/g)||[]).length;const latinChars=(text.match(/[A-Za-z]/g)||[]).length;if(!zhChars)return 'en';if(!latinChars)return 'zh';return zhChars/(zhChars+latinChars)>=.2?'zh':'en'}
-function getTranslateConfig(){const postEl=document.querySelector('.post');const sourceLangFromServer=postEl?.dataset?.sourceLang;const originLang=['zh','en','ja','ko'].includes(sourceLangFromServer)?sourceLangFromServer:detectOriginLang();const targetLang=originLang==='zh'?'en':'zh-CN';const targetLabel=targetLang==='en'?'英文':'中文';return {originLang,targetLang,targetLabel}}
-function setDefaultTranslateButtonText(){const btn=document.getElementById('translateBtn');if(!btn)return;const cfg=getTranslateConfig();btn.textContent='🌐 翻译为'+cfg.targetLabel}
-let translateStatusTimer;
-function setTranslateStatus(message,{error=false,temporary=false}={}){const status=document.getElementById('translateStatus');clearTimeout(translateStatusTimer);status.classList.remove('is-error','is-fading');status.textContent=message;if(error)status.classList.add('is-error');if(temporary&&message){translateStatusTimer=setTimeout(()=>{status.classList.add('is-fading');setTimeout(()=>{status.textContent='';status.classList.remove('is-fading')},200)},2500)}}
-function friendlyTranslateError(status){if(status===429)return '请求较多，请稍后再试';if(status===404)return '这条存档已不存在';if(status===400)return '当前内容无法翻译';if(status===502||status===503||status===504)return '翻译服务暂时不可用，请稍后重试';return '翻译失败，请稍后重试'}
-function escapeTranslatedText(value){return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}
-function renderTranslatedBlocks(data){const allowed=new Set(['p','h1','h2','h3','h4','h5','h6','li','blockquote']);const blocks=Array.isArray(data.blocks)?data.blocks:(data.parts||[]).map(text=>({type:'p',text}));return blocks.map(block=>{const type=allowed.has(block.type)?block.type:'p';return '<'+type+'>'+escapeTranslatedText(block.text)+'</'+type+'>'}).join('')}
-async function toggleTranslate(){const postEl=document.querySelector('.post');const postId=postEl?.dataset?.postId;const btn=document.getElementById('translateBtn');const status=document.getElementById('translateStatus');const translatedEl=document.getElementById('translatedContent');const cfg=getTranslateConfig();const hasTranslated=translatedEl.innerHTML.trim().length>0;const showingTranslated=translatedEl.classList.contains('active');if(!postId)return;
-if(hasTranslated){if(showingTranslated){showContent('origin');btn.textContent='🌐 查看'+cfg.targetLabel+'译文'}else{showContent('translated');btn.textContent='📝 查看原文'}setTranslateStatus('');return;}
-btn.disabled=true;btn.classList.add('is-loading');btn.setAttribute('aria-busy','true');btn.textContent='正在翻译…';setTranslateStatus('正在翻译，请稍候');const controller=new AbortController();const timeoutId=setTimeout(()=>controller.abort(),120000);try{const res=await fetch('/api/translate/'+postId+'?targetLang='+encodeURIComponent(cfg.targetLang),{signal:controller.signal,headers:{Accept:'application/json'}});let data={};try{data=await res.json()}catch{}if(!res.ok||!data.success)throw Object.assign(new Error('translate failed'),{httpStatus:res.status});const html=renderTranslatedBlocks(data);translatedEl.innerHTML=html||'<p>暂无译文</p>';showContent('translated');btn.textContent='📝 查看原文';setTranslateStatus(data.cached?'已显示缓存译文':'翻译完成',{temporary:true})}catch(e){btn.textContent='↻ 重新翻译';if(e.name==='AbortError')setTranslateStatus('请求超时，请重试',{error:true});else setTranslateStatus(friendlyTranslateError(e.httpStatus),{error:true})}finally{clearTimeout(timeoutId);btn.disabled=false;btn.classList.remove('is-loading');btn.setAttribute('aria-busy','false')}}
-applyTheme(getPreferredTheme());
-setDefaultTranslateButtonText();
-</script>
+<script src="/mirror-page.js" defer></script>
 </body>
 </html>`;
 
