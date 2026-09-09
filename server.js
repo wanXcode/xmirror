@@ -7,6 +7,16 @@ const fs = require('fs');
 const https = require('https');
 const crypto = require('crypto');
 const { createModerator, ModerationRejectError } = require('./lib/moderation');
+const { createChatCompletion } = require('./lib/siliconflow');
+const {
+  normalizeTargetLanguage,
+  detectContentLanguage,
+  extractTranslatableBlocks,
+  sourceHash: translationSourceHash,
+  translateInBatches,
+  createRateLimiter,
+  translationErrorResponse
+} = require('./lib/translation');
 const {
   canonicalizeXPostUrl,
   extractXPostId,
@@ -20,7 +30,11 @@ const PORT = process.env.PORT || 3000;
 
 const TRANSLATE_PROVIDER = process.env.TRANSLATE_PROVIDER || 'siliconflow';
 const SILICONFLOW_BASE_URL = (process.env.SILICONFLOW_BASE_URL || 'https://api.siliconflow.cn/v1').replace(/\/$/, '');
-const SILICONFLOW_MODEL = process.env.SILICONFLOW_MODEL || 'Qwen/Qwen2-7B-Instruct';
+const SILICONFLOW_MODEL = process.env.SILICONFLOW_MODEL || 'Qwen/Qwen3.5-4B';
+const SILICONFLOW_FALLBACK_MODELS = (process.env.SILICONFLOW_FALLBACK_MODELS || 'Qwen/Qwen3.5-4B')
+  .split(',')
+  .map(model => model.trim())
+  .filter(Boolean);
 const SILICONFLOW_API_KEY = process.env.SILICONFLOW_API_KEY || process.env.OPENAI_API_KEY || '';
 const MODERATION_ADMIN_TOKEN = process.env.MODERATION_ADMIN_TOKEN || '';
 
@@ -234,49 +248,11 @@ function extractSummary(content) {
   return content.replace(/<[^>]+>/g, '').substring(0, 200);
 }
 
-function detectContentLanguage(content = '') {
-  const text = String(content).replace(/<[^>]+>/g, ' ').trim();
-  if (!text) return 'en';
-  const zhChars = (text.match(/[\u4e00-\u9fff]/g) || []).length;
-  return zhChars > 0 ? 'zh' : 'en';
-}
-
-function decodeEntities(text = '') {
-  return text
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'");
-}
-
-function extractTranslatableParts(content = '') {
-  const withBreaks = content
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|h1|h2|li)>/gi, '\n')
-    .replace(/<li[^>]*>/gi, '• ')
-    .replace(/<img[^>]*>/gi, '\n')
-    .replace(/<video[^>]*>[\s\S]*?<\/video>/gi, '\n');
-
-  const plain = decodeEntities(withBreaks.replace(/<[^>]+>/g, ' '));
-  return plain
-    .split(/\n+/)
-    .map(s => s.trim())
-    .filter(Boolean)
-    .slice(0, 60);
-}
-
-function sourceHash(parts) {
-  return crypto.createHash('sha256').update(parts.join('\n')).digest('hex');
-}
-
 async function translateWithSiliconFlow(parts, targetLang) {
   if (!SILICONFLOW_API_KEY) throw new Error('未配置翻译API Key');
 
   const langName = targetLang === 'zh-CN' ? '简体中文' : (targetLang === 'en' ? 'English' : targetLang);
   const body = {
-    model: SILICONFLOW_MODEL,
     temperature: 0.1,
     response_format: { type: 'json_object' },
     messages: [
@@ -295,21 +271,13 @@ async function translateWithSiliconFlow(parts, targetLang) {
     ]
   };
 
-  const response = await fetch(`${SILICONFLOW_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${SILICONFLOW_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
+  const models = [...new Set([SILICONFLOW_MODEL, ...SILICONFLOW_FALLBACK_MODELS])];
+  const { json } = await createChatCompletion({
+    baseUrl: SILICONFLOW_BASE_URL,
+    apiKey: SILICONFLOW_API_KEY,
+    models,
+    body
   });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`翻译服务错误(${response.status}): ${errText.slice(0, 180)}`);
-  }
-
-  const json = await response.json();
   const rawContent = json?.choices?.[0]?.message?.content;
   const text = typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent || {});
 
@@ -371,13 +339,6 @@ async function translateWithSiliconFlow(parts, targetLang) {
         translations = lines;
       }
     }
-  }
-
-  if (Array.isArray(translations) && translations.length !== parts.length) {
-    translations = parts.map((src, i) => {
-      const t = translations[i];
-      return String((t == null || t === '') ? src : t).trim();
-    });
   }
 
   if (!Array.isArray(translations) || translations.length !== parts.length) {
@@ -535,7 +496,10 @@ function generateMirrorHtml(post) {
 .translate-toolbar{display:flex;gap:8px;margin:12px 0;align-items:center;flex-wrap:wrap}
 .translate-btn{padding:6px 12px;border:1px solid var(--border-color);border-radius:999px;background:var(--hover-bg);color:var(--text-primary);cursor:pointer;font-size:13px}
 .translate-btn[disabled]{opacity:.6;cursor:not-allowed}
-.translate-status{font-size:12px;color:var(--text-secondary)}
+.translate-btn.is-loading::before{content:"";display:inline-block;width:12px;height:12px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:translate-spin .7s linear infinite}
+.translate-status{font-size:12px;color:var(--text-secondary);transition:opacity .2s}.translate-status.is-error{color:#b42318}.translate-status.is-fading{opacity:0}
+@keyframes translate-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.translate-btn.is-loading::before{animation:none}.translate-status{transition:none}}
 .content-view{display:none}
 .content-view.active{display:block}
 .meta{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);color:var(--text-secondary);font-size:14px}
@@ -551,11 +515,11 @@ function generateMirrorHtml(post) {
 <img class="avatar" src="${post.author_avatar}" onerror="this.style.display='none'">
 <div class="author-info"><div class="author-name">${escapeHtml(post.author)}</div><div class="author-handle">@${escapeHtml(post.author_handle)}</div></div></div>
 <div class="translate-toolbar">
-<button id="translateBtn" class="translate-btn" onclick="toggleTranslate()">🌐 翻译为中文</button>
-<span id="translateStatus" class="translate-status"></span>
+<button id="translateBtn" class="translate-btn" type="button" onclick="toggleTranslate()" aria-controls="originContent translatedContent" aria-busy="false">🌐 翻译为中文</button>
+<span id="translateStatus" class="translate-status" role="status" aria-live="polite" aria-atomic="true"></span>
 </div>
-<div id="originContent" class="content content-view active">${content}</div>
-<div id="translatedContent" class="content content-view"></div>
+<div id="originContent" class="content content-view active" aria-hidden="false">${content}</div>
+<div id="translatedContent" class="content content-view" aria-hidden="true"></div>
 ${videoHtml}
 <div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div><span class="badge">🐦 XMirror</span></div>
 </div></div>
@@ -563,13 +527,18 @@ ${videoHtml}
 function getPreferredTheme(){const saved=localStorage.getItem('xmirror-theme');if(saved)return saved;const hour=new Date().getHours();return(hour>=6&&hour<18)?'light':'dark'}
 function applyTheme(theme){document.documentElement.setAttribute('data-theme',theme);localStorage.setItem('xmirror-theme',theme)}
 function toggleTheme(){const current=document.documentElement.getAttribute('data-theme');applyTheme(current==='dark'?'light':'dark')}
-function showContent(mode){const origin=document.getElementById('originContent');const translated=document.getElementById('translatedContent');if(mode==='translated'){translated.classList.add('active');origin.classList.remove('active')}else{origin.classList.add('active');translated.classList.remove('active')}}
-function detectOriginLang(){const text=(document.getElementById('originContent')?.textContent||'').trim();if(!text)return 'en';const zhChars=(text.match(/[\u4e00-\u9fff]/g)||[]).length;return zhChars>0?'zh':'en'}
-function getTranslateConfig(){const postEl=document.querySelector('.post');const sourceLangFromServer=postEl?.dataset?.sourceLang;const originLang=(sourceLangFromServer==='zh'||sourceLangFromServer==='en')?sourceLangFromServer:detectOriginLang();const targetLang=originLang==='zh'?'en':'zh-CN';const targetLabel=targetLang==='en'?'英文':'中文';return {originLang,targetLang,targetLabel}}
+function showContent(mode){const origin=document.getElementById('originContent');const translated=document.getElementById('translatedContent');const isTranslated=mode==='translated';translated.classList.toggle('active',isTranslated);origin.classList.toggle('active',!isTranslated);translated.setAttribute('aria-hidden',String(!isTranslated));origin.setAttribute('aria-hidden',String(isTranslated))}
+function detectOriginLang(){const text=(document.getElementById('originContent')?.textContent||'').trim();if(!text)return 'en';if(/[\u3040-\u30ff\u31f0-\u31ff]/.test(text))return 'ja';if(/[\uac00-\ud7af\u1100-\u11ff]/.test(text))return 'ko';const zhChars=(text.match(/[\u3400-\u9fff]/g)||[]).length;const latinChars=(text.match(/[A-Za-z]/g)||[]).length;if(!zhChars)return 'en';if(!latinChars)return 'zh';return zhChars/(zhChars+latinChars)>=.2?'zh':'en'}
+function getTranslateConfig(){const postEl=document.querySelector('.post');const sourceLangFromServer=postEl?.dataset?.sourceLang;const originLang=['zh','en','ja','ko'].includes(sourceLangFromServer)?sourceLangFromServer:detectOriginLang();const targetLang=originLang==='zh'?'en':'zh-CN';const targetLabel=targetLang==='en'?'英文':'中文';return {originLang,targetLang,targetLabel}}
 function setDefaultTranslateButtonText(){const btn=document.getElementById('translateBtn');if(!btn)return;const cfg=getTranslateConfig();btn.textContent='🌐 翻译为'+cfg.targetLabel}
+let translateStatusTimer;
+function setTranslateStatus(message,{error=false,temporary=false}={}){const status=document.getElementById('translateStatus');clearTimeout(translateStatusTimer);status.classList.remove('is-error','is-fading');status.textContent=message;if(error)status.classList.add('is-error');if(temporary&&message){translateStatusTimer=setTimeout(()=>{status.classList.add('is-fading');setTimeout(()=>{status.textContent='';status.classList.remove('is-fading')},200)},2500)}}
+function friendlyTranslateError(status){if(status===429)return '请求较多，请稍后再试';if(status===404)return '这条存档已不存在';if(status===400)return '当前内容无法翻译';if(status===502||status===503||status===504)return '翻译服务暂时不可用，请稍后重试';return '翻译失败，请稍后重试'}
+function escapeTranslatedText(value){return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')}
+function renderTranslatedBlocks(data){const allowed=new Set(['p','h1','h2','h3','h4','h5','h6','li','blockquote']);const blocks=Array.isArray(data.blocks)?data.blocks:(data.parts||[]).map(text=>({type:'p',text}));return blocks.map(block=>{const type=allowed.has(block.type)?block.type:'p';return '<'+type+'>'+escapeTranslatedText(block.text)+'</'+type+'>'}).join('')}
 async function toggleTranslate(){const postEl=document.querySelector('.post');const postId=postEl?.dataset?.postId;const btn=document.getElementById('translateBtn');const status=document.getElementById('translateStatus');const translatedEl=document.getElementById('translatedContent');const cfg=getTranslateConfig();const hasTranslated=translatedEl.innerHTML.trim().length>0;const showingTranslated=translatedEl.classList.contains('active');if(!postId)return;
-if(hasTranslated){if(showingTranslated){showContent('origin');btn.textContent='🌐 查看'+cfg.targetLabel+'译文';status.textContent=''}else{showContent('translated');btn.textContent='📝 查看原文';status.textContent=''}return;}
-btn.disabled=true;status.textContent='翻译中...';try{const res=await fetch('/api/translate/'+postId+'?targetLang='+encodeURIComponent(cfg.targetLang));const data=await res.json();if(!data.success)throw new Error(data.error||'翻译失败');const html=(data.parts||[]).map(p=>'<p>'+String(p).replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</p>').join('');translatedEl.innerHTML=html||'<p>暂无译文</p>';showContent('translated');btn.textContent='📝 查看原文';status.textContent=data.cached?'已显示缓存译文':'翻译完成'}catch(e){status.textContent='翻译失败：'+e.message}finally{btn.disabled=false}}
+if(hasTranslated){if(showingTranslated){showContent('origin');btn.textContent='🌐 查看'+cfg.targetLabel+'译文'}else{showContent('translated');btn.textContent='📝 查看原文'}setTranslateStatus('');return;}
+btn.disabled=true;btn.classList.add('is-loading');btn.setAttribute('aria-busy','true');btn.textContent='正在翻译…';setTranslateStatus('正在翻译，请稍候');const controller=new AbortController();const timeoutId=setTimeout(()=>controller.abort(),120000);try{const res=await fetch('/api/translate/'+postId+'?targetLang='+encodeURIComponent(cfg.targetLang),{signal:controller.signal,headers:{Accept:'application/json'}});let data={};try{data=await res.json()}catch{}if(!res.ok||!data.success)throw Object.assign(new Error('translate failed'),{httpStatus:res.status});const html=renderTranslatedBlocks(data);translatedEl.innerHTML=html||'<p>暂无译文</p>';showContent('translated');btn.textContent='📝 查看原文';setTranslateStatus(data.cached?'已显示缓存译文':'翻译完成',{temporary:true})}catch(e){btn.textContent='↻ 重新翻译';if(e.name==='AbortError')setTranslateStatus('请求超时，请重试',{error:true});else setTranslateStatus(friendlyTranslateError(e.httpStatus),{error:true})}finally{clearTimeout(timeoutId);btn.disabled=false;btn.classList.remove('is-loading');btn.setAttribute('aria-busy','false')}}
 applyTheme(getPreferredTheme());
 setDefaultTranslateButtonText();
 </script>
@@ -630,19 +599,26 @@ async function upsertTranslation({ postId, targetLang, sourceLang, sourceHashVal
   );
 }
 
-app.get('/api/translate/:id', async (req, res) => {
+const translateRateLimit = createRateLimiter({
+  windowMs: Number(process.env.TRANSLATE_RATE_WINDOW_MS) || 60000,
+  max: Number(process.env.TRANSLATE_RATE_MAX) || 10
+});
+
+app.get('/api/translate/:id', translateRateLimit, async (req, res) => {
   const postId = Number(req.params.id);
-  const targetLang = req.query.targetLang || 'zh-CN';
+  const targetLang = normalizeTargetLanguage(req.query.targetLang || 'zh-CN');
   if (!postId) return res.status(400).json({ success: false, error: '无效 postId' });
+  if (!targetLang) return res.status(400).json({ success: false, error: '不支持的目标语言' });
 
   try {
     const post = await getPostById(postId);
     if (!post) return res.status(404).json({ success: false, error: '存档不存在' });
 
-    const parts = extractTranslatableParts(post.content || '');
+    const blocks = extractTranslatableBlocks(post.content || '');
+    const parts = blocks.map(block => block.text);
     if (!parts.length) return res.status(400).json({ success: false, error: '无可翻译内容' });
 
-    const hash = sourceHash(parts);
+    const hash = translationSourceHash(parts);
     const cached = await new Promise((resolve, reject) => {
       db.get(
         'SELECT * FROM translations WHERE post_id=? AND target_lang=? AND source_hash=?',
@@ -657,11 +633,12 @@ app.get('/api/translate/:id', async (req, res) => {
         translated = JSON.parse(cached.translated_json || '{}').parts || [];
       } catch {}
       if (translated.length === parts.length) {
-        return res.json({ success: true, cached: true, sourceLang: cached.source_lang || 'auto', targetLang, parts: translated });
+        return res.json({ success: true, cached: true, sourceLang: cached.source_lang || 'auto', targetLang, parts: translated,
+          blocks: blocks.map((block, index) => ({ type: block.type, text: translated[index] })) });
       }
     }
 
-    const result = await translateWithSiliconFlow(parts, targetLang);
+    const result = await translateInBatches(parts, batch => translateWithSiliconFlow(batch, targetLang));
     await upsertTranslation({
       postId,
       targetLang,
@@ -670,9 +647,12 @@ app.get('/api/translate/:id', async (req, res) => {
       translations: result.translations
     });
 
-    res.json({ success: true, cached: false, sourceLang: result.sourceLang, targetLang, parts: result.translations });
+    res.json({ success: true, cached: false, sourceLang: result.sourceLang, targetLang, parts: result.translations,
+      blocks: blocks.map((block, index) => ({ type: block.type, text: result.translations[index] })) });
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message || '翻译失败' });
+    console.error('Translation failed:', e);
+    const response = translationErrorResponse(e);
+    res.status(response.status).json({ success: false, error: response.message });
   }
 });
 
