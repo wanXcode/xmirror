@@ -30,8 +30,8 @@ const PORT = process.env.PORT || 3000;
 
 const TRANSLATE_PROVIDER = process.env.TRANSLATE_PROVIDER || 'siliconflow';
 const SILICONFLOW_BASE_URL = (process.env.SILICONFLOW_BASE_URL || 'https://api.siliconflow.cn/v1').replace(/\/$/, '');
-const SILICONFLOW_MODEL = process.env.SILICONFLOW_MODEL || 'Qwen/Qwen3.5-4B';
-const SILICONFLOW_FALLBACK_MODELS = (process.env.SILICONFLOW_FALLBACK_MODELS || 'Qwen/Qwen3.5-4B')
+const SILICONFLOW_MODEL = process.env.SILICONFLOW_MODEL || 'tencent/Hunyuan-MT-7B';
+const SILICONFLOW_FALLBACK_MODELS = (process.env.SILICONFLOW_FALLBACK_MODELS || 'Qwen/Qwen2.5-7B-Instruct,THUDM/GLM-4-9B-0414')
   .split(',')
   .map(model => model.trim())
   .filter(Boolean);
