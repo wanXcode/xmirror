@@ -10,6 +10,7 @@ const { createModerator, ModerationRejectError } = require('./lib/moderation');
 const { createChatCompletion } = require('./lib/siliconflow');
 const {
   normalizeTargetLanguage,
+  TranslationFormatError,
   detectContentLanguage,
   extractTranslatableBlocks,
   sourceHash: translationSourceHash,
@@ -342,7 +343,7 @@ async function translateWithSiliconFlow(parts, targetLang) {
   }
 
   if (!Array.isArray(translations) || translations.length !== parts.length) {
-    throw new Error('翻译结果格式异常');
+    throw new TranslationFormatError();
   }
 
   return {

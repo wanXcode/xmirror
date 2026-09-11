@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   normalizeTargetLanguage,
+  TranslationFormatError,
   detectContentLanguage,
   extractTranslatableBlocks,
   translateInBatches,
@@ -51,9 +52,35 @@ test('translates every part in ordered batches', async () => {
 
 test('rejects an incomplete batch instead of caching untranslated fallbacks', async () => {
   await assert.rejects(
-    translateInBatches(['one', 'two'], async () => ({ sourceLang: 'en', translations: ['一'] })),
+    translateInBatches(['one'], async () => ({ sourceLang: 'en', translations: [] })),
     /翻译结果格式异常/
   );
+});
+
+test('recursively splits a batch when the model merges translation items', async () => {
+  const parts = Array.from({ length: 17 }, (_, index) => `part-${index}`);
+  const attemptedSizes = [];
+  const result = await translateInBatches(parts, async batch => {
+    attemptedSizes.push(batch.length);
+    if (batch.length === 17) throw new TranslationFormatError();
+    return { sourceLang: 'zh', translations: batch.map(value => `translated:${value}`) };
+  });
+
+  assert.deepEqual(attemptedSizes, [17, 9, 8]);
+  assert.equal(result.translations.length, 17);
+  assert.equal(result.translations[16], 'translated:part-16');
+});
+
+test('does not retry a non-format provider failure', async () => {
+  let attempts = 0;
+  await assert.rejects(
+    translateInBatches(['one', 'two'], async () => {
+      attempts += 1;
+      throw new Error('provider unavailable');
+    }),
+    /provider unavailable/
+  );
+  assert.equal(attempts, 1);
 });
 
 test('rate limiter returns 429 after the configured allowance', () => {
