@@ -25,9 +25,11 @@ const {
   normalizeXTimestamp,
   renderTweetContent
 } = require('./lib/x-post');
+const { normalizePublicBaseUrl, buildPublicUrl } = require('./lib/public-url');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const PUBLIC_BASE_URL = normalizePublicBaseUrl(process.env.PUBLIC_BASE_URL);
 
 const TRANSLATE_PROVIDER = process.env.TRANSLATE_PROVIDER || 'siliconflow';
 const SILICONFLOW_BASE_URL = (process.env.SILICONFLOW_BASE_URL || 'https://api.siliconflow.cn/v1').replace(/\/$/, '');
@@ -868,7 +870,7 @@ app.get('/api/archive/quick', async (req, res) => {
 
   try {
     const payload = await archiveXUrl(rawUrl);
-    const absoluteUrl = `${req.protocol}://${req.get('host')}${payload.url}`;
+    const absoluteUrl = buildPublicUrl(payload.url, PUBLIC_BASE_URL);
 
     if (format === 'json') {
       return res.json({ ...payload, absolute_url: absoluteUrl });

@@ -84,6 +84,10 @@ X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 - `format=json`：返回 JSON（包含 `absolute_url`）
 - `format=text`：直接返回纯文本短链，适合快捷指令复制到剪贴板
 
+公开短链默认使用 `https://xmirror.app`。其他部署域名可通过
+`PUBLIC_BASE_URL=https://example.com` 覆盖，避免反向代理的内部 HTTP
+协议泄漏到快捷指令返回值中。
+
 示例：
 
 ```bash
