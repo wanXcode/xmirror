@@ -26,6 +26,7 @@ const {
   renderTweetContent
 } = require('./lib/x-post');
 const { normalizePublicBaseUrl, buildPublicUrl } = require('./lib/public-url');
+const { createAdminGuard } = require('./lib/admin-auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,6 +41,7 @@ const SILICONFLOW_FALLBACK_MODELS = (process.env.SILICONFLOW_FALLBACK_MODELS || 
   .filter(Boolean);
 const SILICONFLOW_API_KEY = process.env.SILICONFLOW_API_KEY || process.env.OPENAI_API_KEY || '';
 const MODERATION_ADMIN_TOKEN = process.env.MODERATION_ADMIN_TOKEN || '';
+const requireAdmin = createAdminGuard(MODERATION_ADMIN_TOKEN);
 
 app.use(express.json());
 
@@ -60,7 +62,7 @@ fs.mkdirSync(path.join(DATA_DIR, 'images'), { recursive: true });
 fs.mkdirSync(path.join(DATA_DIR, 'videos'), { recursive: true });
 
 for (const dir of [DATA_DIR, ARCHIVES_DIR, path.join(DATA_DIR, 'images'), path.join(DATA_DIR, 'videos')]) {
-  try { fs.chmodSync(dir, 0o777); } catch {}
+  try { fs.chmodSync(dir, 0o750); } catch {}
 }
 
 app.use(express.static(PUBLIC_DIR));
@@ -69,7 +71,7 @@ app.use('/videos', express.static(path.join(DATA_DIR, 'videos')));
 
 const dbPath = process.env.SQLITE_PATH || path.join(DATA_DIR, 'db.sqlite');
 if (fs.existsSync(dbPath)) {
-  try { fs.chmodSync(dbPath, 0o666); } catch {}
+  try { fs.chmodSync(dbPath, 0o640); } catch {}
 }
 const db = new sqlite3.Database(
   dbPath,
@@ -540,8 +542,8 @@ async function getPostById(id) {
 }
 
 function healDbWriteability() {
-  try { fs.chmodSync(DATA_DIR, 0o777); } catch {}
-  try { fs.chmodSync(dbPath, 0o666); } catch {}
+  try { fs.chmodSync(DATA_DIR, 0o750); } catch {}
+  try { fs.chmodSync(dbPath, 0o640); } catch {}
   try { db.run('PRAGMA query_only = OFF'); } catch {}
 }
 
@@ -668,19 +670,6 @@ function setModerationSettings(nextSettings = {}) {
   };
   fs.writeFileSync(MODERATION_SETTINGS_PATH, JSON.stringify(payload, null, 2), 'utf8');
   return payload;
-}
-
-function requireAdmin(req, res, next) {
-  if (!MODERATION_ADMIN_TOKEN) {
-    return res.status(503).json({ error: '后台未配置 MODERATION_ADMIN_TOKEN' });
-  }
-
-  const token = req.get('x-admin-token') || req.query.token || req.body?.token;
-  if (token !== MODERATION_ADMIN_TOKEN) {
-    return res.status(403).json({ error: '无权限访问后台' });
-  }
-
-  return next();
 }
 
 function readRecentModerationLogs(limit = 50, action = '') {
@@ -929,7 +918,7 @@ app.get('/api/admin/moderation/logs', requireAdmin, (req, res) => {
   return res.json({ success: true, logs: readRecentModerationLogs(limit, action) });
 });
 
-app.post('/api/delete', async (req, res) => {
+app.post('/api/delete', requireAdmin, async (req, res) => {
   const {id} = req.body;
   if (!id) return res.status(400).json({error:'缺少存档ID'});
 
