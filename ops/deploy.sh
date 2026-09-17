@@ -76,6 +76,13 @@ ln -s "$shared_dir/archives" "$release_dir/archives"
 
 log "installing production dependencies"
 npm --prefix "$release_dir" ci --omit=dev
+log "validating the installed sqlite3 native binding"
+if ! node "$release_dir/ops/check-sqlite.js"; then
+  log "sqlite3 binding could not be loaded; rebuilding it from source"
+  npm --prefix "$release_dir" rebuild sqlite3 --build-from-source
+  log "validating the rebuilt sqlite3 native binding"
+  node "$release_dir/ops/check-sqlite.js"
+fi
 log "running regression tests"
 npm --prefix "$release_dir" test
 node --check "$release_dir/server.js"
@@ -132,11 +139,10 @@ fi
 trap - ERR
 
 # Prune code releases only. Shared data and recovery snapshots are deliberately untouched.
-mapfile -t old_releases < <(find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d -print | sort -r | tail -n "+$((KEEP_RELEASES + 1))")
-for old_release in "${old_releases[@]}"; do
+while IFS= read -r old_release; do
   [[ "$old_release" != "$(readlink -f "$APP_ROOT/current")" ]] || continue
   rm -rf -- "$old_release"
-done
+done < <(find "$APP_ROOT/releases" -mindepth 1 -maxdepth 1 -type d -print | sort -r | tail -n "+$((KEEP_RELEASES + 1))")
 
 log "deployed $release_id"
 log "runtime data preserved at $shared_dir"
