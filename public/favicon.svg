@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">XMirror</title>
+  <desc id="desc">A mirrored X on a blue-violet rounded square.</desc>
+  <defs>
+    <linearGradient id="background" x1="64" y1="48" x2="448" y2="464" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#667EEA"/>
+      <stop offset="1" stop-color="#764BA2"/>
+    </linearGradient>
+    <linearGradient id="reflection" x1="268" y1="112" x2="400" y2="400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity=".72"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#background)"/>
+  <path d="M132 124 242 256 132 388" fill="none" stroke="#FFFFFF" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m380 124-110 132 110 132" fill="none" stroke="url(#reflection)" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M256 107v298" stroke="#FFFFFF" stroke-opacity=".2" stroke-width="10" stroke-linecap="round"/>
+</svg>

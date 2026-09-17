@@ -476,6 +476,10 @@ function generateMirrorHtml(post) {
 <meta name="robots" content="index, follow">
 <meta name="googlebot" content="index, follow">
 <link rel="canonical" href="${canonicalUrl}">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32x32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
 <meta property="og:title" content="${pageTitle}">
 <meta property="og:description" content="${escapeHtml(summary)}">
 <meta property="og:type" content="article">

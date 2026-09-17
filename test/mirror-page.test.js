@@ -59,6 +59,29 @@ test('generated archive pages load the external page script', () => {
   assert.doesNotMatch(serverSource, /function escapeTranslatedText\(value\).*replace\(\/\\n\/g/s);
 });
 
+test('home and archive pages advertise the shared site icon', () => {
+  const projectRoot = path.join(__dirname, '..');
+  const homeSource = fs.readFileSync(path.join(projectRoot, 'public', 'index.html'), 'utf8');
+  const serverSource = fs.readFileSync(path.join(projectRoot, 'server.js'), 'utf8');
+
+  for (const source of [homeSource, serverSource]) {
+    assert.match(source, /<link rel="icon" href="\/favicon\.svg" type="image\/svg\+xml">/);
+    assert.match(source, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png">/);
+    assert.match(source, /<link rel="manifest" href="\/site\.webmanifest">/);
+  }
+
+  for (const asset of [
+    'favicon.svg',
+    'favicon.ico',
+    'favicon-32x32.png',
+    'apple-touch-icon.png',
+    'favicon-192x192.png',
+    'favicon-512x512.png'
+  ]) {
+    assert.equal(fs.existsSync(path.join(projectRoot, 'public', asset)), true, `${asset} should exist`);
+  }
+});
+
 test('translation click calls the API and renders a successful result', async () => {
   const dom = installDom({ dark: false });
   const page = require('../public/mirror-page');
