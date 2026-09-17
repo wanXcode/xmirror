@@ -21,7 +21,6 @@
 
 ```bash
 sudo XMIRROR_APP_ROOT=/opt/xmirror \
-  XMIRROR_HEALTH_URL=http://127.0.0.1:3001/ \
   XMIRROR_PM2_BIN=/usr/local/node/bin/pm2 \
   bash ops/migrate-legacy-layout.sh
 ```
@@ -42,7 +41,17 @@ sudo XMIRROR_SOURCE_DIR="$PWD" XMIRROR_APP_ROOT=/opt/xmirror \
   XMIRROR_PM2_BIN=/usr/local/node/bin/pm2 bash ops/deploy.sh
 ```
 
-健康检查默认访问 `http://127.0.0.1:3000/`。若生产端口不同，在命令中增加例如 `XMIRROR_HEALTH_URL=http://127.0.0.1:8080/`。
+未显式设置 `XMIRROR_HEALTH_URL` 时，脚本会从
+`/opt/xmirror/shared/.env` 的数字型 `PORT` 推导检查地址；未配置 `PORT` 时与应用
+一样回退到 `3000`。解析过程不会执行或 `source` 生产 `.env`，并会拒绝动态
+表达式、重复赋值和越界端口。若需要覆盖完整地址，可在命令中增加例如
+`XMIRROR_HEALTH_URL=http://127.0.0.1:8080/healthz`。
+
+首次迁移验证的是尚未包含新版健康端点的旧服务，因此默认检查同端口根路径，
+只要求 HTTP 成功。正式发布默认检查 `http://127.0.0.1:<PORT>/healthz`，不仅
+要求 HTTP 成功，还会校验响应中的 `service` 为 `xmirror`，避免把同机其他 Web
+服务误判为本次发布成功。显式提供 `XMIRROR_HEALTH_URL` 时两个脚本都会原样使用
+该地址，但迁移仍只执行基础 HTTP 检查，发布仍要求 XMirror 服务身份。
 
 脚本会依次：
 
@@ -51,7 +60,7 @@ sudo XMIRROR_SOURCE_DIR="$PWD" XMIRROR_APP_ROOT=/opt/xmirror \
 3. 使用 SQLite 在线备份接口创建一致的数据库恢复副本；
 4. 从当前 Git commit 导出代码，并从新 release 中移除历史版本曾跟踪的运行数据；
 5. 安装锁定依赖，运行测试和语法检查；
-6. 原子切换 `current`，通过 PM2 重启并执行本机 HTTP 健康检查；
+6. 原子切换 `current`，通过 PM2 重启并执行带服务身份校验的本机 HTTP 健康检查；
 7. 若重启失败，自动把 `current` 切回上一版本；
 8. 仅清理过旧的代码 release，不清理共享数据或恢复快照。
 
