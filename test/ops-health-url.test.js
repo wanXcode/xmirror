@@ -80,6 +80,26 @@ function opsEnv(tools, extra = {}) {
   return env;
 }
 
+function makeGitSource() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'xmirror-deploy-source-'));
+  fs.mkdirSync(path.join(root, 'ops'));
+  fs.writeFileSync(path.join(root, 'package.json'), '{"scripts":{"test":"true"}}\n');
+  fs.writeFileSync(path.join(root, 'package-lock.json'), '{}\n');
+  fs.writeFileSync(path.join(root, 'server.js'), 'console.log("fixture");\n');
+  fs.writeFileSync(
+    path.join(root, 'ops', 'ecosystem.config.cjs'),
+    'module.exports = { apps: [] };\n'
+  );
+  execFileSync('git', ['init', '--quiet'], { cwd: root });
+  execFileSync('git', ['add', '.'], { cwd: root });
+  execFileSync(
+    'git',
+    ['-c', 'user.name=XMirror Test', '-c', 'user.email=test@xmirror.local', 'commit', '--quiet', '-m', 'fixture'],
+    { cwd: root }
+  );
+  return root;
+}
+
 test('health URL uses the numeric PORT from shared/.env', (t) => {
   const root = makeAppRoot('OTHER=value\nexport PORT = "3001" # production\n');
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -158,8 +178,10 @@ test('health response must identify the xmirror service', () => {
 
 test('deploy restores the previous current release when health identity fails', (t) => {
   const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'xmirror-deploy-rollback-'));
+  const sourceRoot = makeGitSource();
   const tools = makeFakeTools();
   t.after(() => fs.rmSync(appRoot, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(sourceRoot, { recursive: true, force: true }));
   t.after(() => fs.rmSync(tools.root, { recursive: true, force: true }));
 
   const previous = path.join(appRoot, 'releases', 'previous');
@@ -175,7 +197,7 @@ test('deploy restores the previous current release when health identity fails', 
     env: opsEnv(tools, {
       FAKE_CURL_MODE: 'other',
       XMIRROR_APP_ROOT: appRoot,
-      XMIRROR_SOURCE_DIR: path.join(__dirname, '..'),
+      XMIRROR_SOURCE_DIR: sourceRoot,
       XMIRROR_PM2_BIN: path.join(tools.bin, 'pm2')
     })
   });
