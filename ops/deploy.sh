@@ -7,8 +7,10 @@ set -Eeuo pipefail
 APP_ROOT="${XMIRROR_APP_ROOT:-/opt/xmirror}"
 SOURCE_DIR="${XMIRROR_SOURCE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 KEEP_RELEASES="${XMIRROR_KEEP_RELEASES:-5}"
-HEALTH_URL="${XMIRROR_HEALTH_URL:-http://127.0.0.1:3000/}"
 PM2_BIN="${XMIRROR_PM2_BIN:-$(command -v pm2 || true)}"
+
+# shellcheck source=health-url.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/health-url.sh"
 
 fail() { printf 'deploy: %s\n' "$*" >&2; exit 1; }
 log() { printf 'deploy: %s\n' "$*"; }
@@ -46,6 +48,7 @@ done
 mkdir -p "$shared_dir/data" "$shared_dir/archives"
 
 [[ -d "$shared_dir/data" && -d "$shared_dir/archives" ]] || fail 'shared runtime directories are missing'
+HEALTH_URL="$(xmirror_resolve_health_url "$APP_ROOT")" || fail 'could not determine health check URL'
 if [[ -f "$shared_dir/data/db.sqlite" ]]; then
   command -v sqlite3 >/dev/null || fail 'sqlite3 CLI is required to create a consistent database snapshot'
   mkdir -p "$snapshot_dir"
@@ -89,7 +92,9 @@ ln -s "$release_dir" "$APP_ROOT/.current-$release_id"
 mv -Tf "$APP_ROOT/.current-$release_id" "$APP_ROOT/current"
 
 rollback() {
-  log 'restart failed; restoring previous release'
+  local reason="${1:-release activation failed}"
+  trap - ERR
+  log "$reason; restoring previous release"
   if [[ -n "$previous_target" ]]; then
     ln -s "$previous_target" "$APP_ROOT/.current-rollback"
     mv -Tf "$APP_ROOT/.current-rollback" "$APP_ROOT/current"
@@ -104,20 +109,26 @@ rollback() {
   fi
   exit 1
 }
-trap rollback ERR
+trap 'rollback "release activation failed"' ERR
 
 "$PM2_BIN" delete xmirror >/dev/null 2>&1 || true
-XMIRROR_APP_ROOT="$APP_ROOT" "$PM2_BIN" start "$APP_ROOT/current/ops/ecosystem.config.cjs" --update-env
+if ! XMIRROR_APP_ROOT="$APP_ROOT" "$PM2_BIN" start "$APP_ROOT/current/ops/ecosystem.config.cjs" --update-env; then
+  rollback 'PM2 failed to start the new release'
+fi
 healthy=''
 for attempt in {1..10}; do
-  if curl --fail --silent --show-error --max-time 5 "$HEALTH_URL" >/dev/null; then
+  if xmirror_check_health "$HEALTH_URL"; then
     healthy=1
     break
   fi
   sleep 2
 done
-[[ -n "$healthy" ]] || fail "health check failed: $HEALTH_URL"
-"$PM2_BIN" save
+if [[ -z "$healthy" ]]; then
+  rollback "health check failed: $HEALTH_URL"
+fi
+if ! "$PM2_BIN" save; then
+  rollback 'PM2 failed to save the new process list'
+fi
 trap - ERR
 
 # Prune code releases only. Shared data and recovery snapshots are deliberately untouched.

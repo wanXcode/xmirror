@@ -21,7 +21,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -32,3 +32,6 @@ jobs:
 
       - name: Check server syntax
         run: node --check server.js
+
+      - name: Check deployment shell syntax
+        run: bash -n ops/health-url.sh ops/deploy.sh ops/migrate-legacy-layout.sh

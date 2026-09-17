@@ -27,6 +27,11 @@ const {
 } = require('./lib/x-post');
 const { normalizePublicBaseUrl, buildPublicUrl } = require('./lib/public-url');
 const { createAdminGuard } = require('./lib/admin-auth');
+const { registerHealthRoute } = require('./lib/health');
+const {
+  deleteMediaAsset,
+  deleteMediaAssetBestEffort
+} = require('./lib/media-assets');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -44,6 +49,7 @@ const MODERATION_ADMIN_TOKEN = process.env.MODERATION_ADMIN_TOKEN || '';
 const requireAdmin = createAdminGuard(MODERATION_ADMIN_TOKEN);
 
 app.use(express.json());
+registerHealthRoute(app);
 
 const ROOT_DIR = __dirname;
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT_DIR, 'data');
@@ -691,26 +697,13 @@ function readRecentModerationLogs(limit = 50, action = '') {
   }
 }
 
-function safeUnlink(filePath) {
-  if (!filePath) return;
-  try {
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  } catch (err) {
-    console.warn('清理文件失败:', filePath, err.message);
-  }
-}
-
 function cleanupFetchedAssets(content = {}) {
   const imagePaths = Array.isArray(content.images) ? content.images : [];
   for (const imagePath of imagePaths) {
-    if (typeof imagePath === 'string' && imagePath.startsWith('/images/')) {
-      safeUnlink(path.join(DATA_DIR, imagePath.replace(/^\//, '')));
-    }
+    deleteMediaAssetBestEffort(DATA_DIR, imagePath);
   }
 
-  if (typeof content.video === 'string' && content.video.startsWith('/videos/')) {
-    safeUnlink(path.join(DATA_DIR, content.video.replace(/^\//, '')));
-  }
+  deleteMediaAssetBestEffort(DATA_DIR, content.video);
 }
 
 async function archiveXUrl(url) {
@@ -932,14 +925,10 @@ app.post('/api/delete', requireAdmin, async (req, res) => {
     let images = [];
     try { images = JSON.parse(post.images || '[]'); } catch {}
     for (const imgPath of images) {
-      const imgFullPath = path.join(__dirname, imgPath.replace(/^\//, ''));
-      if (fs.existsSync(imgFullPath)) fs.unlinkSync(imgFullPath);
+      deleteMediaAsset(DATA_DIR, imgPath);
     }
 
-    if (post.video && post.video.startsWith('/videos/')) {
-      const videoFullPath = path.join(__dirname, post.video.replace(/^\//, ''));
-      if (fs.existsSync(videoFullPath)) fs.unlinkSync(videoFullPath);
-    }
+    deleteMediaAsset(DATA_DIR, post.video);
 
     await runDbWrite('DELETE FROM translations WHERE post_id=?',[id]);
     await runDbWrite('DELETE FROM post_aliases WHERE target_post_id=?',[id]);
