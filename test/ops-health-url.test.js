@@ -40,9 +40,27 @@ function makeFakeTools() {
   const bin = path.join(root, 'bin');
   const callLog = path.join(root, 'calls.log');
   const curlLog = path.join(root, 'curl.log');
+  const sqliteRebuilt = path.join(root, 'sqlite-rebuilt');
   fs.mkdirSync(bin);
 
-  writeExecutable(path.join(bin, 'npm'), 'printf \'npm %s\\n\' "$*" >> "$FAKE_CALL_LOG"\n');
+  writeExecutable(path.join(bin, 'npm'), [
+    'printf \'npm %s\\n\' "$*" >> "$FAKE_CALL_LOG"',
+    'if [[ "$*" == *"rebuild sqlite3 --build-from-source"* ]]; then',
+    '  touch "$FAKE_SQLITE_REBUILT"',
+    'fi'
+  ].join('\n'));
+  writeExecutable(path.join(bin, 'node'), [
+    'printf \'node %s\\n\' "$*" >> "$FAKE_CALL_LOG"',
+    'if [[ "$1" == */ops/check-sqlite.js ]]; then',
+    '  case "${FAKE_SQLITE_MODE:-ok}" in',
+    '    fail-once) [[ -f "$FAKE_SQLITE_REBUILT" ]] ;;',
+    '    fail) exit 1 ;;',
+    '    *) exit 0 ;;',
+    '  esac',
+    '  exit $?',
+    'fi',
+    'exec "$FAKE_REAL_NODE" "$@"'
+  ].join('\n'));
   writeExecutable(path.join(bin, 'pm2'), 'printf \'pm2 %s\\n\' "$*" >> "$FAKE_CALL_LOG"\n');
   writeExecutable(path.join(bin, 'sqlite3'), 'printf \'sqlite3 %s\\n\' "$*" >> "$FAKE_CALL_LOG"\n');
   writeExecutable(path.join(bin, 'sleep'), ':\n');
@@ -65,7 +83,7 @@ function makeFakeTools() {
     'exec /bin/mv "$@"'
   ].join('\n'));
 
-  return { root, bin, callLog, curlLog };
+  return { root, bin, callLog, curlLog, sqliteRebuilt };
 }
 
 function opsEnv(tools, extra = {}) {
@@ -74,6 +92,8 @@ function opsEnv(tools, extra = {}) {
     PATH: `${tools.bin}:${process.env.PATH}`,
     FAKE_CALL_LOG: tools.callLog,
     FAKE_CURL_LOG: tools.curlLog,
+    FAKE_REAL_NODE: process.execPath,
+    FAKE_SQLITE_REBUILT: tools.sqliteRebuilt,
     ...extra
   };
   delete env.XMIRROR_HEALTH_URL;
@@ -86,6 +106,7 @@ function makeGitSource() {
   fs.writeFileSync(path.join(root, 'package.json'), '{"scripts":{"test":"true"}}\n');
   fs.writeFileSync(path.join(root, 'package-lock.json'), '{}\n');
   fs.writeFileSync(path.join(root, 'server.js'), 'console.log("fixture");\n');
+  fs.writeFileSync(path.join(root, 'ops', 'check-sqlite.js'), '// fixture sqlite check\n');
   fs.writeFileSync(
     path.join(root, 'ops', 'ecosystem.config.cjs'),
     'module.exports = { apps: [] };\n'
@@ -206,6 +227,73 @@ test('deploy restores the previous current release when health identity fails', 
   assert.equal(fs.readlinkSync(path.join(appRoot, 'current')), previous);
   assert.match(result.stdout, /health check failed: .*; restoring previous release/);
   assert.equal((fs.readFileSync(tools.callLog, 'utf8').match(/^pm2 start /gm) || []).length, 2);
+});
+
+test('deploy rebuilds sqlite3 from source when the prebuilt binding cannot load', (t) => {
+  const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'xmirror-deploy-sqlite-rebuild-'));
+  const sourceRoot = makeGitSource();
+  const tools = makeFakeTools();
+  t.after(() => fs.rmSync(appRoot, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(sourceRoot, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(tools.root, { recursive: true, force: true }));
+
+  fs.mkdirSync(path.join(appRoot, 'shared', 'data'), { recursive: true });
+  fs.mkdirSync(path.join(appRoot, 'shared', 'archives'), { recursive: true });
+
+  const result = spawnSync('bash', [deployScript], {
+    cwd: path.join(__dirname, '..'),
+    encoding: 'utf8',
+    env: opsEnv(tools, {
+      FAKE_CURL_MODE: 'xmirror',
+      FAKE_SQLITE_MODE: 'fail-once',
+      XMIRROR_APP_ROOT: appRoot,
+      XMIRROR_SOURCE_DIR: sourceRoot,
+      XMIRROR_PM2_BIN: path.join(tools.bin, 'pm2')
+    })
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.lstatSync(path.join(appRoot, 'current')).isSymbolicLink(), true);
+  const calls = fs.readFileSync(tools.callLog, 'utf8');
+  assert.match(calls, /^npm --prefix .* rebuild sqlite3 --build-from-source$/m);
+  assert.equal((calls.match(/^node .*\/ops\/check-sqlite\.js$/gm) || []).length, 2);
+});
+
+test('deploy leaves current untouched when rebuilt sqlite3 still cannot load', (t) => {
+  const appRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'xmirror-deploy-sqlite-fail-'));
+  const sourceRoot = makeGitSource();
+  const tools = makeFakeTools();
+  t.after(() => fs.rmSync(appRoot, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(sourceRoot, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(tools.root, { recursive: true, force: true }));
+
+  const previous = path.join(appRoot, 'releases', 'previous');
+  fs.mkdirSync(path.join(previous, 'ops'), { recursive: true });
+  fs.mkdirSync(path.join(appRoot, 'shared', 'data'), { recursive: true });
+  fs.mkdirSync(path.join(appRoot, 'shared', 'archives'), { recursive: true });
+  fs.symlinkSync(previous, path.join(appRoot, 'current'));
+
+  const result = spawnSync('bash', [deployScript], {
+    cwd: path.join(__dirname, '..'),
+    encoding: 'utf8',
+    env: opsEnv(tools, {
+      FAKE_SQLITE_MODE: 'fail',
+      XMIRROR_APP_ROOT: appRoot,
+      XMIRROR_SOURCE_DIR: sourceRoot,
+      XMIRROR_PM2_BIN: path.join(tools.bin, 'pm2')
+    })
+  });
+
+  assert.notEqual(result.status, 0);
+  assert.equal(fs.readlinkSync(path.join(appRoot, 'current')), previous);
+  const calls = fs.readFileSync(tools.callLog, 'utf8');
+  assert.match(calls, /^npm --prefix .* rebuild sqlite3 --build-from-source$/m);
+  assert.equal((calls.match(/^node .*\/ops\/check-sqlite\.js$/gm) || []).length, 2);
+  assert.doesNotMatch(calls, /^pm2 /m);
+  assert.deepEqual(
+    fs.readdirSync(path.join(appRoot, 'releases')).sort(),
+    ['previous']
+  );
 });
 
 test('legacy migration checks the root path without requiring xmirror JSON', (t) => {

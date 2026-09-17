@@ -29,6 +29,12 @@ sudo XMIRROR_APP_ROOT=/opt/xmirror \
 
 生产环境变量建议放在 `/opt/xmirror/shared/.env`，至少复核 `PORT`、翻译服务密钥和审核管理令牌。不要提交该文件。
 
+生产主机还需安装 Node.js/npm、PM2、curl、SQLite CLI，以及 `gcc`、`g++`、
+`make`、`python3`。通常 `npm ci` 会安装与主机兼容的 sqlite3 预编译 binding；
+发布脚本会在切换版本前执行一次内存数据库 CRUD。若预编译 binding 无法加载，
+脚本会使用上述编译工具自动执行 `npm rebuild sqlite3 --build-from-source` 并再次
+验证；重编译或复验失败时发布立即中止，`current` 不会被修改。
+
 ## 发布
 
 在服务器的 Git 工作副本中执行：
@@ -59,7 +65,7 @@ sudo XMIRROR_SOURCE_DIR="$PWD" XMIRROR_APP_ROOT=/opt/xmirror \
 2. 首次部署时保守迁移旧运行数据；
 3. 使用 SQLite 在线备份接口创建一致的数据库恢复副本；
 4. 从当前 Git commit 导出代码，并从新 release 中移除历史版本曾跟踪的运行数据；
-5. 安装锁定依赖，运行测试和语法检查；
+5. 安装锁定依赖，验证 sqlite3 原生 binding（必要时从源码重编译），再运行测试和语法检查；
 6. 原子切换 `current`，通过 PM2 重启并执行带服务身份校验的本机 HTTP 健康检查；
 7. 若重启失败，自动把 `current` 切回上一版本；
 8. 仅清理过旧的代码 release，不清理共享数据或恢复快照。
