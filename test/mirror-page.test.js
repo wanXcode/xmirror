@@ -65,18 +65,22 @@ test('home and archive pages advertise the shared site icon', () => {
   const serverSource = fs.readFileSync(path.join(projectRoot, 'server.js'), 'utf8');
 
   for (const source of [homeSource, serverSource]) {
-    assert.match(source, /<link rel="icon" href="\/favicon\.svg" type="image\/svg\+xml">/);
-    assert.match(source, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png">/);
-    assert.match(source, /<link rel="manifest" href="\/site\.webmanifest">/);
+    assert.match(source, /<link rel="icon" href="\/favicon\.svg\?v=2" type="image\/svg\+xml">/);
+    assert.match(source, /<link rel="icon" href="\/favicon-16x16\.png\?v=2" sizes="16x16" type="image\/png">/);
+    assert.match(source, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png\?v=2">/);
+    assert.match(source, /<link rel="mask-icon" href="\/safari-pinned-tab\.svg\?v=2" color="#667eea">/);
+    assert.match(source, /<link rel="manifest" href="\/site\.webmanifest\?v=2">/);
   }
 
   for (const asset of [
     'favicon.svg',
     'favicon.ico',
+    'favicon-16x16.png',
     'favicon-32x32.png',
     'apple-touch-icon.png',
     'favicon-192x192.png',
-    'favicon-512x512.png'
+    'favicon-512x512.png',
+    'safari-pinned-tab.svg'
   ]) {
     assert.equal(fs.existsSync(path.join(projectRoot, 'public', asset)), true, `${asset} should exist`);
   }
