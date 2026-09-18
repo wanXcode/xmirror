@@ -27,6 +27,40 @@ test('allows ordinary instructions that contain 操作 and 购买', () => {
   assert.ok(!result.matched.some(match => match.value === '露骨内容导流'));
 });
 
+test('allows ordinary article language containing 私信, 插, and 摩擦', () => {
+  const moderator = createTestModerator();
+  const result = moderator.moderateArchivedContent({
+    url: 'https://x.com/CopperForgeAI/status/2100104464531394722',
+    authorName: '铜匠AI・十点睡觉',
+    authorHandle: 'CopperForgeAI',
+    content: [
+      '三个人试着通过电话和私信联络本地餐饮店主，全部石沉大海。',
+      '这只 bot 挂载着 X 的官方 MCP 插件，直播期间还穿插了从业者访谈。',
+      '数字极速与物理摩擦的终极对撞。'
+    ].join(' ')
+  });
+
+  assert.equal(result.action, 'allow');
+  assert.equal(result.score, 0);
+  assert.deepEqual(result.matched, []);
+});
+
+test('still rejects private-message sales language in either word order', () => {
+  const moderator = createTestModerator();
+
+  for (const content of ['私信我获取购买方式', '购买后请私信我']) {
+    assert.throws(
+      () => moderator.moderateArchivedContent({
+        url: 'https://x.com/example/status/4',
+        authorName: 'example',
+        authorHandle: 'example',
+        content
+      }),
+      error => error instanceof ModerationRejectError
+    );
+  }
+});
+
 test('still rejects explicit adult content containing 操', () => {
   const moderator = createTestModerator();
 
