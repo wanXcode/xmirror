@@ -45,6 +45,34 @@ test('allows ordinary article language containing 私信, 插, and 摩擦', () =
   assert.deepEqual(result.matched, []);
 });
 
+test('allows 高潮 when it describes a narrative climax', () => {
+  const moderator = createTestModerator();
+  const result = moderator.moderateArchivedContent({
+    url: 'https://x.com/CopperForgeAI/status/2100799186086351174',
+    authorName: '铜匠AI・十点睡觉',
+    authorHandle: 'CopperForgeAI',
+    content: '第五幕：终局高潮：在庆功图表前，生产数据库猝死'
+  });
+
+  assert.equal(result.action, 'allow');
+  assert.equal(result.score, 0);
+  assert.deepEqual(result.matched, []);
+});
+
+test('still rejects 高潮 when combined with private-message sales language', () => {
+  const moderator = createTestModerator();
+
+  assert.throws(
+    () => moderator.moderateArchivedContent({
+      url: 'https://x.com/example/status/5',
+      authorName: 'example',
+      authorHandle: 'example',
+      content: '高潮内容请私信我获取购买方式'
+    }),
+    error => error instanceof ModerationRejectError
+  );
+});
+
 test('still rejects private-message sales language in either word order', () => {
   const moderator = createTestModerator();
 
