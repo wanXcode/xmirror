@@ -532,7 +532,44 @@
       color: #666;
       font-size: 14px;
       line-height: 1.6;
-      margin-bottom: 25px;
+      margin-bottom: 18px;
+    }
+
+    .delete-auth {
+      margin-bottom: 20px;
+      text-align: left;
+    }
+
+    .delete-auth label {
+      display: block;
+      margin-bottom: 7px;
+      color: #4b5563;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .delete-auth input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      background: #fff;
+      color: #111827;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .delete-auth input:focus {
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.16);
+    }
+
+    .delete-password-error {
+      min-height: 18px;
+      margin-top: 6px;
+      color: #dc2626;
+      font-size: 12px;
     }
     
     .modal-buttons {
@@ -567,6 +604,11 @@
     
     .btn-delete:hover {
       background: #dc2626;
+    }
+
+    .btn-delete:disabled {
+      cursor: wait;
+      opacity: 0.65;
     }
     
     /* 结果区域样式 */
@@ -731,6 +773,17 @@
     <div class="modal">
       <h3>🗑️ <span data-i18n="deleteConfirmTitle">确认删除</span></h3>
       <p data-i18n="deleteConfirmText">确定要删除这篇存档吗？<br>此操作不可恢复。</p>
+      <div class="delete-auth">
+        <label for="deletePassword" id="deletePasswordLabel">管理密码</label>
+        <input
+          id="deletePassword"
+          type="password"
+          autocomplete="current-password"
+          placeholder="输入管理密码"
+          aria-describedby="deletePasswordError"
+        >
+        <div class="delete-password-error" id="deletePasswordError" role="alert" aria-live="polite"></div>
+      </div>
       <div class="modal-buttons">
         <button class="btn-cancel" onclick="closeDeleteModal()" data-i18n="cancelBtn">取消</button>
         <button class="btn-delete" onclick="confirmDelete()" data-i18n="deleteBtn">删除</button>

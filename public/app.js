@@ -74,7 +74,12 @@ function handleItemClick(postId, element) {
   // 3次点击触发删除弹窗
   if (count >= 3) {
     deleteTargetId = postId;
+    const passwordInput = document.getElementById('deletePassword');
+    const passwordError = document.getElementById('deletePasswordError');
+    if (passwordInput) passwordInput.value = '';
+    if (passwordError) passwordError.textContent = '';
     document.getElementById('deleteModal').classList.add('show');
+    setTimeout(() => passwordInput?.focus(), 0);
     // 重置计数
     clickCounts.set(postId, 0);
     element.classList.remove('triple-click', 'show-hint');
@@ -89,18 +94,43 @@ function handleItemClick(postId, element) {
 
 function closeDeleteModal() {
   document.getElementById('deleteModal').classList.remove('show');
+  const passwordInput = document.getElementById('deletePassword');
+  const passwordError = document.getElementById('deletePasswordError');
+  if (passwordInput) passwordInput.value = '';
+  if (passwordError) passwordError.textContent = '';
   deleteTargetId = null;
 }
 
 async function confirmDelete() {
   if (!deleteTargetId) return;
+
+  const passwordInput = document.getElementById('deletePassword');
+  const passwordError = document.getElementById('deletePasswordError');
+  const deleteButton = document.querySelector('.btn-delete');
+  const password = passwordInput?.value || '';
+
+  if (!password) {
+    if (passwordError) passwordError.textContent = i18n.t('deletePasswordRequired');
+    passwordInput?.focus();
+    return;
+  }
+
+  if (passwordError) passwordError.textContent = '';
+  if (deleteButton) {
+    deleteButton.disabled = true;
+    deleteButton.setAttribute('aria-busy', 'true');
+  }
   
   try {
     const response = await fetch('/api/delete', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': password
+      },
       body: JSON.stringify({ id: deleteTargetId })
     });
+    if (passwordInput) passwordInput.value = '';
     
     const data = await response.json();
     
@@ -109,18 +139,22 @@ async function confirmDelete() {
       result.className = 'result success';
       result.innerHTML = `<strong>${i18n.t('successDeleted')}</strong>`;
       loadHistory(true);
+      closeDeleteModal();
+    } else if (response.status === 403) {
+      if (passwordError) passwordError.textContent = i18n.t('deletePasswordInvalid');
+      passwordInput?.focus();
     } else {
-      const result = document.getElementById('result');
-      result.className = 'result error';
-      result.innerHTML = `<strong>❌ ${i18n.t('errorDelete')}</strong><br>${data.error || 'Unknown error'}`;
+      if (passwordError) passwordError.textContent = data.error || i18n.t('errorDelete');
     }
   } catch (error) {
-    const result = document.getElementById('result');
-    result.className = 'result error';
-    result.innerHTML = `<strong>❌ ${i18n.t('errorDelete')}</strong><br>${error.message}`;
+    if (passwordInput) passwordInput.value = '';
+    if (passwordError) passwordError.textContent = `${i18n.t('errorDelete')}: ${error.message}`;
+  } finally {
+    if (deleteButton) {
+      deleteButton.disabled = false;
+      deleteButton.setAttribute('aria-busy', 'false');
+    }
   }
-  
-  closeDeleteModal();
 }
 
 function renderHistoryItems(posts = []) {
@@ -243,4 +277,8 @@ document.getElementById('url').addEventListener('keypress', (e) => {
 // 点击弹窗外部关闭
 document.getElementById('deleteModal').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeDeleteModal();
+});
+
+document.getElementById('deletePassword').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') confirmDelete();
 });

@@ -40,6 +40,10 @@ const i18n = {
       // 删除弹窗
       deleteTitle: '🗑️ 确认删除',
       deleteConfirm: '确定要删除这篇存档吗？<br>此操作不可恢复。',
+      deletePasswordLabel: '管理密码',
+      deletePasswordPlaceholder: '输入管理密码',
+      deletePasswordRequired: '请输入管理密码',
+      deletePasswordInvalid: '密码不正确，请重试',
       btnCancel: '取消',
       btnDelete: '删除',
       
@@ -70,6 +74,10 @@ const i18n = {
       // Delete modal
       deleteTitle: '🗑️ Confirm Delete',
       deleteConfirm: 'Are you sure you want to delete this archive?<br>This action cannot be undone.',
+      deletePasswordLabel: 'Admin password',
+      deletePasswordPlaceholder: 'Enter admin password',
+      deletePasswordRequired: 'Enter the admin password',
+      deletePasswordInvalid: 'Incorrect password. Try again.',
       btnCancel: 'Cancel',
       btnDelete: 'Delete',
       
@@ -144,6 +152,12 @@ const i18n = {
     
     const modalText = document.querySelector('.modal p');
     if (modalText) modalText.innerHTML = this.t('deleteConfirm');
+
+    const passwordLabel = document.getElementById('deletePasswordLabel');
+    if (passwordLabel) passwordLabel.textContent = this.t('deletePasswordLabel');
+
+    const passwordInput = document.getElementById('deletePassword');
+    if (passwordInput) passwordInput.placeholder = this.t('deletePasswordPlaceholder');
     
     const cancelBtn = document.querySelector('.btn-cancel');
     if (cancelBtn) cancelBtn.textContent = this.t('btnCancel');
