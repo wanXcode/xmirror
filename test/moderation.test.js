@@ -59,6 +59,25 @@ test('allows 高潮 when it describes a narrative climax', () => {
   assert.deepEqual(result.matched, []);
 });
 
+test('allows ordinary technical language containing 露出, 射, 含, 主人, and 刺激', () => {
+  const moderator = createTestModerator();
+  const result = moderator.moderateArchivedContent({
+    url: 'https://x.com/CopperForgeAI/status/2100799186086351174',
+    authorName: '铜匠AI・十点睡觉',
+    authorHandle: 'CopperForgeAI',
+    content: [
+      '将 Data Bot 聚合出来的最终业务大盘投射在全场视线焦点。',
+      'PR 里面包含了一条很慢的 SQL 查询。',
+      '把规则以干净的结构化文档暴露出来，让 Agent 替它们的主人去打排位。',
+      '更刺激的是，第一梯队开始向白金段位发起冲击。'
+    ].join(' ')
+  });
+
+  assert.equal(result.action, 'allow');
+  assert.equal(result.score, 0);
+  assert.deepEqual(result.matched, []);
+});
+
 test('still rejects 高潮 when combined with private-message sales language', () => {
   const moderator = createTestModerator();
 
@@ -119,4 +138,20 @@ test('still rejects existing explicit adult keywords', () => {
     }),
     error => error instanceof ModerationRejectError
   );
+});
+
+test('still rejects explicit compound keywords after removing ambiguous stems', () => {
+  const moderator = createTestModerator();
+
+  for (const content of ['射精', '性奴', '暴露癖']) {
+    assert.throws(
+      () => moderator.moderateArchivedContent({
+        url: 'https://x.com/example/status/6',
+        authorName: 'example',
+        authorHandle: 'example',
+        content
+      }),
+      error => error instanceof ModerationRejectError
+    );
+  }
 });
