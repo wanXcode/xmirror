@@ -256,9 +256,10 @@ test('deploy rebuilds sqlite3 from source when the prebuilt binding cannot load'
   assert.equal(result.status, 0, result.stderr);
   assert.equal(fs.lstatSync(path.join(appRoot, 'current')).isSymbolicLink(), true);
   const calls = fs.readFileSync(tools.callLog, 'utf8');
+  assert.match(calls, /^npm --prefix .* ci --omit=dev --ignore-scripts$/m);
   assert.match(calls, /^npm_config_build_from_source=true$/m);
-  assert.match(calls, /^npm --prefix .* rebuild sqlite3 --build-from-source$/m);
-  assert.equal((calls.match(/^node .*\/ops\/check-sqlite\.js$/gm) || []).length, 2);
+  assert.match(calls, /^npm --prefix .* rebuild sqlite3 --build-from-source --foreground-scripts$/m);
+  assert.equal((calls.match(/^node .*\/ops\/check-sqlite\.js$/gm) || []).length, 1);
 });
 
 test('deploy leaves current untouched when rebuilt sqlite3 still cannot load', (t) => {
@@ -289,7 +290,7 @@ test('deploy leaves current untouched when rebuilt sqlite3 still cannot load', (
   assert.notEqual(result.status, 0);
   assert.equal(fs.readlinkSync(path.join(appRoot, 'current')), previous);
   const calls = fs.readFileSync(tools.callLog, 'utf8');
-  assert.match(calls, /^npm --prefix .* rebuild sqlite3 --build-from-source$/m);
+  assert.match(calls, /^npm --prefix .* rebuild sqlite3 --build-from-source --foreground-scripts$/m);
   assert.equal((calls.match(/^node .*\/ops\/check-sqlite\.js$/gm) || []).length, 2);
   assert.doesNotMatch(calls, /^pm2 /m);
   assert.deepEqual(
