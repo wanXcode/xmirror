@@ -22,7 +22,7 @@ function element({ textContent = '', classes = [] } = {}) {
   };
 }
 
-function installDom({ dark = true } = {}) {
+function installDom({ dark = true, video = false } = {}) {
   const root = element();
   const origin = element({ textContent: 'Hello world', classes: ['active'] });
   const translated = element();
@@ -30,17 +30,32 @@ function installDom({ dark = true } = {}) {
   const status = element();
   const post = element();
   post.dataset = { postId: '1', sourceLang: 'en' };
+  let placeholder;
+  if (video) {
+    const title = element();
+    const bar = element();
+    bar.style = {};
+    const progressText = element();
+    placeholder = element();
+    placeholder.dataset = { videoStatus: 'downloading' };
+    placeholder.querySelector = selector => ({
+      '.video-placeholder-title': title,
+      '.video-progress-bar': bar,
+      '.video-progress-text': progressText
+    }[selector] || null);
+    placeholder.outerHTML = '';
+  }
   const elements = { originContent: origin, translatedContent: translated, translateBtn: button, translateStatus: status };
   let schemeListener;
   const scheme = { matches: dark, addEventListener(_name, listener) { schemeListener = listener; } };
   global.document = {
     readyState: 'loading', documentElement: root,
-    getElementById: id => elements[id], querySelector: selector => selector === '.post' ? post : null,
+    getElementById: id => elements[id], querySelector: selector => selector === '.post' ? post : (selector === '.video-placeholder' ? placeholder : null),
     addEventListener() {}
   };
   global.window = { matchMedia: () => scheme };
   global.localStorage = { removed: [], removeItem(key) { this.removed.push(key); } };
-  return { root, origin, translated, button, status, getSchemeListener: () => schemeListener };
+  return { root, origin, translated, button, status, placeholder, getSchemeListener: () => schemeListener };
 }
 
 test('page script is valid JavaScript and follows the system color scheme', () => {
@@ -102,4 +117,31 @@ test('translation click calls the API and renders a successful result', async ()
   assert.equal(dom.button.disabled, false);
   assert.equal(dom.button.getAttribute('aria-busy'), 'false');
   page.setTranslateStatus('');
+});
+
+test('video status polling replaces the placeholder only with a local video', async () => {
+  const dom = installDom({ dark: false, video: true });
+  const page = require('../public/mirror-page');
+  let requestedUrl;
+  global.fetch = async url => {
+    requestedUrl = url;
+    return { ok: true, status: 200, json: async () => ({
+      success: true, status: 'completed', percent: 100, video: '/videos/1_video.mp4'
+    }) };
+  };
+  const done = await page.pollVideoStatus();
+  assert.equal(done, true);
+  assert.equal(requestedUrl, '/api/posts/1/video-status');
+  assert.match(dom.placeholder.outerHTML, /source src="\/videos\/1_video\.mp4"/);
+});
+
+test('video status polling does not inject a remote video URL', async () => {
+  const dom = installDom({ dark: false, video: true });
+  const page = require('../public/mirror-page');
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({
+    success: true, status: 'completed', percent: 100, video: 'https://video.twimg.com/unsafe.mp4'
+  }) });
+  const done = await page.pollVideoStatus();
+  assert.equal(done, true);
+  assert.equal(dom.placeholder.outerHTML, '');
 });

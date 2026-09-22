@@ -1,5 +1,6 @@
 let translateStatusTimer;
 let manualThemeOverride = false;
+let videoStatusTimer;
 
 function getSystemTheme() {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -92,6 +93,80 @@ function renderTranslatedBlocks(data) {
   }).join('');
 }
 
+function formatVideoBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let size = value;
+  let unit = -1;
+  do { size /= 1024; unit += 1; } while (size >= 1024 && unit < units.length - 1);
+  return `${size.toFixed(size >= 100 ? 0 : size >= 10 ? 1 : 2)} ${units[unit]}`;
+}
+
+function renderVideoPlaceholder(data) {
+  const placeholder = document.querySelector('.video-placeholder');
+  if (!placeholder) return false;
+  const status = data.status || 'queued';
+  const percent = Math.max(0, Math.min(100, Number(data.percent) || 0));
+  if (status === 'completed' && typeof data.video === 'string' && /^\/videos\/[A-Za-z0-9_.-]+$/.test(data.video)) {
+    placeholder.outerHTML = `<video controls style="max-width:100%;margin:10px 0;"><source src="${data.video}" type="video/mp4"></video>`;
+    return true;
+  }
+  const title = placeholder.querySelector?.('.video-placeholder-title');
+  const bar = placeholder.querySelector?.('.video-progress-bar');
+  const text = placeholder.querySelector?.('.video-progress-text');
+  if (status === 'failed') {
+    placeholder.classList.add('video-placeholder-error');
+    if (title) title.textContent = '视频下载失败';
+    if (text) text.textContent = data.error || '请稍后重新收录';
+    return true;
+  }
+  placeholder.dataset.videoStatus = status;
+  if (title) title.textContent = status === 'downloading' ? '🎞️ 视频正在下载中…' : '🎞️ 视频即将开始下载…';
+  if (bar) bar.style.width = `${percent}%`;
+  if (text) text.textContent = percent > 0
+    ? `${percent}% · ${formatVideoBytes(data.bytes)}${data.total ? ` / ${formatVideoBytes(data.total)}` : ''}`
+    : '正在准备下载';
+  if (status === 'completed') {
+    placeholder.classList.add('video-placeholder-error');
+    if (title) title.textContent = '视频地址异常';
+    if (text) text.textContent = '视频文件尚未准备好，请稍后重试';
+    return true;
+  }
+  return false;
+}
+
+async function pollVideoStatus() {
+  const post = document.querySelector('.post');
+  const placeholder = document.querySelector('.video-placeholder');
+  const postId = post?.dataset?.postId;
+  if (!postId || !placeholder) return false;
+  try {
+    const response = await fetch(`/api/posts/${encodeURIComponent(postId)}/video-status`, { headers: { Accept: 'application/json' } });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || '读取视频状态失败');
+    return renderVideoPlaceholder(data);
+  } catch (error) {
+    const text = placeholder.querySelector?.('.video-progress-text');
+    if (text) text.textContent = '正在连接下载状态…';
+    return false;
+  }
+}
+
+function initializeVideoDownload() {
+  if (!document.querySelector('.video-placeholder')) return;
+  if (videoStatusTimer) clearInterval(videoStatusTimer);
+  pollVideoStatus().then(done => {
+    if (!done) videoStatusTimer = setInterval(async () => {
+      const finished = await pollVideoStatus();
+      if (finished && videoStatusTimer) {
+        clearInterval(videoStatusTimer);
+        videoStatusTimer = null;
+      }
+    }, 2500);
+  });
+}
+
 async function toggleTranslate() {
   const postId = document.querySelector('.post')?.dataset?.postId;
   const btn = document.getElementById('translateBtn');
@@ -155,6 +230,7 @@ function initializeMirrorPage() {
     if (!manualThemeOverride) applyTheme(event.matches ? 'dark' : 'light');
   });
   setDefaultTranslateButtonText();
+  initializeVideoDownload();
 }
 
 if (typeof document !== 'undefined') {
@@ -175,6 +251,10 @@ if (typeof module !== 'undefined') {
     setTranslateStatus,
     escapeTranslatedText,
     renderTranslatedBlocks,
+    formatVideoBytes,
+    renderVideoPlaceholder,
+    pollVideoStatus,
+    initializeVideoDownload,
     toggleTranslate,
     initializeMirrorPage
   };

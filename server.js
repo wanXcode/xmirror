@@ -136,6 +136,40 @@ async function ensureShortCodeReady() {
   }
 }
 
+async function ensureVideoColumnsReady() {
+  const columns = await new Promise((resolve, reject) => {
+    db.all('PRAGMA table_info(posts)', (err, rows) => err ? reject(err) : resolve(rows || []));
+  });
+  const definitions = [
+    ['video_status', "TEXT DEFAULT 'none'"],
+    ['video_source_url', 'TEXT'],
+    ['video_filename', 'TEXT'],
+    ['video_bytes', 'INTEGER DEFAULT 0'],
+    ['video_total_bytes', 'INTEGER DEFAULT 0'],
+    ['video_error', 'TEXT']
+  ];
+  for (const [name, definition] of definitions) {
+    if (!columns.some(column => column.name === name)) {
+      await runDbWrite(`ALTER TABLE posts ADD COLUMN ${name} ${definition}`);
+    }
+  }
+
+  // Older releases stored an X video URL in `video` after a failed download.
+  // Move it to the resumable queue instead of serving it to the browser.
+  await runDbWrite(`UPDATE posts
+    SET video_source_url=video,
+        video_filename=COALESCE(video_filename, 'legacy_' || id || '_video.mp4'),
+        video=NULL,
+        video_status='queued',
+        video_bytes=0,
+        video_total_bytes=0,
+        video_error=NULL
+    WHERE video LIKE 'https://video.twimg.com/%'
+      AND (video_source_url IS NULL OR video_source_url='')`);
+  await runDbWrite(`UPDATE posts SET video_status='completed'
+    WHERE video LIKE '/videos/%' AND (video_status IS NULL OR video_status='none')`);
+}
+
 db.serialize(() => {
   db.run('PRAGMA query_only = OFF');
   db.get('PRAGMA query_only', (e, row) => {
@@ -224,24 +258,158 @@ async function downloadImage(url, filename) {
   });
 }
 
-async function downloadVideo(url, filename) {
+const VIDEO_DOWNLOAD_CONCURRENCY = Math.max(1, Number(process.env.VIDEO_DOWNLOAD_CONCURRENCY) || 1);
+const videoQueue = [];
+const videoJobs = new Set();
+let activeVideoDownloads = 0;
+
+function videoPathForFilename(filename) {
+  return path.join(DATA_DIR, 'videos', filename);
+}
+
+function updateVideoRow(postId, fields) {
+  const keys = Object.keys(fields);
+  if (!keys.length) return Promise.resolve();
+  const values = keys.map(key => fields[key]);
+  return runDbWrite(
+    `UPDATE posts SET ${keys.map(key => `${key}=?`).join(',')} WHERE id=?`,
+    [...values, postId]
+  );
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let size = value;
+  let unit = -1;
+  do { size /= 1024; unit += 1; } while (size >= 1024 && unit < units.length - 1);
+  return `${size.toFixed(size >= 100 ? 0 : size >= 10 ? 1 : 2)} ${units[unit]}`;
+}
+
+function downloadVideoWithProgress(url, filename, onProgress) {
   return new Promise((resolve, reject) => {
-    const videoDir = path.join(__dirname, 'data', 'videos');
-    if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
-    const filePath = path.join(videoDir, filename);
-    const file = fs.createWriteStream(filePath);
-    https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        reject(new Error(`下载失败，状态码: ${response.statusCode}`));
-        return;
+    const videoDir = path.join(DATA_DIR, 'videos');
+    fs.mkdirSync(videoDir, { recursive: true });
+    const filePath = videoPathForFilename(filename);
+    const tempPath = `${filePath}.part`;
+    const request = https.get(url, { headers: { 'User-Agent': 'XMirror/1.0' } }, response => {
+      if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+        response.resume();
+        return downloadVideoWithProgress(response.headers.location, filename, onProgress).then(resolve, reject);
       }
+      if (response.statusCode !== 200) {
+        response.resume();
+        return reject(new Error(`下载失败，状态码: ${response.statusCode}`));
+      }
+
+      const total = Number(response.headers['content-length']) || 0;
+      let downloaded = 0;
+      const file = fs.createWriteStream(tempPath);
+      const report = () => onProgress?.(downloaded, total);
+      response.on('data', chunk => {
+        downloaded += chunk.length;
+        report();
+      });
+      response.on('error', err => {
+        file.destroy();
+        reject(err);
+      });
+      file.on('error', reject);
+      file.on('finish', () => {
+        file.close(err => {
+          if (err) return reject(err);
+          try {
+            fs.renameSync(tempPath, filePath);
+            report();
+            resolve({ path: `/videos/${filename}`, bytes: downloaded, total });
+          } catch (renameError) {
+            reject(renameError);
+          }
+        });
+      });
       response.pipe(file);
-      file.on('finish', () => { file.close(); resolve(`/videos/${filename}`); });
-    }).on('error', (err) => {
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-      reject(err);
     });
+    request.on('error', reject);
+    request.setTimeout(30000, () => request.destroy(new Error('视频下载连接超时')));
+  }).catch(err => {
+    const tempPath = `${videoPathForFilename(filename)}.part`;
+    try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch {}
+    throw err;
   });
+}
+
+async function processVideoJob(job) {
+  const { postId, url, filename } = job;
+  let lastReportedAt = 0;
+  try {
+    await updateVideoRow(postId, { video_status: 'downloading', video_error: null });
+    const result = await downloadVideoWithProgress(url, filename, async (bytes, total) => {
+      const now = Date.now();
+      if (bytes !== total && now - lastReportedAt < 500) return;
+      lastReportedAt = now;
+      await updateVideoRow(postId, { video_bytes: bytes, video_total_bytes: total });
+    });
+    await updateVideoRow(postId, {
+      video: result.path,
+      video_status: 'completed',
+      video_bytes: result.bytes,
+      video_total_bytes: result.total || result.bytes,
+      video_error: null
+    });
+    console.log(`视频下载成功: ${result.path}`);
+  } catch (err) {
+    console.error(`视频下载失败: ${err.message}`);
+    await updateVideoRow(postId, { video_status: 'failed', video_error: err.message || '视频下载失败' });
+  }
+}
+
+function pumpVideoQueue() {
+  while (activeVideoDownloads < VIDEO_DOWNLOAD_CONCURRENCY && videoQueue.length) {
+    const job = videoQueue.shift();
+    activeVideoDownloads += 1;
+    processVideoJob(job)
+      .catch(err => console.error('视频任务处理失败:', err.message))
+      .finally(() => {
+        activeVideoDownloads -= 1;
+        videoJobs.delete(job.postId);
+        pumpVideoQueue();
+      });
+  }
+}
+
+function queueVideoDownload({ postId, url, filename }) {
+  if (!postId || !url || !filename || videoJobs.has(postId)) return false;
+  videoJobs.add(postId);
+  videoQueue.push({ postId, url, filename });
+  pumpVideoQueue();
+  return true;
+}
+
+function queuePendingVideoDownloads() {
+  db.all(
+    `SELECT id, video_source_url, video_filename FROM posts
+     WHERE video_source_url IS NOT NULL AND video_source_url != ''
+       AND video_status IN ('queued','downloading')`,
+    [],
+    (err, rows) => {
+      if (err) return console.error('恢复视频下载任务失败:', err.message);
+      for (const row of rows || []) {
+        queueVideoDownload({ postId: row.id, url: row.video_source_url, filename: row.video_filename });
+      }
+    }
+  );
+}
+
+async function resumeVideoDownloadIfNeeded(post) {
+  if (!post?.video_source_url || !post.video_filename) return;
+  if (post.video_status === 'failed') {
+    await updateVideoRow(post.id, { video_status: 'queued', video_bytes: 0, video_total_bytes: 0, video_error: null });
+    post.video_status = 'queued';
+  }
+  if (['queued', 'downloading'].includes(post.video_status)) {
+    queueVideoDownload({ postId: post.id, url: post.video_source_url, filename: post.video_filename });
+  }
 }
 
 function escapeHtml(text) {
@@ -418,17 +586,15 @@ async function fetchXPost(url) {
   }
 
   let localVideoPath = null;
+  let videoSourceUrl = null;
+  let videoFilename = null;
+  let videoStatus = 'none';
   const videoUrl = media.videos?.[0]?.url;
   if (videoUrl) {
     const videoExt = videoUrl.split('.').pop().split('?')[0] || 'mp4';
-    const videoFilename = `${tweetId}_video.${videoExt}`;
-    try {
-      localVideoPath = await downloadVideo(videoUrl, videoFilename);
-      console.log(`视频下载成功: ${localVideoPath}`);
-    } catch (err) {
-      console.error(`视频下载失败: ${err.message}`);
-      localVideoPath = videoUrl;
-    }
+    videoFilename = `${tweetId}_video.${videoExt.replace(/[^a-z0-9]/gi, '') || 'mp4'}`;
+    videoSourceUrl = videoUrl;
+    videoStatus = 'queued';
   }
 
   const { htmlContent } = renderTweetContent({ tweet, localImages, urlToLocalPath, escapeHtml });
@@ -440,13 +606,35 @@ async function fetchXPost(url) {
     content: htmlContent,
     images: localImages,
     video: localVideoPath,
+    video_source_url: videoSourceUrl,
+    video_filename: videoFilename,
+    video_status: videoStatus,
+    video_bytes: 0,
+    video_total_bytes: 0,
+    video_error: null,
     tweet_time: normalizeXTimestamp(tweet.created_timestamp)
   };
 }
 
 function generateMirrorHtml(post) {
   const content = post.content || '';
-  const videoHtml = post.video ? `<video controls style="max-width:100%;margin:10px 0;"><source src="${post.video}" type="video/mp4"></video>` : '';
+  const videoStatus = post.video_status || (post.video ? 'completed' : (post.video_source_url ? 'queued' : 'none'));
+  const videoBytes = Number(post.video_bytes) || 0;
+  const videoTotal = Number(post.video_total_bytes) || 0;
+  const videoPercent = videoTotal > 0 ? Math.min(100, Math.round((videoBytes / videoTotal) * 100)) : 0;
+  let videoHtml = '';
+  if (videoStatus === 'completed' && post.video) {
+    videoHtml = `<video controls style="max-width:100%;margin:10px 0;"><source src="${escapeHtml(post.video)}" type="video/mp4"></video>`;
+  } else if (['queued', 'downloading'].includes(videoStatus)) {
+    const initialText = videoStatus === 'downloading' ? '视频正在下载中…' : '视频即将开始下载…';
+    videoHtml = `<div class="video-placeholder" data-video-status="${videoStatus}" data-video-post-id="${post.id}" role="status" aria-live="polite">
+      <div class="video-placeholder-title">🎞️ ${initialText}</div>
+      <div class="video-progress"><div class="video-progress-bar" style="width:${videoPercent}%"></div></div>
+      <div class="video-progress-text">${videoPercent > 0 ? `${videoPercent}% · ${formatBytes(videoBytes)}${videoTotal ? ` / ${formatBytes(videoTotal)}` : ''}` : '正在准备下载'}</div>
+    </div>`;
+  } else if (videoStatus === 'failed') {
+    videoHtml = `<div class="video-placeholder video-placeholder-error" data-video-status="failed" data-video-post-id="${post.id}" role="status">视频下载失败，请重新提交原链接重试。</div>`;
+  }
 
   const summary = extractSummary(content);
   const ogImage = post.images && post.images.length > 0 ? post.images[0] : '';
@@ -509,7 +697,7 @@ function generateMirrorHtml(post) {
 .author-info{flex:1}.author-name{font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:4px}.author-handle{color:var(--text-secondary);font-size:15px}
 .content{margin:4px 0;font-size:17px;line-height:1.6;word-wrap:break-word;color:var(--text-primary)}
 .content h1{font-size:20px;font-weight:800;margin:16px 0}.content h2{font-size:18px;font-weight:700;margin:14px 0}.content p{margin:12px 0}.content a{color:var(--link-color);text-decoration:none}.content a:hover{text-decoration:underline}
-.content img,.media-img{max-width:100%;border-radius:16px;margin:12px 0;border:1px solid var(--border-color)}video{max-width:100%;border-radius:16px;margin:12px 0}
+.content img,.media-img{max-width:100%;border-radius:16px;margin:12px 0;border:1px solid var(--border-color)}video{max-width:100%;border-radius:16px;margin:12px 0}.video-placeholder{margin:12px 0;padding:22px 18px;border:1px solid var(--border-color);border-radius:16px;background:var(--hover-bg);color:var(--text-secondary)}.video-placeholder-title{color:var(--text-primary);font-weight:600;margin-bottom:14px}.video-progress{height:8px;background:var(--border-color);border-radius:999px;overflow:hidden}.video-progress-bar{height:100%;background:linear-gradient(90deg,#667eea,#764ba2);transition:width .4s ease}.video-progress-text{font-size:13px;margin-top:9px}.video-placeholder-error{color:#b42318}
 .translate-toolbar{display:flex;gap:8px;margin:12px 0;align-items:center;flex-wrap:wrap}
 .translate-btn{padding:6px 12px;border:1px solid var(--border-color);border-radius:999px;background:var(--hover-bg);color:var(--text-primary);cursor:pointer;font-size:13px}
 .translate-btn[disabled]{opacity:.6;cursor:not-allowed}
@@ -552,6 +740,32 @@ async function getPostById(id) {
     db.get('SELECT * FROM posts WHERE id=?', [id], (err, row) => err ? reject(err) : resolve(row));
   });
 }
+
+app.get('/api/posts/:id/video-status', async (req, res) => {
+  const postId = Number(req.params.id);
+  if (!Number.isInteger(postId) || postId <= 0) {
+    return res.status(400).json({ success: false, error: '无效 postId' });
+  }
+  try {
+    const post = await getPostById(postId);
+    if (!post) return res.status(404).json({ success: false, error: '存档不存在' });
+    const status = post.video_status || (post.video ? 'completed' : 'none');
+    const bytes = Number(post.video_bytes) || 0;
+    const total = Number(post.video_total_bytes) || 0;
+    const percent = total > 0 ? Math.min(100, Math.round((bytes / total) * 10000) / 100) : 0;
+    return res.json({
+      success: true,
+      status,
+      bytes,
+      total,
+      percent,
+      video: status === 'completed' ? post.video : null,
+      error: status === 'failed' ? (post.video_error || '视频下载失败') : null
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || '读取视频状态失败' });
+  }
+});
 
 function healDbWriteability() {
   try { fs.chmodSync(DATA_DIR, 0o750); } catch {}
@@ -744,9 +958,12 @@ async function archiveXUrl(url) {
         });
       }
       await runDbWrite(
-        'UPDATE posts SET author=?,author_handle=?,author_avatar=?,content=?,images=?,video=?,tweet_time=? WHERE id=?',
+        `UPDATE posts SET author=?,author_handle=?,author_avatar=?,content=?,images=?,video=?,
+         video_status=?,video_source_url=?,video_filename=?,video_bytes=?,video_total_bytes=?,video_error=?,tweet_time=? WHERE id=?`,
         [refreshed.author, refreshed.author_handle, refreshed.author_avatar, refreshed.content,
-          JSON.stringify(refreshed.images), refreshed.video, refreshed.tweet_time, existing.id]
+          JSON.stringify(refreshed.images), refreshed.video, refreshed.video_status, refreshed.video_source_url,
+          refreshed.video_filename, refreshed.video_bytes, refreshed.video_total_bytes, refreshed.video_error,
+          refreshed.tweet_time, existing.id]
       );
       Object.assign(existing, refreshed, { images: JSON.stringify(refreshed.images) });
     }
@@ -757,11 +974,12 @@ async function archiveXUrl(url) {
     const htmlPath = path.join(ARCHIVES_DIR, existing.html_file);
     const htmlContent = generateMirrorHtml(existing);
     fs.writeFileSync(htmlPath, htmlContent, 'utf8');
+    await resumeVideoDownloadIfNeeded(existing);
     return { success: true, id: existing.id, url: `/${existing.short_code}`, short_code: existing.short_code, message: '已存在', cached: true };
   }
 
   const content = await fetchXPost(canonicalUrl);
-  if (!content.content && content.images.length === 0 && !content.video) {
+  if (!content.content && content.images.length === 0 && !content.video && !content.video_source_url) {
     throw new Error('未能获取推文内容');
   }
 
@@ -797,8 +1015,12 @@ async function archiveXUrl(url) {
   let stmt;
   try {
     stmt = await runDbWrite(
-      'INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,tweet_time,html_file,short_code)VALUES(?,?,?,?,?,?,?,?,?,?)',
-      [canonicalUrl, content.author, content.author_handle, content.author_avatar, content.content, JSON.stringify(content.images), content.video, content.tweet_time, htmlFile, shortCode]
+      `INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,video_status,video_source_url,
+       video_filename,video_bytes,video_total_bytes,video_error,tweet_time,html_file,short_code)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [canonicalUrl, content.author, content.author_handle, content.author_avatar, content.content, JSON.stringify(content.images),
+        content.video, content.video_status, content.video_source_url, content.video_filename, content.video_bytes,
+        content.video_total_bytes, content.video_error, content.tweet_time, htmlFile, shortCode]
     );
   } catch (insertErr) {
     if (String(insertErr.message || '').includes('UNIQUE constraint failed: posts.url')) {
@@ -811,6 +1033,7 @@ async function archiveXUrl(url) {
         const htmlPath = path.join(ARCHIVES_DIR, existing2.html_file);
         const htmlContent = generateMirrorHtml(existing2);
         fs.writeFileSync(htmlPath, htmlContent, 'utf8');
+        await resumeVideoDownloadIfNeeded(existing2);
         return { success: true, id: existing2.id, url: `/${existing2.short_code}`, short_code: existing2.short_code, message: '已存在', cached: true };
       }
     }
@@ -820,6 +1043,9 @@ async function archiveXUrl(url) {
   const result = stmt.lastID;
   const htmlContent = generateMirrorHtml({ id: result, url: canonicalUrl, ...content, html_file: htmlFile, short_code: shortCode });
   fs.writeFileSync(path.join(ARCHIVES_DIR, htmlFile), htmlContent, 'utf8');
+  if (content.video_source_url) {
+    queueVideoDownload({ postId: result, url: content.video_source_url, filename: content.video_filename });
+  }
 
   return {
     success: true,
@@ -935,6 +1161,9 @@ app.post('/api/delete', requireAdmin, async (req, res) => {
     }
 
     deleteMediaAsset(DATA_DIR, post.video);
+    if (post.video_filename) {
+      try { fs.unlinkSync(`${videoPathForFilename(post.video_filename)}.part`); } catch {}
+    }
 
     await runDbWrite('DELETE FROM translations WHERE post_id=?',[id]);
     await runDbWrite('DELETE FROM post_aliases WHERE target_post_id=?',[id]);
@@ -1019,6 +1248,7 @@ app.get('/', (req,res)=>res.sendFile(path.join(__dirname,'public','index.html'))
 async function startServer() {
   try {
     await ensureShortCodeReady();
+    await ensureVideoColumnsReady();
     console.log('短链字段与历史数据检查完成');
   } catch (e) {
     console.error('短链初始化失败:', e.message);
@@ -1028,6 +1258,7 @@ async function startServer() {
   app.listen(PORT,'0.0.0.0',()=>{
     console.log(`XMirror运行在http://0.0.0.0:${PORT}`);
     console.log(`SQLite: ${dbPath}`);
+    queuePendingVideoDownloads();
   });
 }
 

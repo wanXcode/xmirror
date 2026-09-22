@@ -74,15 +74,41 @@ ln -s "$shared_dir/data" "$release_dir/data"
 ln -s "$shared_dir/archives" "$release_dir/archives"
 [[ ! -f "$shared_dir/.env" ]] || ln -s "$shared_dir/.env" "$release_dir/.env"
 
-log "installing production dependencies (building sqlite3 for the host)"
+log "installing production dependencies"
 # The production host uses an older glibc than the sqlite3 prebuilt binary
-# distributed by npm. Build sqlite3 during installation so every release avoids
-# the predictable load failure and follow-up rebuild pause.
-npm_config_build_from_source=true npm --prefix "$release_dir" ci --omit=dev --foreground-scripts
-log "validating the installed sqlite3 native binding"
+# distributed by npm. Skip native install scripts, then reuse a verified local
+# build or compile sqlite3 once for this host. This avoids repeating a failed
+# prebuilt load and a 50-second rebuild on every release.
+npm --prefix "$release_dir" ci --omit=dev --ignore-scripts
+
+sqlite_version="$(node -e 'console.log(require(process.argv[1]).version)' "$release_dir/node_modules/sqlite3/package.json" 2>/dev/null || true)"
+sqlite_cache_file=''
+if [[ -n "$sqlite_version" ]]; then
+  sqlite_cache_file="$shared_dir/.cache/sqlite3/$(node -p 'process.versions.modules')-$(uname -m)-$sqlite_version/node_sqlite3.node"
+fi
+sqlite_native_file="$release_dir/node_modules/sqlite3/build/Release/node_sqlite3.node"
+
+if [[ -n "$sqlite_cache_file" && -f "$sqlite_cache_file" ]]; then
+  mkdir -p "$(dirname "$sqlite_native_file")"
+  cp "$sqlite_cache_file" "$sqlite_native_file"
+  log "reused cached sqlite3 native binding"
+else
+  log "building sqlite3 native binding for the host"
+  npm_config_build_from_source=true npm --prefix "$release_dir" rebuild sqlite3 --build-from-source --foreground-scripts
+  if [[ -n "$sqlite_cache_file" && -f "$sqlite_native_file" ]]; then
+    mkdir -p "$(dirname "$sqlite_cache_file")"
+    cp "$sqlite_native_file" "$sqlite_cache_file"
+  fi
+fi
+
+log "validating the sqlite3 native binding"
 if ! node "$release_dir/ops/check-sqlite.js"; then
-  log "sqlite3 binding could not be loaded; rebuilding it from source"
-  npm --prefix "$release_dir" rebuild sqlite3 --build-from-source
+  log "cached sqlite3 binding was incompatible; rebuilding it from source"
+  npm_config_build_from_source=true npm --prefix "$release_dir" rebuild sqlite3 --build-from-source --foreground-scripts
+  if [[ -n "$sqlite_cache_file" && -f "$sqlite_native_file" ]]; then
+    mkdir -p "$(dirname "$sqlite_cache_file")"
+    cp "$sqlite_native_file" "$sqlite_cache_file"
+  fi
   log "validating the rebuilt sqlite3 native binding"
   node "$release_dir/ops/check-sqlite.js"
 fi
