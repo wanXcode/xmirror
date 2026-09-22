@@ -35,6 +35,8 @@ sudo XMIRROR_APP_ROOT=/opt/xmirror \
 脚本会使用上述编译工具自动执行 `npm rebuild sqlite3 --build-from-source` 并再次
 验证；重编译或复验失败时发布立即中止，`current` 不会被修改。
 
+启用视频字幕还需要服务器安装 `ffmpeg` 和 `ffprobe`。XMirror 会把视频音频切成小片，调用配置的语音转写服务，再按用户选择的语言生成 WebVTT 字幕；字幕生成不会阻塞视频播放。Debian/Ubuntu 可执行 `apt-get install ffmpeg`。
+
 ## 发布
 
 在服务器的 Git 工作副本中执行：

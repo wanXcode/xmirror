@@ -6,6 +6,10 @@ const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const https = require('https');
 const crypto = require('crypto');
+const {
+  transcribeVideo,
+  segmentsToVtt
+} = require('./lib/subtitles');
 const { createModerator, ModerationRejectError } = require('./lib/moderation');
 const { createChatCompletion } = require('./lib/siliconflow');
 const {
@@ -45,6 +49,8 @@ const SILICONFLOW_FALLBACK_MODELS = (process.env.SILICONFLOW_FALLBACK_MODELS || 
   .map(model => model.trim())
   .filter(Boolean);
 const SILICONFLOW_API_KEY = process.env.SILICONFLOW_API_KEY || process.env.OPENAI_API_KEY || '';
+const SILICONFLOW_TRANSCRIPTION_MODEL = process.env.SILICONFLOW_TRANSCRIPTION_MODEL || 'FunAudioLLM/SenseVoiceSmall';
+const SUBTITLE_SEGMENT_SECONDS = Math.max(30, Number(process.env.SUBTITLE_SEGMENT_SECONDS) || 60);
 const MODERATION_ADMIN_TOKEN = process.env.MODERATION_ADMIN_TOKEN || '';
 const requireAdmin = createAdminGuard(MODERATION_ADMIN_TOKEN);
 
@@ -66,14 +72,16 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
 fs.mkdirSync(path.join(DATA_DIR, 'images'), { recursive: true });
 fs.mkdirSync(path.join(DATA_DIR, 'videos'), { recursive: true });
+fs.mkdirSync(path.join(DATA_DIR, 'subtitles'), { recursive: true });
 
-for (const dir of [DATA_DIR, ARCHIVES_DIR, path.join(DATA_DIR, 'images'), path.join(DATA_DIR, 'videos')]) {
+for (const dir of [DATA_DIR, ARCHIVES_DIR, path.join(DATA_DIR, 'images'), path.join(DATA_DIR, 'videos'), path.join(DATA_DIR, 'subtitles')]) {
   try { fs.chmodSync(dir, 0o750); } catch {}
 }
 
 app.use(express.static(PUBLIC_DIR));
 app.use('/images', express.static(path.join(DATA_DIR, 'images')));
 app.use('/videos', express.static(path.join(DATA_DIR, 'videos')));
+app.use('/subtitles', express.static(path.join(DATA_DIR, 'subtitles')));
 
 const dbPath = process.env.SQLITE_PATH || path.join(DATA_DIR, 'db.sqlite');
 if (fs.existsSync(dbPath)) {
@@ -206,6 +214,23 @@ db.serialize(() => {
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_translations_post_lang_hash
     ON translations(post_id, target_lang, source_hash)`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS subtitle_tracks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id INTEGER NOT NULL,
+    lang TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'none',
+    progress INTEGER NOT NULL DEFAULT 0,
+    source_segments TEXT,
+    vtt_path TEXT,
+    error TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(post_id, lang)
+  )`);
+
+  db.run(`CREATE INDEX IF NOT EXISTS idx_subtitle_tracks_post
+    ON subtitle_tracks(post_id, lang)`);
 
   db.run(`CREATE TABLE IF NOT EXISTS post_aliases (
     alias_code TEXT PRIMARY KEY,
@@ -530,6 +555,129 @@ async function translateWithSiliconFlow(parts, targetLang) {
   };
 }
 
+const SUBTITLE_LANGUAGES = Object.freeze({ en: 'English', 'zh-CN': '简体中文' });
+const subtitleQueue = [];
+const subtitleJobs = new Set();
+let activeSubtitleJobs = 0;
+
+function normalizeSubtitleLanguage(value) {
+  return Object.hasOwn(SUBTITLE_LANGUAGES, value) ? value : null;
+}
+
+function getSubtitleTrack(postId, lang) {
+  return new Promise((resolve, reject) => {
+    db.get('SELECT * FROM subtitle_tracks WHERE post_id=? AND lang=?', [postId, lang], (err, row) => err ? reject(err) : resolve(row));
+  });
+}
+
+function getSubtitleTracks(postId) {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT * FROM subtitle_tracks WHERE post_id=? ORDER BY lang', [postId], (err, rows) => err ? reject(err) : resolve(rows || []));
+  });
+}
+
+function updateSubtitleTrack(postId, lang, fields) {
+  const keys = Object.keys(fields);
+  const values = keys.map(key => fields[key]);
+  return runDbWrite(
+    `INSERT INTO subtitle_tracks(post_id,lang,${keys.join(',')}) VALUES(?,?,${keys.map(() => '?').join(',')})
+     ON CONFLICT(post_id,lang) DO UPDATE SET ${keys.map(key => `${key}=excluded.${key}`).join(',')}, updated_at=CURRENT_TIMESTAMP`,
+    [postId, lang, ...values]
+  );
+}
+
+function subtitleFilePath(postId, lang) {
+  return path.join(DATA_DIR, 'subtitles', `${postId}_${lang}.vtt`);
+}
+
+async function writeSubtitleFile(postId, lang, vtt) {
+  const target = subtitleFilePath(postId, lang);
+  const temp = `${target}.part`;
+  await fs.promises.writeFile(temp, vtt, 'utf8');
+  await fs.promises.rename(temp, target);
+  return `/subtitles/${postId}_${lang}.vtt`;
+}
+
+async function ensureEnglishSubtitles(post, progressStart = 0, progressScale = 100) {
+  let track = await getSubtitleTrack(post.id, 'en');
+  let segments;
+  try { segments = JSON.parse(track?.source_segments || 'null'); } catch { segments = null; }
+  if (!Array.isArray(segments) || !segments.length) {
+    await updateSubtitleTrack(post.id, 'en', { status: 'transcribing', progress: progressStart, error: null });
+    segments = await transcribeVideo(path.join(DATA_DIR, post.video), {
+      apiKey: SILICONFLOW_API_KEY,
+      baseUrl: SILICONFLOW_BASE_URL,
+      model: SILICONFLOW_TRANSCRIPTION_MODEL,
+      segmentSeconds: SUBTITLE_SEGMENT_SECONDS,
+      onProgress: value => updateSubtitleTrack(post.id, 'en', {
+        status: 'transcribing', progress: Math.round(progressStart + (value / 100) * progressScale), error: null
+      }).catch(() => {})
+    });
+    if (!segments.length) throw new Error('未识别到语音内容');
+  }
+  const vttPath = await writeSubtitleFile(post.id, 'en', segmentsToVtt(segments));
+  await updateSubtitleTrack(post.id, 'en', {
+    status: 'completed', progress: 100, source_segments: JSON.stringify(segments), vtt_path: vttPath, error: null
+  });
+  return segments;
+}
+
+async function processSubtitleJob({ postId, lang }) {
+  const post = await getPostById(postId);
+  if (!post || post.video_status !== 'completed' || !post.video) {
+    throw new Error('视频尚未下载完成');
+  }
+  const segments = await ensureEnglishSubtitles(post, lang === 'en' ? 0 : 0, lang === 'en' ? 100 : 60);
+  if (lang === 'en') return;
+
+  await updateSubtitleTrack(postId, lang, { status: 'translating', progress: 60, error: null });
+  const result = await translateInBatches(
+    segments.map(segment => segment.text),
+    batch => translateWithSiliconFlow(batch, lang)
+  );
+  const translatedSegments = segments.map((segment, index) => ({ ...segment, text: result.translations[index] }));
+  const vttPath = await writeSubtitleFile(postId, lang, segmentsToVtt(translatedSegments));
+  await updateSubtitleTrack(postId, lang, {
+    status: 'completed', progress: 100, vtt_path: vttPath, error: null
+  });
+}
+
+function pumpSubtitleQueue() {
+  while (activeSubtitleJobs < 1 && subtitleQueue.length) {
+    const job = subtitleQueue.shift();
+    activeSubtitleJobs += 1;
+    processSubtitleJob(job)
+      .catch(async err => {
+        console.error(`字幕生成失败 (${job.postId}/${job.lang}): ${err.message}`);
+        await updateSubtitleTrack(job.postId, job.lang, { status: 'failed', error: err.message || '字幕生成失败' }).catch(() => {});
+      })
+      .finally(() => {
+        activeSubtitleJobs -= 1;
+        subtitleJobs.delete(`${job.postId}:${job.lang}`);
+        pumpSubtitleQueue();
+      });
+  }
+}
+
+async function queueSubtitleJob(postId, lang) {
+  const key = `${postId}:${lang}`;
+  if (subtitleJobs.has(key)) return false;
+  const current = await getSubtitleTrack(postId, lang);
+  if (current?.status === 'completed') return false;
+  await updateSubtitleTrack(postId, lang, { status: 'queued', progress: 0, error: null });
+  subtitleJobs.add(key);
+  subtitleQueue.push({ postId, lang });
+  pumpSubtitleQueue();
+  return true;
+}
+
+function queuePendingSubtitleJobs() {
+  db.all("SELECT post_id,lang FROM subtitle_tracks WHERE status IN ('queued','transcribing','translating')", [], (err, rows) => {
+    if (err) return console.error('恢复字幕任务失败:', err.message);
+    for (const row of rows || []) queueSubtitleJob(row.post_id, row.lang).catch(error => console.error('恢复字幕任务失败:', error.message));
+  });
+}
+
 async function fetchXPost(url) {
   const tweetId = extractTweetId(url);
   if (!tweetId) throw new Error('无法提取推文ID');
@@ -623,8 +771,8 @@ function generateMirrorHtml(post) {
   const videoTotal = Number(post.video_total_bytes) || 0;
   const videoPercent = videoTotal > 0 ? Math.min(100, Math.round((videoBytes / videoTotal) * 100)) : 0;
   let videoHtml = '';
-  if (videoStatus === 'completed' && post.video) {
-    videoHtml = `<video controls style="max-width:100%;margin:10px 0;"><source src="${escapeHtml(post.video)}" type="video/mp4"></video>`;
+  if (videoStatus === 'completed' && /^\/videos\/[A-Za-z0-9_.-]+$/.test(post.video || '')) {
+    videoHtml = buildVideoPlayerHtml(post);
   } else if (['queued', 'downloading'].includes(videoStatus)) {
     const initialText = videoStatus === 'downloading' ? '视频正在下载中…' : '视频即将开始下载…';
     videoHtml = `<div class="video-placeholder" data-video-status="${videoStatus}" data-video-post-id="${post.id}" role="status" aria-live="polite">
@@ -698,6 +846,7 @@ function generateMirrorHtml(post) {
 .content{margin:4px 0;font-size:17px;line-height:1.6;word-wrap:break-word;color:var(--text-primary)}
 .content h1{font-size:20px;font-weight:800;margin:16px 0}.content h2{font-size:18px;font-weight:700;margin:14px 0}.content p{margin:12px 0}.content a{color:var(--link-color);text-decoration:none}.content a:hover{text-decoration:underline}
 .content img,.media-img{max-width:100%;border-radius:16px;margin:12px 0;border:1px solid var(--border-color)}video{max-width:100%;border-radius:16px;margin:12px 0}.video-placeholder{margin:12px 0;padding:22px 18px;border:1px solid var(--border-color);border-radius:16px;background:var(--hover-bg);color:var(--text-secondary)}.video-placeholder-title{color:var(--text-primary);font-weight:600;margin-bottom:14px}.video-progress{height:8px;background:var(--border-color);border-radius:999px;overflow:hidden}.video-progress-bar{height:100%;background:linear-gradient(90deg,#667eea,#764ba2);transition:width .4s ease}.video-progress-text{font-size:13px;margin-top:9px}.video-placeholder-error{color:#b42318}
+.subtitle-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px;color:var(--text-secondary);font-size:13px}.subtitle-select{border:1px solid var(--border-color);border-radius:999px;padding:6px 28px 6px 10px;background:var(--bg-color);color:var(--text-primary);font:inherit}.subtitle-status{font-size:12px}.subtitle-status.is-error{color:#b42318}
 .translate-toolbar{display:flex;gap:8px;margin:12px 0;align-items:center;flex-wrap:wrap}
 .translate-btn{padding:6px 12px;border:1px solid var(--border-color);border-radius:999px;background:var(--hover-bg);color:var(--text-primary);cursor:pointer;font-size:13px}
 .translate-btn[disabled]{opacity:.6;cursor:not-allowed}
@@ -735,6 +884,21 @@ ${videoHtml}
   return html;
 }
 
+function buildVideoPlayerHtml(post) {
+  return `<div class="video-shell" data-video-post-id="${post.id}">
+    <video controls style="max-width:100%;margin:10px 0;"><source src="${escapeHtml(post.video)}" type="video/mp4"></video>
+    <div class="subtitle-toolbar" role="group" aria-label="字幕设置">
+      <label for="subtitleSelect">CC 字幕</label>
+      <select id="subtitleSelect" class="subtitle-select">
+        <option value="" selected>关闭字幕</option>
+        <option value="en">English</option>
+        <option value="zh-CN">简体中文</option>
+      </select>
+      <span id="subtitleStatus" class="subtitle-status" role="status" aria-live="polite"></span>
+    </div>
+  </div>`;
+}
+
 async function getPostById(id) {
   return new Promise((resolve, reject) => {
     db.get('SELECT * FROM posts WHERE id=?', [id], (err, row) => err ? reject(err) : resolve(row));
@@ -764,6 +928,57 @@ app.get('/api/posts/:id/video-status', async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message || '读取视频状态失败' });
+  }
+});
+
+app.get('/api/posts/:id/subtitles', async (req, res) => {
+  const postId = Number(req.params.id);
+  if (!Number.isInteger(postId) || postId <= 0) {
+    return res.status(400).json({ success: false, error: '无效 postId' });
+  }
+  try {
+    const post = await getPostById(postId);
+    if (!post) return res.status(404).json({ success: false, error: '存档不存在' });
+    const rows = await getSubtitleTracks(postId);
+    const tracks = {};
+    for (const [lang, label] of Object.entries(SUBTITLE_LANGUAGES)) {
+      const row = rows.find(item => item.lang === lang);
+      tracks[lang] = {
+        lang,
+        label,
+        status: row?.status || 'none',
+        progress: Number(row?.progress) || 0,
+        src: row?.status === 'completed' ? row.vtt_path : null,
+        error: row?.status === 'failed' ? (row.error || '字幕生成失败') : null
+      };
+    }
+    return res.json({ success: true, tracks });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || '读取字幕状态失败' });
+  }
+});
+
+app.post('/api/posts/:id/subtitles', async (req, res) => {
+  const postId = Number(req.params.id);
+  const lang = normalizeSubtitleLanguage(req.body?.lang || req.query.lang);
+  if (!Number.isInteger(postId) || postId <= 0) {
+    return res.status(400).json({ success: false, error: '无效 postId' });
+  }
+  if (!lang) return res.status(400).json({ success: false, error: '不支持的字幕语言' });
+  try {
+    const post = await getPostById(postId);
+    if (!post) return res.status(404).json({ success: false, error: '存档不存在' });
+    if (post.video_status !== 'completed' || !post.video) {
+      return res.status(409).json({ success: false, error: '视频尚未下载完成' });
+    }
+    const current = await getSubtitleTrack(postId, lang);
+    if (current?.status === 'completed') {
+      return res.json({ success: true, status: 'completed', progress: 100, src: current.vtt_path, cached: true });
+    }
+    await queueSubtitleJob(postId, lang);
+    return res.status(202).json({ success: true, status: 'queued', progress: 0, cached: false });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message || '字幕任务创建失败' });
   }
 });
 
@@ -1165,7 +1380,15 @@ app.post('/api/delete', requireAdmin, async (req, res) => {
       try { fs.unlinkSync(`${videoPathForFilename(post.video_filename)}.part`); } catch {}
     }
 
+    const subtitleRows = await getSubtitleTracks(id);
+    for (const subtitle of subtitleRows) {
+      if (subtitle.vtt_path) {
+        try { fs.unlinkSync(path.join(DATA_DIR, subtitle.vtt_path.replace(/^\/subtitles\//, 'subtitles/'))); } catch {}
+      }
+    }
+
     await runDbWrite('DELETE FROM translations WHERE post_id=?',[id]);
+    await runDbWrite('DELETE FROM subtitle_tracks WHERE post_id=?',[id]);
     await runDbWrite('DELETE FROM post_aliases WHERE target_post_id=?',[id]);
     await runDbWrite('DELETE FROM posts WHERE id=?',[id]);
 
@@ -1259,6 +1482,7 @@ async function startServer() {
     console.log(`XMirror运行在http://0.0.0.0:${PORT}`);
     console.log(`SQLite: ${dbPath}`);
     queuePendingVideoDownloads();
+    queuePendingSubtitleJobs();
   });
 }
 

@@ -1,6 +1,7 @@
 let translateStatusTimer;
 let manualThemeOverride = false;
 let videoStatusTimer;
+let subtitleStatusTimer;
 
 function getSystemTheme() {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -103,13 +104,158 @@ function formatVideoBytes(bytes) {
   return `${size.toFixed(size >= 100 ? 0 : size >= 10 ? 1 : 2)} ${units[unit]}`;
 }
 
+function buildVideoPlayerMarkup(video, postId) {
+  return `<div class="video-shell" data-video-post-id="${encodeURIComponent(postId)}">
+    <video controls style="max-width:100%;margin:10px 0;"><source src="${video}" type="video/mp4"></video>
+    <div class="subtitle-toolbar" role="group" aria-label="字幕设置">
+      <label for="subtitleSelect">CC 字幕</label>
+      <select id="subtitleSelect" class="subtitle-select">
+        <option value="" selected>关闭字幕</option>
+        <option value="en">English</option>
+        <option value="zh-CN">简体中文</option>
+      </select>
+      <span id="subtitleStatus" class="subtitle-status" role="status" aria-live="polite"></span>
+    </div>
+  </div>`;
+}
+
+function subtitleLabel(lang, track) {
+  const base = lang === 'zh-CN' ? '简体中文' : 'English';
+  if (track.status === 'transcribing') return `${base}（识别中 ${track.progress || 0}%）`;
+  if (track.status === 'translating') return `${base}（翻译中 ${track.progress || 0}%）`;
+  if (track.status === 'queued') return `${base}（排队中）`;
+  if (track.status === 'failed') return `${base}（失败，重试）`;
+  return base;
+}
+
+function setSubtitleStatus(message, { error = false } = {}) {
+  const status = document.getElementById('subtitleStatus');
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle('is-error', error);
+}
+
+function applySubtitleTrack(lang, src) {
+  const shell = document.querySelector('.video-shell');
+  const video = shell?.querySelector?.('video');
+  if (!video) return;
+  Array.from(video.querySelectorAll('track')).forEach(track => {
+    if (track.track) track.track.mode = 'disabled';
+    track.remove();
+  });
+  if (!lang || !src || !/^\/subtitles\/[A-Za-z0-9_.-]+\.vtt$/.test(src)) return;
+  const track = document.createElement('track');
+  track.kind = 'subtitles';
+  track.src = src;
+  track.srclang = lang;
+  track.label = lang === 'zh-CN' ? '简体中文' : 'English';
+  track.default = true;
+  video.appendChild(track);
+  track.addEventListener('load', () => { if (track.track) track.track.mode = 'showing'; }, { once: true });
+}
+
+function updateSubtitleOptions(data) {
+  const select = document.getElementById('subtitleSelect');
+  if (!select) return data?.tracks || {};
+  const tracks = data?.tracks || {};
+  for (const lang of ['en', 'zh-CN']) {
+    const option = select.querySelector(`option[value="${lang}"]`);
+    if (!option) continue;
+    const track = tracks[lang] || { status: 'none' };
+    option.textContent = subtitleLabel(lang, track);
+    option.disabled = ['queued', 'transcribing', 'translating'].includes(track.status);
+  }
+  const selected = select.value;
+  const selectedTrack = tracks[selected];
+  if (selectedTrack?.status === 'completed') {
+    applySubtitleTrack(selected, selectedTrack.src);
+    setSubtitleStatus('字幕已就绪');
+  } else if (selectedTrack?.status === 'failed') {
+    setSubtitleStatus(selectedTrack.error || '字幕生成失败，重新选择即可重试', { error: true });
+  }
+  return tracks;
+}
+
+async function refreshSubtitleTracks() {
+  const shell = document.querySelector('.video-shell');
+  const postId = shell?.dataset?.videoPostId || document.querySelector('.post')?.dataset?.postId;
+  if (!postId) return {};
+  try {
+    const response = await fetch(`/api/posts/${encodeURIComponent(postId)}/subtitles`, { headers: { Accept: 'application/json' } });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || '读取字幕状态失败');
+    return updateSubtitleOptions(data);
+  } catch (error) {
+    setSubtitleStatus('字幕状态暂时无法读取', { error: true });
+    return {};
+  }
+}
+
+function startSubtitlePolling(postId, lang) {
+  if (subtitleStatusTimer) clearInterval(subtitleStatusTimer);
+  subtitleStatusTimer = setInterval(async () => {
+    const tracks = await refreshSubtitleTracks();
+    const track = tracks[lang];
+    if (track?.status === 'completed' || track?.status === 'failed') {
+      clearInterval(subtitleStatusTimer);
+      subtitleStatusTimer = null;
+      const select = document.getElementById('subtitleSelect');
+      if (select) select.disabled = false;
+    }
+  }, 2500);
+}
+
+async function selectSubtitleLanguage(event) {
+  const select = event.currentTarget;
+  const lang = select.value;
+  const shell = document.querySelector('.video-shell');
+  const postId = shell?.dataset?.videoPostId || document.querySelector('.post')?.dataset?.postId;
+  if (!postId) return;
+  if (!lang) {
+    applySubtitleTrack('', '');
+    setSubtitleStatus('');
+    return;
+  }
+  const tracks = await refreshSubtitleTracks();
+  const track = tracks[lang];
+  if (track?.status === 'completed') {
+    applySubtitleTrack(lang, track.src);
+    setSubtitleStatus('字幕已启用');
+    return;
+  }
+  select.disabled = true;
+  setSubtitleStatus(lang === 'zh-CN' ? '正在生成中文字幕…' : '正在生成英文字幕…');
+  try {
+    const response = await fetch(`/api/posts/${encodeURIComponent(postId)}/subtitles`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ lang })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || '字幕任务创建失败');
+    startSubtitlePolling(postId, lang);
+  } catch (error) {
+    select.disabled = false;
+    setSubtitleStatus(error.message || '字幕生成失败', { error: true });
+  }
+}
+
+function initializeSubtitleControls() {
+  const select = document.getElementById('subtitleSelect');
+  if (!select || select.dataset.initialized === 'true') return;
+  select.dataset.initialized = 'true';
+  select.addEventListener('change', selectSubtitleLanguage);
+  refreshSubtitleTracks();
+}
+
 function renderVideoPlaceholder(data) {
   const placeholder = document.querySelector('.video-placeholder');
   if (!placeholder) return false;
   const status = data.status || 'queued';
   const percent = Math.max(0, Math.min(100, Number(data.percent) || 0));
   if (status === 'completed' && typeof data.video === 'string' && /^\/videos\/[A-Za-z0-9_.-]+$/.test(data.video)) {
-    placeholder.outerHTML = `<video controls style="max-width:100%;margin:10px 0;"><source src="${data.video}" type="video/mp4"></video>`;
+    const postId = document.querySelector('.post')?.dataset?.postId || '';
+    placeholder.outerHTML = buildVideoPlayerMarkup(data.video, postId);
+    initializeSubtitleControls();
     return true;
   }
   const title = placeholder.querySelector?.('.video-placeholder-title');
@@ -231,6 +377,7 @@ function initializeMirrorPage() {
   });
   setDefaultTranslateButtonText();
   initializeVideoDownload();
+  initializeSubtitleControls();
 }
 
 if (typeof document !== 'undefined') {
@@ -252,6 +399,13 @@ if (typeof module !== 'undefined') {
     escapeTranslatedText,
     renderTranslatedBlocks,
     formatVideoBytes,
+    buildVideoPlayerMarkup,
+    subtitleLabel,
+    applySubtitleTrack,
+    updateSubtitleOptions,
+    refreshSubtitleTracks,
+    selectSubtitleLanguage,
+    initializeSubtitleControls,
     renderVideoPlaceholder,
     pollVideoStatus,
     initializeVideoDownload,

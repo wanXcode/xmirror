@@ -71,6 +71,8 @@ test('page script is valid JavaScript and follows the system color scheme', () =
 test('generated archive pages load the external page script', () => {
   const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   assert.match(serverSource, /<script src="\/mirror-page\.js" defer><\/script>/);
+  assert.match(serverSource, /\/api\/posts\/:id\/subtitles/);
+  assert.match(serverSource, /subtitleSelect/);
   assert.doesNotMatch(serverSource, /function escapeTranslatedText\(value\).*replace\(\/\\n\/g/s);
 });
 
