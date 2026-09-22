@@ -158,8 +158,8 @@
     { "pattern": "(做爱|做愛|性爱|性愛).{0,10}(刺激|激烈|疯狂|瘋狂)", "score": 6, "label": "色情描述" },
     { "pattern": "(肌肉|健身).{0,10}(操|做爱|做愛|性爱|性愛|射)", "score": 6, "label": "健身色情" },
     { "pattern": "(蒙眼|堵嘴|捆绑|綁).{0,15}(主人|贱狗|賤狗|奴)", "score": 6, "label": "BDSM内容" },
-    { "pattern": "(fuck|cock|dick|pussy|cum|anal|porn|nude|naked)", "score": 5, "label": "英文色情词" },
-    { "pattern": "(gooner|goon|goonfuel)", "score": 6, "label": "gooner色情" }
+    { "pattern": "\\b(fuck|cock|dick|pussy|cum|anal|porn|nude|naked)\\b", "score": 5, "label": "英文色情词" },
+    { "pattern": "\\b(gooner|goon|goonfuel)\\b", "score": 6, "label": "gooner色情" }
   ],
   "rejectThreshold": 6
 }

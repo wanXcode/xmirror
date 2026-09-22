@@ -182,3 +182,32 @@ test('still rejects full-version promotional language', () => {
     error => error instanceof ModerationRejectError
   );
 });
+
+test('allows technical words containing English moderation stems', () => {
+  const moderator = createTestModerator();
+  const result = moderator.moderateArchivedContent({
+    url: 'https://x.com/example/status/7',
+    authorName: '技术作者',
+    authorHandle: 'example',
+    content: '这篇 analysis 介绍购买流程，包含 analytics 和 document 示例。'
+  });
+
+  assert.equal(result.action, 'allow');
+  assert.equal(result.score, 3);
+  assert.ok(!result.matched.some(match => match.value === 'anal'));
+  assert.ok(!result.matched.some(match => match.value === '英文色情词'));
+});
+
+test('still rejects standalone English adult terms', () => {
+  const moderator = createTestModerator();
+
+  assert.throws(
+    () => moderator.moderateArchivedContent({
+      url: 'https://x.com/example/status/8',
+      authorName: 'example',
+      authorHandle: 'example',
+      content: 'explicit anal content'
+    }),
+    error => error instanceof ModerationRejectError
+  );
+});
