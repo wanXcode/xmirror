@@ -74,8 +74,11 @@ ln -s "$shared_dir/data" "$release_dir/data"
 ln -s "$shared_dir/archives" "$release_dir/archives"
 [[ ! -f "$shared_dir/.env" ]] || ln -s "$shared_dir/.env" "$release_dir/.env"
 
-log "installing production dependencies"
-npm --prefix "$release_dir" ci --omit=dev
+log "installing production dependencies (building sqlite3 for the host)"
+# The production host uses an older glibc than the sqlite3 prebuilt binary
+# distributed by npm. Build sqlite3 during installation so every release avoids
+# the predictable load failure and follow-up rebuild pause.
+npm_config_build_from_source=true npm --prefix "$release_dir" ci --omit=dev --foreground-scripts
 log "validating the installed sqlite3 native binding"
 if ! node "$release_dir/ops/check-sqlite.js"; then
   log "sqlite3 binding could not be loaded; rebuilding it from source"
