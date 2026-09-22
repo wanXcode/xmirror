@@ -51,6 +51,7 @@ const SILICONFLOW_FALLBACK_MODELS = (process.env.SILICONFLOW_FALLBACK_MODELS || 
 const SILICONFLOW_API_KEY = process.env.SILICONFLOW_API_KEY || process.env.OPENAI_API_KEY || '';
 const SILICONFLOW_TRANSCRIPTION_MODEL = process.env.SILICONFLOW_TRANSCRIPTION_MODEL || 'FunAudioLLM/SenseVoiceSmall';
 const SUBTITLE_SEGMENT_SECONDS = Math.max(30, Number(process.env.SUBTITLE_SEGMENT_SECONDS) || 60);
+const SUBTITLE_CONCURRENCY = Math.max(1, Number(process.env.SUBTITLE_CONCURRENCY) || 2);
 const MODERATION_ADMIN_TOKEN = process.env.MODERATION_ADMIN_TOKEN || '';
 const requireAdmin = createAdminGuard(MODERATION_ADMIN_TOKEN);
 
@@ -558,6 +559,7 @@ async function translateWithSiliconFlow(parts, targetLang) {
 const SUBTITLE_LANGUAGES = Object.freeze({ en: 'English', 'zh-CN': '简体中文' });
 const subtitleQueue = [];
 const subtitleJobs = new Set();
+const activeSubtitlePosts = new Set();
 let activeSubtitleJobs = 0;
 
 function normalizeSubtitleLanguage(value) {
@@ -643,8 +645,11 @@ async function processSubtitleJob({ postId, lang }) {
 }
 
 function pumpSubtitleQueue() {
-  while (activeSubtitleJobs < 1 && subtitleQueue.length) {
-    const job = subtitleQueue.shift();
+  while (activeSubtitleJobs < SUBTITLE_CONCURRENCY && subtitleQueue.length) {
+    const nextIndex = subtitleQueue.findIndex(job => !activeSubtitlePosts.has(job.postId));
+    if (nextIndex < 0) break;
+    const [job] = subtitleQueue.splice(nextIndex, 1);
+    activeSubtitlePosts.add(job.postId);
     activeSubtitleJobs += 1;
     processSubtitleJob(job)
       .catch(async err => {
@@ -653,6 +658,7 @@ function pumpSubtitleQueue() {
       })
       .finally(() => {
         activeSubtitleJobs -= 1;
+        activeSubtitlePosts.delete(job.postId);
         subtitleJobs.delete(`${job.postId}:${job.lang}`);
         pumpSubtitleQueue();
       });
