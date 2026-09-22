@@ -45,6 +45,7 @@ function makeFakeTools() {
 
   writeExecutable(path.join(bin, 'npm'), [
     'printf \'npm %s\\n\' "$*" >> "$FAKE_CALL_LOG"',
+    'printf \'npm_config_build_from_source=%s\\n\' "${npm_config_build_from_source:-}" >> "$FAKE_CALL_LOG"',
     'if [[ "$*" == *"rebuild sqlite3 --build-from-source"* ]]; then',
     '  touch "$FAKE_SQLITE_REBUILT"',
     'fi'
@@ -255,6 +256,7 @@ test('deploy rebuilds sqlite3 from source when the prebuilt binding cannot load'
   assert.equal(result.status, 0, result.stderr);
   assert.equal(fs.lstatSync(path.join(appRoot, 'current')).isSymbolicLink(), true);
   const calls = fs.readFileSync(tools.callLog, 'utf8');
+  assert.match(calls, /^npm_config_build_from_source=true$/m);
   assert.match(calls, /^npm --prefix .* rebuild sqlite3 --build-from-source$/m);
   assert.equal((calls.match(/^node .*\/ops\/check-sqlite\.js$/gm) || []).length, 2);
 });
