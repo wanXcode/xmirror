@@ -155,3 +155,30 @@ test('still rejects explicit compound keywords after removing ambiguous stems', 
     );
   }
 });
+
+test('allows benign article references to a full version', () => {
+  const moderator = createTestModerator();
+  const result = moderator.moderateArchivedContent({
+    url: 'https://x.com/example/status/4',
+    authorName: '产品作者',
+    authorHandle: 'example',
+    content: '完整版放在文章最后的附录里，供读者继续阅读。'
+  });
+
+  assert.equal(result.action, 'allow');
+  assert.ok(result.score < 6);
+});
+
+test('still rejects full-version promotional language', () => {
+  const moderator = createTestModerator();
+
+  assert.throws(
+    () => moderator.moderateArchivedContent({
+      url: 'https://x.com/example/status/5',
+      authorName: 'example',
+      authorHandle: 'example',
+      content: '完整版私信购买'
+    }),
+    error => error instanceof ModerationRejectError
+  );
+});
