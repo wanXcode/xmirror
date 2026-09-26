@@ -23,7 +23,6 @@ const {
   translationErrorResponse
 } = require('./lib/translation');
 const {
-  canonicalizeXPostUrl,
   extractXPostId,
   isBrokenArticleArchive,
   normalizeXTimestamp,
@@ -31,6 +30,7 @@ const {
 } = require('./lib/x-post');
 const { normalizePublicBaseUrl, buildPublicUrl } = require('./lib/public-url');
 const { createAdminGuard } = require('./lib/admin-auth');
+const { ArchiveError, normalizeArchiveUrl, archiveErrorResponse, readSourceResponse, archiveSuccessResponse } = require('./lib/archive-response');
 const { registerHealthRoute } = require('./lib/health');
 const {
   deleteMediaAsset,
@@ -257,18 +257,19 @@ async function fetchFromFxTwitter(tweetId) {
     };
     const req = https.request(options, (res) => {
       let data = [];
+      res.on('error', reject);
+      res.on('aborted', () => reject(new ArchiveError('NETWORK_ERROR')));
       res.on('data', chunk => data.push(chunk));
       res.on('end', () => {
         try {
           const buffer = Buffer.concat(data);
           const json = JSON.parse(buffer.toString('utf8'));
-          if (json.code === 200 && json.tweet) resolve(json.tweet);
-          else reject(new Error(json.message || 'API错误'));
+          resolve(readSourceResponse(res.statusCode, json));
         } catch (e) { reject(e); }
       });
     });
     req.on('error', reject);
-    req.setTimeout(15000, () => { req.destroy(); reject(new Error('超时')); });
+    req.setTimeout(15000, () => req.destroy(new ArchiveError('REQUEST_TIMEOUT')));
     req.end();
   });
 }
@@ -841,18 +842,16 @@ function generateMirrorHtml(post) {
 <meta name="twitter:domain" content="${new URL(PUBLIC_BASE_URL).hostname}">
 <!-- Retain the existing analytics site ID to preserve historical reporting across the domain migration. -->
 <script defer data-domain="xmirror.app" src="https://a.zhxs.me/js/script.js"></script>
+<link rel="stylesheet" href="/theme.css">
 <style>
-:root{--bg-color:#ffffff;--text-primary:#0f1419;--text-secondary:#536471;--border-color:#eff3f4;--link-color:#1d9bf0;--hover-bg:rgba(15,20,25,0.1);--card-shadow:0 0 15px rgba(0,0,0,0.08)}
-[data-theme="dark"]{--bg-color:#15202b;--text-primary:#e7e9ea;--text-secondary:#8899a6;--border-color:#38444d;--link-color:#1d9bf0;--hover-bg:rgba(255,255,255,0.1);--card-shadow:0 0 15px rgba(0,0,0,0.3)}
-*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg-color);color:var(--text-primary);min-height:100vh;padding:20px;transition:background .3s,color .3s}
-.theme-toggle{position:fixed;top:20px;right:20px;width:44px;height:44px;border-radius:50%;border:none;background:var(--hover-bg);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;z-index:100;transition:transform .2s}
+.theme-toggle{flex-shrink:0;margin-left:12px;width:44px;height:44px;border-radius:50%;border:none;background:var(--hover-bg);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;transition:transform .2s}
 .theme-toggle:hover{transform:scale(1.1)}
-.container{max-width:600px;margin:30px auto 20px}.post{background:var(--bg-color);border:1px solid var(--border-color);border-radius:16px;padding:20px;box-shadow:var(--card-shadow);transition:border-color .3s}
+.container{max-width:640px;margin:0 auto 20px}.post{background:var(--bg-color);border:1px solid var(--border-color);border-radius:16px;padding:20px;box-shadow:var(--card-shadow);transition:border-color .3s}
 .header{display:flex;align-items:flex-start;margin-bottom:12px}.avatar{width:48px;height:48px;border-radius:50%;margin-right:12px;object-fit:cover;background:var(--border-color)}
 .author-info{flex:1}.author-name{font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:4px}.author-handle{color:var(--text-secondary);font-size:15px}
 .content{margin:4px 0;font-size:17px;line-height:1.6;word-wrap:break-word;color:var(--text-primary)}
 .content h1{font-size:20px;font-weight:800;margin:16px 0}.content h2{font-size:18px;font-weight:700;margin:14px 0}.content p{margin:12px 0}.content a{color:var(--link-color);text-decoration:none}.content a:hover{text-decoration:underline}
-.content img,.media-img{max-width:100%;border-radius:16px;margin:12px 0;border:1px solid var(--border-color)}video{max-width:100%;border-radius:16px;margin:12px 0}.video-placeholder{margin:12px 0;padding:22px 18px;border:1px solid var(--border-color);border-radius:16px;background:var(--hover-bg);color:var(--text-secondary)}.video-placeholder-title{color:var(--text-primary);font-weight:600;margin-bottom:14px}.video-progress{height:8px;background:var(--border-color);border-radius:999px;overflow:hidden}.video-progress-bar{height:100%;background:linear-gradient(90deg,#667eea,#764ba2);transition:width .4s ease}.video-progress-text{font-size:13px;margin-top:9px}.video-placeholder-error{color:#b42318}
+.content img,.media-img{max-width:100%;border-radius:16px;margin:12px 0;border:1px solid var(--border-color)}video{max-width:100%;border-radius:16px;margin:12px 0}.video-placeholder{margin:12px 0;padding:22px 18px;border:1px solid var(--border-color);border-radius:16px;background:var(--hover-bg);color:var(--text-secondary)}.video-placeholder-title{color:var(--text-primary);font-weight:600;margin-bottom:14px}.video-progress{height:8px;background:var(--border-color);border-radius:999px;overflow:hidden}.video-progress-bar{height:100%;background:var(--link-color);transition:width .4s ease}.video-progress-text{font-size:13px;margin-top:9px}.video-placeholder-error{color:#b42318}
 .subtitle-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px;color:var(--text-secondary);font-size:13px}.subtitle-select{border:1px solid var(--border-color);border-radius:999px;padding:6px 28px 6px 10px;background:var(--bg-color);color:var(--text-primary);font:inherit}.subtitle-status{font-size:12px}.subtitle-status.is-error{color:#b42318}
 .translate-toolbar{display:flex;gap:8px;margin:12px 0;align-items:center;flex-wrap:wrap}
 .translate-btn{padding:6px 12px;border:1px solid var(--border-color);border-radius:999px;background:var(--hover-bg);color:var(--text-primary);cursor:pointer;font-size:13px}
@@ -864,17 +863,18 @@ function generateMirrorHtml(post) {
 .content-view{display:none}
 .content-view.active{display:block}
 .meta{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);color:var(--text-secondary);font-size:14px}
-.source{color:var(--link-color);text-decoration:none}.source:hover{text-decoration:underline}.badge{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600}
-.time{display:flex;align-items:center;gap:8px}@media(max-width:600px){body{padding:10px}.container{margin:50px 0 10px}.post{border-radius:12px}}
+.source{color:var(--link-color);text-decoration:none}.source:hover{text-decoration:underline}.badge{background:var(--link-color);color:var(--bg-color);padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600}
+.time{display:flex;align-items:center;gap:8px}@media(max-width:600px){.mirror-page{padding-top:12px}.container{margin:0 0 10px}.post{border-radius:12px}}
 </style>
 </head>
-<body>
-<button class="theme-toggle" onclick="toggleTheme()" title="切换主题">🌓</button>
+<body class="mirror-page">
 <div class="container">
 <div class="post" data-post-id="${post.id}" data-source-lang="${sourceLang}">
 <div class="header">
 <img class="avatar" src="${post.author_avatar}" onerror="this.style.display='none'">
-<div class="author-info"><div class="author-name">${escapeHtml(post.author)}</div><div class="author-handle">@${escapeHtml(post.author_handle)}</div></div></div>
+<div class="author-info"><div class="author-name">${escapeHtml(post.author)}</div><div class="author-handle">@${escapeHtml(post.author_handle)}</div></div>
+<button class="theme-toggle" onclick="toggleTheme()" title="切换主题" aria-label="切换主题">🌓</button>
+</div>
 <div class="translate-toolbar">
 <button id="translateBtn" class="translate-btn" type="button" onclick="toggleTranslate()" aria-controls="originContent translatedContent" aria-busy="false">🌐 翻译为中文</button>
 <span id="translateStatus" class="translate-status" role="status" aria-live="polite" aria-atomic="true"></span>
@@ -1149,7 +1149,7 @@ function cleanupFetchedAssets(content = {}) {
 }
 
 async function archiveXUrl(url) {
-  const canonicalUrl = canonicalizeXPostUrl(url);
+  const canonicalUrl = normalizeArchiveUrl(url);
   const tweetId = extractTweetId(canonicalUrl);
   const moderationSettings = getModerationSettings();
   if (moderationSettings.enabled) {
@@ -1197,12 +1197,12 @@ async function archiveXUrl(url) {
     const htmlContent = generateMirrorHtml(existing);
     fs.writeFileSync(htmlPath, htmlContent, 'utf8');
     await resumeVideoDownloadIfNeeded(existing);
-    return { success: true, id: existing.id, url: `/${existing.short_code}`, short_code: existing.short_code, message: '已存在', cached: true };
+    return archiveSuccessResponse(existing, true);
   }
 
   const content = await fetchXPost(canonicalUrl);
   if (!content.content && content.images.length === 0 && !content.video && !content.video_source_url) {
-    throw new Error('未能获取推文内容');
+    throw new ArchiveError('CONTENT_UNSUPPORTED');
   }
 
   if (moderationSettings.enabled) {
@@ -1219,15 +1219,6 @@ async function archiveXUrl(url) {
       }
       throw err;
     }
-  }
-
-  let title = '';
-  const h1Match = content.content.match(/<h1>(.+?)<\/h1>/);
-  if (h1Match) {
-    title = h1Match[1].replace(/【(.+?)】/, '$1');
-  } else {
-    title = content.content.replace(/<[^>]+>/g, '').substring(0, 50);
-    if (content.content.replace(/<[^>]+>/g, '').length > 50) title += '...';
   }
 
   const timestamp = Date.now();
@@ -1256,7 +1247,7 @@ async function archiveXUrl(url) {
         const htmlContent = generateMirrorHtml(existing2);
         fs.writeFileSync(htmlPath, htmlContent, 'utf8');
         await resumeVideoDownloadIfNeeded(existing2);
-        return { success: true, id: existing2.id, url: `/${existing2.short_code}`, short_code: existing2.short_code, message: '已存在', cached: true };
+        return archiveSuccessResponse(existing2, true);
       }
     }
     throw insertErr;
@@ -1269,40 +1260,27 @@ async function archiveXUrl(url) {
     queueVideoDownload({ postId: result, url: content.video_source_url, filename: content.video_filename });
   }
 
-  return {
-    success: true,
-    id: result,
-    url: `/${shortCode}`,
-    short_code: shortCode,
-    message: '存档成功',
-    author: content.author,
-    title,
-    preview: content.content.substring(0, 100)
-  };
+  return archiveSuccessResponse({ id: result, ...content, short_code: shortCode });
+}
+
+function sendArchiveError(res, error) {
+  console.error('Archive request failed:', error);
+  const response = archiveErrorResponse(error);
+  return res.status(response.status).json(response.body);
 }
 
 app.post('/api/archive', async (req, res) => {
-  const { url } = req.body;
-  if (!url?.includes('x.com') && !url?.includes('twitter.com')) {
-    return res.status(400).json({ error: '无效的X链接' });
-  }
-
   try {
-    const payload = await archiveXUrl(url);
+    const payload = await archiveXUrl(req.body?.url);
     return res.json(payload);
-  } catch (e) {
-    const status = e instanceof ModerationRejectError ? 400 : 500;
-    return res.status(status).json({ error: e.message || '抓取失败' });
+  } catch (error) {
+    return sendArchiveError(res, error);
   }
 });
 
 app.get('/api/archive/quick', async (req, res) => {
   const rawUrl = (req.query.url || '').toString().trim();
   const format = (req.query.format || 'redirect').toString().toLowerCase();
-
-  if (!rawUrl.includes('x.com') && !rawUrl.includes('twitter.com')) {
-    return res.status(400).json({ success: false, error: '无效的X链接' });
-  }
 
   try {
     const payload = await archiveXUrl(rawUrl);
@@ -1318,8 +1296,7 @@ app.get('/api/archive/quick', async (req, res) => {
 
     return res.redirect(302, absoluteUrl);
   } catch (e) {
-    const status = e instanceof ModerationRejectError ? 400 : 500;
-    return res.status(status).json({ success: false, error: e.message || '抓取失败' });
+    return sendArchiveError(res, e);
   }
 });
 
@@ -1331,7 +1308,10 @@ app.get('/api/posts', (req, res) => {
     'SELECT * FROM posts ORDER BY created_at DESC LIMIT ? OFFSET ?',
     [limit + 1, offset],
     (e, r) => {
-      if (e) return res.status(500).json({ error: e.message });
+      if (e) {
+        console.error('Read public archives failed:', e);
+        return res.status(503).json({ error: '服务暂时不可用', code: 'SERVICE_UNAVAILABLE' });
+      }
 
       const hasMore = (r || []).length > limit;
       const pageRows = (r || []).slice(0, limit).map(post => ({

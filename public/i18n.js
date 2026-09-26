@@ -17,16 +17,40 @@ const i18n = {
   // 语言配置
   translations: {
     zh: {
-      title: '🐦 XPut',
+      btnGenerating: "正在生成…",
+      localHistoryTab: "本机记录",
+      publicHistoryTab: "最新公开存档",
+      localHistoryNote: "仅保存在当前浏览器",
+      localHistoryEmpty: "这里会保留你在当前浏览器生成的存档。",
+      publicHistoryEmpty: "暂无公开存档。",
+      historyLoadError: "存档列表暂时加载失败，请重试。",
+      retry: "重试",
+      loadMore: "加载更多",
+      successArchived: "存档成功",
+      successExisting: "已找到存档",
+      videoPending: "正文已保存，视频仍在下载。可打开链接查看进度。",
+      videoFailed: "正文已保存，视频下载失败。请稍后重新提交原链接重试。",
+      storageUnavailable: "存档已生成，但本次记录未能保存到浏览器。",
+      errorInvalidUrl: "请输入有效的 X / Twitter 推文或文章链接。",
+      errorSourceUnavailable: "暂时无法访问原文，请检查链接及原文访问权限。",
+      errorContentUnsupported: "当前内容不支持存档。",
+      errorNetwork: "网络连接异常，请检查网络后重试。",
+      errorTimeout: "等待超时，存档结果尚未确认。请稍后重试，已完成的存档会直接返回。",
+      errorService: "服务暂时不可用，请稍后重试。",
+      themeToggle: "切换主题",
+      pageSettings: "页面设置",
+      archiveSection: "生成存档",
+      historySection: "存档记录",
+      title: 'XPut',
       subtitle: '粘贴 X 链接，生成可访问的镜像页面',
-      shortcutTitle: '🍎 iPhone 一键存档快捷指令',
+      shortcutTitle: 'iPhone 一键存档快捷指令',
       shortcutDesc: '复制 X 链接后，一键生成 XPut 存档链接',
       shortcutInstall: '立即安装 ↗',
       labelUrl: 'X 链接',
       placeholderUrl: 'https://x.com/username/status/1234567890',
       btnGenerate: '生成镜像',
       loadingText: '正在抓取内容...',
-      historyTitle: '最近存档',
+      historyTitle: '最新公开存档',
       historyLoadingMore: '正在努力加载',
       historyNoMore: '已经到底啦',
       unknownUser: '未知用户',
@@ -54,16 +78,40 @@ const i18n = {
       mirrorLink: '镜像链接',
     },
     en: {
-      title: '🐦 XPut',
+      btnGenerating: "Generating…",
+      localHistoryTab: "On this device",
+      publicHistoryTab: "Public archives",
+      localHistoryNote: "Saved only in this browser",
+      localHistoryEmpty: "Archives you generate in this browser will appear here.",
+      publicHistoryEmpty: "No public archives yet.",
+      historyLoadError: "Could not load archives. Please try again.",
+      retry: "Try again",
+      loadMore: "Load more",
+      successArchived: "Archive created",
+      successExisting: "Archive found",
+      videoPending: "Content saved. The video is still downloading. Open the link to check progress.",
+      videoFailed: "Content saved, but the video download failed. Submit the original link again later to retry.",
+      storageUnavailable: "Your archive is ready, but this browser could not save it to your history.",
+      errorInvalidUrl: "Enter a valid X / Twitter post or article link.",
+      errorSourceUnavailable: "The original post is unavailable. Check the link and access permissions.",
+      errorContentUnsupported: "This content cannot be archived.",
+      errorNetwork: "Connection problem. Check your network and try again.",
+      errorTimeout: "The wait timed out; the archive result is not yet confirmed. Try again later to retrieve it if it completed.",
+      errorService: "The service is temporarily unavailable. Please try again later.",
+      themeToggle: "Switch theme",
+      pageSettings: "Page settings",
+      archiveSection: "Create archive",
+      historySection: "Archive history",
+      title: 'XPut',
       subtitle: 'Paste X link to generate accessible mirror page',
-      shortcutTitle: '🍎 One-tap iPhone archiving',
+      shortcutTitle: 'One-tap iPhone archiving',
       shortcutDesc: 'Copy an X link and create an XPut archive in one tap',
       shortcutInstall: 'Install shortcut ↗',
       labelUrl: 'X Link',
       placeholderUrl: 'https://x.com/username/status/1234567890',
       btnGenerate: 'Generate Mirror',
       loadingText: 'Fetching content...',
-      historyTitle: 'Recent Archives',
+      historyTitle: 'Latest public archives',
       historyLoadingMore: 'Loading more...',
       historyNoMore: 'You have reached the end',
       unknownUser: 'Unknown User',
@@ -113,7 +161,7 @@ const i18n = {
   updateLangButton() {
     const langBtn = document.getElementById('lang-btn');
     if (langBtn) {
-      langBtn.textContent = this.currentLang === 'zh' ? '🌐 EN' : '🌐 中文';
+      langBtn.textContent = this.currentLang === 'zh' ? 'EN' : '中文';
     }
   },
 
@@ -152,15 +200,20 @@ const i18n = {
     const loadingText = document.querySelector('.loading p');
     if (loadingText) loadingText.textContent = this.t('loadingText');
     
-    // 更新历史标题
-    const historyTitle = document.querySelector('[data-i18n="historyTitle"]');
-    if (historyTitle) historyTitle.textContent = this.t('historyTitle');
-
-    const historyLoading = document.getElementById('historyLoading');
-    if (historyLoading && historyLoading.style.display !== 'none') {
-      historyLoading.textContent = this.t('historyLoadingMore');
+    for (const [id, key] of [
+      ['localTab', 'localHistoryTab'], ['publicTab', 'publicHistoryTab'],
+      ['localHistoryNote', 'localHistoryNote'], ['historyRetry', 'retry'], ['historyMore', 'loadMore']
+    ]) {
+      const element = document.getElementById(id);
+      if (element) element.textContent = this.t(key);
     }
-    
+    for (const [selector, key] of [
+      ['#themeButton', 'themeToggle'], ['.page-tools', 'pageSettings'],
+      ['.archive-section', 'archiveSection'], ['.history', 'historySection'], ['.history-tabs', 'historySection']
+    ]) {
+      document.querySelector(selector)?.setAttribute('aria-label', this.t(key));
+    }
+
     // 更新删除弹窗
     const modalTitle = document.querySelector('.modal h3');
     if (modalTitle) modalTitle.textContent = this.t('deleteTitle');
@@ -236,6 +289,7 @@ const i18n = {
     document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
     this.updatePage();
     this.updateLangButton();
+    document.dispatchEvent(new Event('languagechange'));
   }
 };
 
