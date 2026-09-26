@@ -3,7 +3,7 @@
 - 迭代版本：v1.5.4
 - 基线版本：v1.5.3
 - 日期：2026-09-26
-- 状态：实施中
+- 状态：品牌更名已上线；新版快捷指令入口已完成更新，随本次补丁发布
 - GitHub Issue：https://github.com/wanXcode/xmirror/issues/13
 
 ## 背景与目标
@@ -49,6 +49,6 @@
 
 - 本地自动回归：73/73 通过；server.js、public/i18n.js 语法检查和 git diff --check 通过。
 - 本地浏览器：首页 XPut / v1.5.4 显示正确，切换英文后标题、品牌、快捷指令卡片与安装按钮同步更新。
-- iCloud 分享页可访问，仍显示“XMirror 存档”；保留原安装入口，README 说明安装后可手动改名。本次未重新发布 iCloud 快捷指令，也未实测 iPhone 安装流程。
+- 用户已发布新版 [XPut 存档](https://www.icloud.com/shortcuts/2fdd008bff274ce382cc66dacaf3b566)。下载解析确认请求域名为 xput.app，读取 absolute_url，通知为“已复制 XPut 链接”；官网安装入口已替换。未实测 iPhone 安装流程。
 - 统计脚本可下载；脚本将 data-domain 作为历史站点 ID、location.href 作为实际访问 URL。保留原 ID，未验证统计后台最终入库或历史报表连续性。
 - GitHub CI 与生产发布结果以本版 PR 和部署记录为准。
