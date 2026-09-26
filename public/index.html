@@ -81,13 +81,14 @@
     <main>
       <header class="header">
         <a class="brand" href="/" aria-label="XPut 首页"><span class="brand-mark" aria-hidden="true">X</span><h1>XPut</h1></a>
-        <p class="subtitle">粘贴 X 链接，生成可访问的镜像页面</p>
+        <div class="header-right"><span>留住值得再读的内容</span><a href="#archiveForm">存档链接 ↗</a></div>
       </header>
       <section class="archive-section" aria-label="生成存档">
+        <div class="hero-heading"><div class="hero-brand"><span class="brand-mark" aria-hidden="true">X</span><strong>XPut</strong></div><div><h2>好内容，留在这里。</h2><p class="subtitle">保存 X 上的图文与视频，随时阅读，轻松分享。</p></div></div>
         <form id="archiveForm" novalidate>
           <div class="input-group">
             <label for="url">X 链接</label>
-            <input type="url" id="url" placeholder="https://x.com/username/status/1234567890" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="result" required>
+            <input type="url" id="url" placeholder="粘贴 X / Twitter 帖子链接" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="result" required>
           </div>
           <button class="primary-button" id="submit" type="submit">存档</button>
         </form>
