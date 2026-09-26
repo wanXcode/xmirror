@@ -68,6 +68,7 @@
   </script>
   
   <link rel="stylesheet" href="/theme.css?v=1.7.4">
+  <link rel="stylesheet" href="/home.css?v=1.7.4">
   <link rel="stylesheet" href="/style.css?v=1.7.4">
   <!-- Retain the existing analytics site ID to preserve historical reporting across the domain migration. -->
   <script defer data-domain="xmirror.app" src="https://a.zhxs.me/js/script.js"></script>
@@ -75,7 +76,7 @@
 <body class="home-page">
   <div class="page-shell">
     <nav class="page-tools" aria-label="页面设置">
-      <button class="quiet-button" type="button" onclick="toggleHomeTheme()" aria-label="切换主题" id="themeButton">◐</button>
+      <button class="quiet-button" type="button" onclick="toggleHomeTheme()" aria-label="切换主题" id="themeButton"><span aria-hidden="true">◐</span></button>
       <button class="quiet-button" type="button" onclick="toggleLanguage()" id="lang-btn">EN</button>
     </nav>
     <main>
@@ -84,8 +85,9 @@
         <div class="header-right"><span>留住值得再读的内容</span><a href="#archiveForm">存档链接 ↗</a></div>
       </header>
       <section class="archive-section" aria-label="生成存档">
-        <div class="hero-heading"><div class="hero-brand"><span class="brand-mark" aria-hidden="true"><i></i></span><strong>XPut</strong></div><div><h2>好内容，留在这里。</h2><p class="subtitle">保存 X 上的图文与视频，随时阅读，轻松分享。</p></div></div>
+        <div class="hero-heading"><div class="hero-brand"><img class="logo-image" src="/xput-logo.svg" alt="" aria-hidden="true"><strong>XPut</strong></div><div class="hero-title"><h2>好内容，留在这里。</h2><p class="home-subtitle">保存 X 上的图文与视频，随时阅读，轻松分享。</p></div></div>
         <form id="archiveForm" novalidate>
+          <svg class="archive-link-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
           <div class="input-group">
             <label for="url">X 链接</label>
             <input type="url" id="url" placeholder="粘贴 X / Twitter 帖子链接" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="result" required>
@@ -103,10 +105,10 @@
         <a class="shortcut-link" href="https://www.icloud.com/shortcuts/2fdd008bff274ce382cc66dacaf3b566" target="_blank" rel="noopener noreferrer">立即安装 ↗</a>
       </aside>
       <section class="history" id="history" aria-label="存档记录">
-        <div class="history-tabs" role="tablist" aria-label="存档记录">
-          <button id="localTab" role="tab" type="button" aria-controls="localPanel" aria-selected="false" tabindex="-1" onclick="switchHistory('local')">本机记录</button>
+        <div class="history-head"><div class="history-tabs" role="tablist" aria-label="存档记录">
           <button id="publicTab" role="tab" type="button" aria-controls="publicPanel" aria-selected="true" onclick="switchHistory('public')">最新公开存档</button>
-        </div>
+          <button id="localTab" role="tab" type="button" aria-controls="localPanel" aria-selected="false" tabindex="-1" onclick="switchHistory('local')">本机记录</button>
+        </div><span class="history-label">示例内容</span></div>
         <div id="localPanel" role="tabpanel" aria-labelledby="localTab" tabindex="0" hidden>
           <p class="history-note" id="localHistoryNote">仅保存在当前浏览器</p>
           <div id="localHistoryList"></div>
@@ -120,7 +122,7 @@
         </div>
       </section>
     </main>
-    <footer class="page-version">XPut · v1.7.4</footer>
+    <footer class="page-version"><span class="footer-brand"><img src="/xput-logo.svg" alt="" aria-hidden="true">XPut · v1.7.4</span><span class="footer-slogan">存下来，慢慢读，分享出去。</span></footer>
   </div>
 
   <!-- 删除确认弹窗 -->

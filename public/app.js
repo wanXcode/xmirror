@@ -245,12 +245,16 @@ function renderHistoryItems(posts, local = false) {
     const shortUrl = local ? post.url : post.short_url || `/archives/${post.html_file}`;
     if (!home.validMirrorPath(shortUrl) || !Number.isSafeInteger(post.id) || post.id <= 0) return '';
     const date = new Date(local ? post.generated_at : post.created_at);
-    const time = Number.isFinite(date.getTime()) ? date.toLocaleString(i18n.currentLang === 'zh' ? 'zh-CN' : 'en', {
+    const formattedTime = Number.isFinite(date.getTime()) ? date.toLocaleString(i18n.currentLang === 'zh' ? 'zh-CN' : 'en', {
       year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     }) : '';
+    const time = formattedTime ? `${i18n.currentLang === 'zh' ? '存档于 ' : 'Archived '}${formattedTime}` : '';
     return `<article class="history-item" data-id="${post.id}">
-      <a href="${escapeText(shortUrl)}" target="_blank" rel="noopener noreferrer">${escapeText(postTitle(post) || i18n.t('noTitle'))}</a>
-      <div class="meta"${local ? '' : ` onclick="handleItemClick(${post.id}, this.parentElement)"`}>${escapeText(post.author || i18n.t('unknownUser'))} · ${escapeText(time)}</div>
+      <div class="history-item-copy">
+        <a class="history-item-link" href="${escapeText(shortUrl)}" target="_blank" rel="noopener noreferrer"><strong>${escapeText(postTitle(post) || i18n.t('noTitle'))}</strong></a>
+        <div class="meta"${local ? '' : ` onclick="handleItemClick(${post.id}, this.parentElement.parentElement)"`}><span>${escapeText(post.author || i18n.t('unknownUser'))}</span><time datetime="${Number.isFinite(date.getTime()) ? date.toISOString() : ''}">${escapeText(time)}</time></div>
+      </div>
+      <svg class="history-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </article>`;
   }).join('');
 }
@@ -354,7 +358,7 @@ document.getElementById('url').addEventListener('input', event => event.target.r
 document.querySelector('.history-tabs').addEventListener('keydown', event => {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
-  const next = event.key === 'Home' ? 'local' : event.key === 'End' ? 'public' : activeHistory === 'local' ? 'public' : 'local';
+  const next = event.key === 'Home' ? 'public' : event.key === 'End' ? 'local' : activeHistory === 'local' ? 'public' : 'local';
   switchHistory(next);
   document.getElementById(`${next}Tab`).focus();
 });

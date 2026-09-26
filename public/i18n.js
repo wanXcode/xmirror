@@ -42,12 +42,13 @@ const i18n = {
       archiveSection: "生成存档",
       historySection: "存档记录",
       title: 'XPut',
-      subtitle: '粘贴 X 链接，生成可访问的镜像页面',
-      shortcutTitle: 'iPhone 一键存档快捷指令',
+      subtitle: '保存 X 上的图文与视频，随时阅读，轻松分享。',
+      shortcutTitle: 'iPhone 快捷指令，一键存档',
       shortcutDesc: '复制 X 链接后，一键生成 XPut 存档链接',
-      shortcutInstall: '立即安装 ↗',
+      shortcutInstall: '获取快捷指令 ↗',
+      footerSlogan: '存下来，慢慢读，分享出去。',
       labelUrl: 'X 链接',
-      placeholderUrl: 'https://x.com/username/status/1234567890',
+      placeholderUrl: '粘贴 X / Twitter 帖子链接',
       btnGenerate: '存档',
       loadingText: '正在抓取内容...',
       historyTitle: '最新公开存档',
@@ -103,12 +104,13 @@ const i18n = {
       archiveSection: "Create archive",
       historySection: "Archive history",
       title: 'XPut',
-      subtitle: 'Paste X link to generate accessible mirror page',
-      shortcutTitle: 'One-tap iPhone archiving',
+      subtitle: 'Save posts and videos from X, read anytime, share with ease.',
+      shortcutTitle: 'iPhone Shortcut, one-tap archive',
       shortcutDesc: 'Copy an X link and create an XPut archive in one tap',
-      shortcutInstall: 'Install shortcut ↗',
+      shortcutInstall: 'Get shortcut ↗',
+      footerSlogan: 'Save it, read slowly, share it.',
       labelUrl: 'X Link',
-      placeholderUrl: 'https://x.com/username/status/1234567890',
+      placeholderUrl: 'Paste an X / Twitter post link',
       btnGenerate: 'Archive',
       loadingText: 'Fetching content...',
       historyTitle: 'Latest public archives',
@@ -168,17 +170,18 @@ const i18n = {
   // 更新页面文本
   updatePage() {
     // 更新标题
-    const h1 = document.querySelector('h1');
+    const h1 = document.querySelector('.brand h1');
     if (h1) h1.textContent = this.t('title');
     
     // 更新副标题
-    const subtitle = document.querySelector('.subtitle');
+    const subtitle = document.querySelector('.home-subtitle');
     if (subtitle) subtitle.textContent = this.t('subtitle');
     
     for (const [selector, key] of [
       ['.shortcut-copy .title', 'shortcutTitle'],
       ['.shortcut-copy .desc', 'shortcutDesc'],
-      ['.shortcut-link', 'shortcutInstall']
+      ['.shortcut-link', 'shortcutInstall'],
+      ['.footer-slogan', 'footerSlogan']
     ]) {
       const element = document.querySelector(selector);
       if (element) element.textContent = this.t(key);
