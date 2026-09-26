@@ -240,6 +240,12 @@ function postTitle(post) {
   return title.length > 80 ? `${title.slice(0, 80)}…` : title;
 }
 
+function postExcerpt(post) {
+  const doc = new DOMParser().parseFromString(String(post.content || ''), 'text/html');
+  const text = (doc.querySelector('p') || doc.body).textContent.replace(/\s+/g, ' ').trim();
+  return text.length > 110 ? `${text.slice(0, 110)}…` : text;
+}
+
 function renderHistoryItems(posts, local = false) {
   return posts.map(post => {
     const shortUrl = local ? post.url : post.short_url || `/archives/${post.html_file}`;
@@ -249,8 +255,7 @@ function renderHistoryItems(posts, local = false) {
       year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     }) : '';
     return `<article class="history-item" data-id="${post.id}">
-      <a href="${escapeText(shortUrl)}" target="_blank" rel="noopener noreferrer">${escapeText(postTitle(post) || i18n.t('noTitle'))}</a>
-      <div class="meta"${local ? '' : ` onclick="handleItemClick(${post.id}, this.parentElement)"`}>${escapeText(post.author || i18n.t('unknownUser'))} · ${escapeText(time)}</div>
+      <span class="history-index" aria-hidden="true"></span><div class="history-copy"><a href="${escapeText(shortUrl)}" target="_blank" rel="noopener noreferrer">${escapeText(postTitle(post) || i18n.t('noTitle'))}</a>${postExcerpt(post) ? `<p class="history-excerpt">${escapeText(postExcerpt(post))}</p>` : ''}<div class="meta"${local ? '' : ` onclick="handleItemClick(${post.id}, this.parentElement.parentElement)"`}>${escapeText(post.author || i18n.t('unknownUser'))} · ${escapeText(time)}</div></div><span class="history-arrow" aria-hidden="true">↗</span>
     </article>`;
   }).join('');
 }

@@ -43,6 +43,7 @@ h1 { margin:0; font-size:31px; line-height:1.25; letter-spacing:-.9px; }
 .page-tools { max-width:690px; margin:0 auto; padding:18px 0 0; gap:8px; }
 .quiet-button { min-width:36px; min-height:36px; border-radius:7px; color:var(--text-secondary); }
 .header { max-width:690px; margin:0 auto 18px; padding:20px 0 17px; border-bottom:1px solid var(--border-color); }
+.header-right { display:flex; align-items:center; gap:24px; margin-left:auto; color:var(--text-secondary); font-size:11px; letter-spacing:1px; }.header-right a{color:var(--link-color);text-decoration:none;letter-spacing:0}.header-right a:hover{text-decoration:underline}
 .brand { gap:10px; }
 .brand-mark { width:34px; height:34px; border-radius:9px; background:var(--link-color); box-shadow:none; font-size:0; position:relative; }
 .brand-mark::before,.brand-mark::after { content:""; position:absolute; left:27%; top:46%; width:46%; height:3px; border-radius:2px; background:#fff; transform:rotate(48deg); }
@@ -50,6 +51,7 @@ h1 { margin:0; font-size:31px; line-height:1.25; letter-spacing:-.9px; }
 .brand h1 { font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-size:23px; font-weight:650; letter-spacing:-.7px; }
 .subtitle { margin-left:auto; font-size:11px; letter-spacing:1px; }
 .archive-section { max-width:690px; margin:0 auto; }
+.hero-heading{display:flex;align-items:center;gap:26px;margin:22px 0 28px}.hero-brand{display:flex;align-items:center;gap:10px;padding-right:26px;border-right:1px solid var(--border-color)}.hero-brand strong{font-size:23px;font-weight:650;letter-spacing:-.7px}.hero-heading h2{margin:0;font-family:'Songti SC','Noto Serif CJK SC','SimSun',serif;font-size:31px;line-height:1.4;font-weight:600;letter-spacing:0}.hero-heading .subtitle{margin:7px 0 0;font-size:14px;letter-spacing:0;line-height:1.8}
 .archive-section form { display:flex; align-items:center; gap:12px; padding:8px 8px 8px 17px; border:0; border-bottom:2px solid var(--link-color); border-radius:3px 3px 8px 8px; background:var(--surface-color); }
 .input-group { flex:1; min-width:0; }.input-group label { display:none; }.input-group input { padding:11px 0; border:0; border-radius:0; background:transparent; box-shadow:none; font-size:14px; }
 .input-group input:focus { box-shadow:none; }.primary-button { width:auto; min-height:42px; margin:0; padding:10px 20px; border-radius:6px; background:var(--link-color); box-shadow:none; }
@@ -58,5 +60,6 @@ h1 { margin:0; font-size:31px; line-height:1.25; letter-spacing:-.9px; }
 .history { max-width:690px; margin:0 auto; }.history-tabs { display:inline-flex; gap:3px; margin:0 0 15px; padding:4px; border:1px solid var(--border-color); border-radius:10px; background:var(--hover-bg); }
 .history-tabs button { min-height:0; padding:10px 16px; margin:0; border:0; border-radius:7px; font-size:13px; }.history-tabs button[aria-selected="true"] { color:var(--text-primary); border:0; background:var(--surface-color); box-shadow:0 1px 3px #0000000d; }
 .history-item { padding:20px 12px; border-bottom:1px solid var(--border-color); transition:transform .16s ease; }.history-item:hover { transform:translateX(3px); }
-.history-item a { font-size:16px; font-weight:500; }.history-item .meta { font-size:12px; margin-top:6px; }.page-version { max-width:690px; margin:20px auto 0; font-size:11px; }
+.history-item { display:flex; align-items:flex-start; gap:12px; }.history-index{width:22px;flex-shrink:0;padding-top:4px;color:var(--text-secondary);font:11px ui-monospace,monospace}.history-index::after{counter-increment:archive;content:counter(archive,decimal-leading-zero)}.history{counter-reset:archive}.history-copy{min-width:0;flex:1}.history-item a { font-size:16px; font-weight:500; }.history-excerpt{margin:4px 0 0;color:var(--text-secondary);font-size:13px;line-height:1.8;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.history-item .meta { font-size:12px; margin-top:6px; }.history-arrow{margin-top:5px;color:var(--text-secondary);opacity:.7}.history-item:hover .history-arrow{color:var(--link-color);opacity:1}.page-version { max-width:690px; margin:20px auto 0; font-size:11px; }
 @media(max-width:600px){.page-shell{padding:0 20px 20px}.header{padding-top:17px}.subtitle{display:none}.archive-section form{padding-left:12px}.primary-button{padding-left:16px;padding-right:16px}.history-item{padding-left:4px;padding-right:4px}}
+@media(max-width:600px){.header-right{display:none}.hero-heading{align-items:flex-start;gap:20px}.hero-brand{padding-right:18px}.hero-heading h2{font-size:29px}.hero-heading .subtitle{display:block;font-size:13px}}

@@ -123,7 +123,54 @@ function linkifyContent(root) {
   }
 }
 
+function replaceElementTextPreservingMedia(element, value) {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node.parentElement?.closest('script,style') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) textNodes.push(node);
+  if (!textNodes.length) return;
+  const first = textNodes[0];
+  for (const extra of textNodes.slice(1)) extra.remove();
+  const fragment = document.createDocumentFragment();
+  String(value || '').split('\n').forEach((part, index, parts) => {
+    if (part) fragment.appendChild(document.createTextNode(part));
+    if (index < parts.length - 1) fragment.appendChild(document.createElement('br'));
+  });
+  first.replaceWith(fragment);
+}
+
+function renderTranslatedContent(data, origin) {
+  const blocks = Array.isArray(data?.blocks)
+    ? data.blocks
+    : (data?.parts || []).map(text => ({ type: 'p', text }));
+  if (!origin || typeof document === 'undefined' || !document.createElement) return null;
+  const translated = document.createElement('div');
+  translated.innerHTML = origin.innerHTML;
+  const targetElements = [...translated.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,blockquote')]
+    .filter(element => element.textContent.trim());
+  blocks.forEach((block, index) => {
+    const target = targetElements[index];
+    if (!target) return;
+    replaceElementTextPreservingMedia(target, block.text || block.sourceText || '');
+    if (block.status && block.status !== 'completed') {
+      const pending = document.createElement('span');
+      pending.className = 'translation-pending';
+      pending.setAttribute('aria-label', '待翻译');
+      pending.textContent = ' · 待翻译';
+      target.appendChild(pending);
+    }
+  });
+  return translated.innerHTML;
+}
+
 function renderTranslatedBlocks(data) {
+  const origin = document.getElementById?.('originContent');
+  const preserved = renderTranslatedContent(data, origin);
+  if (preserved !== null) return preserved;
   const allowed = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote']);
   const blocks = Array.isArray(data.blocks)
     ? data.blocks
@@ -135,6 +182,9 @@ function renderTranslatedBlocks(data) {
 }
 
 function renderTranslationTask(task) {
+  const origin = document.getElementById?.('originContent');
+  const preserved = renderTranslatedContent(task, origin);
+  if (preserved !== null) return preserved;
   const blocks = Array.isArray(task?.blocks) ? task.blocks : [];
   return blocks.map(block => {
     const type = allowedTranslationTypes.has(block.type) ? block.type : 'p';
