@@ -150,8 +150,12 @@ function renderTranslatedContent(data, origin) {
   if (!origin || typeof document === 'undefined' || !document.createElement) return null;
   const translated = document.createElement('div');
   translated.innerHTML = origin.innerHTML;
-  const targetElements = [...translated.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,blockquote')]
+  const semanticElements = [...translated.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,blockquote')]
     .filter(element => element.textContent.trim());
+  // Some tweet archives contain one root text node followed by images and
+  // no semantic paragraph wrapper. Translate that root while preserving
+  // every image/video child in its original position.
+  const targetElements = semanticElements.length ? semanticElements : [translated];
   blocks.forEach((block, index) => {
     const target = targetElements[index];
     if (!target) return;
