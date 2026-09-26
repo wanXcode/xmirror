@@ -1,56 +1,129 @@
+const home = XPutHome;
+const PAGE_SIZE = 10;
+const REQUEST_TIMEOUT_MS = 120000;
 let clickCounts = new Map();
 let deleteTargetId = null;
-
-const PAGE_SIZE = 10;
+let submitting = false;
+let resultState = null;
+let localRecords = readLocalRecords();
+let activeHistory = localRecords.length ? 'local' : 'public';
+let publicPosts = [];
 let historyOffset = 0;
 let historyHasMore = true;
 let historyLoading = false;
-let historyObserver = null;
+let historyError = false;
+let historyNeedsReset = true;
+let historyGeneration = 0;
+let historyController;
+let historyObserver;
 
-async function archive() {
-  const url = document.getElementById('url').value.trim();
+function readLocalRecords() {
+  try { return home.readRecords(localStorage); } catch { return []; }
+}
+
+function escapeText(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[char]));
+}
+
+function updateSubmitState() {
+  const button = document.getElementById('submit');
+  button.disabled = submitting;
+  button.setAttribute('aria-busy', String(submitting));
+  button.textContent = i18n.t(submitting ? 'btnGenerating' : 'btnGenerate');
+  document.getElementById('url').readOnly = submitting;
+  document.getElementById('loading').hidden = !submitting;
+}
+
+function renderResult() {
   const result = document.getElementById('result');
-  const loading = document.getElementById('loading');
-  const btn = document.getElementById('submit');
-  
-  if (!url) {
-    result.className = 'result error';
-    result.innerHTML = i18n.t('errorEmptyUrl');
+  result.hidden = !resultState;
+  if (!resultState) { result.replaceChildren(); return; }
+  const state = resultState;
+  result.className = `result ${state.kind === 'error' ? 'error' : 'success'}`;
+  if (state.kind === 'error') {
+    result.innerHTML = `<strong>${escapeText(i18n.t(state.key))}</strong>`;
+    if (state.retryable) {
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'text-button';
+      retry.textContent = i18n.t('retry');
+      retry.addEventListener('click', archive);
+      result.appendChild(document.createElement('br'));
+      result.appendChild(retry);
+    }
     return;
   }
-  
-  btn.disabled = true;
-  loading.className = 'loading show';
-  result.className = 'result';
-  result.innerHTML = '';
-  
+  if (state.kind === 'deleted') { result.textContent = i18n.t('successDeleted'); return; }
+  const data = state.data;
+  result.innerHTML = `<strong>${escapeText(i18n.t(data.cached ? 'successExisting' : 'successArchived'))}</strong>
+    <p>${escapeText(i18n.t('mirrorLink'))}：<a href="${escapeText(data.url)}" target="_blank" rel="noopener noreferrer">${escapeText(window.location.origin + data.url)}</a></p>`;
+  if (['queued', 'downloading', 'failed'].includes(data.video_status)) {
+    const video = document.createElement('p');
+    video.textContent = i18n.t(data.video_status === 'failed' ? 'videoFailed' : 'videoPending');
+    result.appendChild(video);
+  }
+  if (!state.saved) {
+    const warning = document.createElement('p');
+    warning.className = 'storage-note';
+    warning.textContent = i18n.t('storageUnavailable');
+    result.appendChild(warning);
+  }
+}
+
+async function archive() {
+  if (submitting) return;
+  const input = document.getElementById('url');
+  const url = input.value.trim();
+  if (!home.validSourceUrl(url)) {
+    resultState = { kind: 'error', key: url ? 'errorInvalidUrl' : 'errorEmptyUrl', retryable: false };
+    input.setAttribute('aria-invalid', 'true');
+    renderResult();
+    input.focus();
+    return;
+  }
+  input.removeAttribute('aria-invalid');
+  submitting = true;
+  resultState = null;
+  updateSubmitState();
+  renderResult();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch('/api/archive', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url })
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ url }), signal: controller.signal
     });
-    
-    const data = await response.json();
-    
-    if (data.success) {
-      result.className = 'result success';
-      result.innerHTML = `
-        <strong>✅ ${data.message}</strong><br><br>
-        ${i18n.t('mirrorLink')}：<a href="${data.url}" target="_blank">${window.location.origin}${data.url}</a>
-      `;
-      document.getElementById('url').value = '';
-      loadHistory(true);
-    } else {
-      result.className = 'result error';
-      result.innerHTML = `<strong>❌ ${i18n.t('errorArchive')}</strong><br>${data.error || 'Unknown error'}`;
+    let data;
+    try { data = await response.json(); }
+    catch (error) { if (error.name === 'AbortError') throw error; }
+    if (!response.ok || !data?.success) {
+      throw Object.assign(new Error('archive failed'), { failure: home.failureFor(data?.code, response.status) });
     }
+    if (!home.validMirrorPath(data.url) || !Number.isSafeInteger(data.id) || data.id <= 0) {
+      throw Object.assign(new Error('invalid archive response'), { failure: home.failureFor('SERVICE_UNAVAILABLE') });
+    }
+    const record = {
+      id: data.id, title: data.title || '', author: data.author || '', source_url: url,
+      url: data.url, generated_at: new Date().toISOString()
+    };
+    let stored;
+    try { stored = home.saveRecord(localStorage, record); }
+    catch { stored = { saved: false }; }
+    localRecords = stored.saved ? stored.records : home.normalizeRecords([record, ...localRecords.filter(item => item.id !== record.id)]);
+    resultState = { kind: 'success', data, saved: stored.saved };
+    input.value = '';
+    invalidatePublicHistory();
+    switchHistory('local');
   } catch (error) {
-    result.className = 'result error';
-    result.innerHTML = `<strong>❌ ${i18n.t('errorRequest')}</strong><br>${error.message}`;
+    const failure = error.failure || home.failureFor(error.name === 'AbortError' ? 'REQUEST_TIMEOUT' : 'NETWORK_ERROR');
+    resultState = { kind: 'error', ...failure };
   } finally {
-    btn.disabled = false;
-    loading.className = 'loading';
+    clearTimeout(timer);
+    submitting = false;
+    updateSubmitState();
+    renderResult();
   }
 }
 
@@ -135,20 +208,23 @@ async function confirmDelete() {
     const data = await response.json();
     
     if (data.success) {
-      const result = document.getElementById('result');
-      result.className = 'result success';
-      result.innerHTML = `<strong>${i18n.t('successDeleted')}</strong>`;
-      loadHistory(true);
+      resultState = { kind: 'deleted' };
+      renderResult();
+      localRecords = localRecords.filter(record => record.id !== deleteTargetId);
+      try { localStorage.setItem(home.STORAGE_KEY, JSON.stringify(localRecords)); } catch {}
+      renderLocalHistory();
+      invalidatePublicHistory();
+      if (activeHistory === 'public') loadHistory(true);
       closeDeleteModal();
     } else if (response.status === 403) {
       if (passwordError) passwordError.textContent = i18n.t('deletePasswordInvalid');
       passwordInput?.focus();
     } else {
-      if (passwordError) passwordError.textContent = data.error || i18n.t('errorDelete');
+      if (passwordError) passwordError.textContent = i18n.t('errorDelete');
     }
   } catch (error) {
     if (passwordInput) passwordInput.value = '';
-    if (passwordError) passwordError.textContent = `${i18n.t('errorDelete')}: ${error.message}`;
+    if (passwordError) passwordError.textContent = i18n.t('errorDelete');
   } finally {
     if (deleteButton) {
       deleteButton.disabled = false;
@@ -157,128 +233,151 @@ async function confirmDelete() {
   }
 }
 
-function renderHistoryItems(posts = []) {
-  return posts.map(post => {
-    let title = '';
-    const contentText = post.content || '';
-    const h1Match = contentText.match(/<h1>(.+?)<\/h1>/);
-    if (h1Match) {
-      title = h1Match[1].replace(/【(.+?)】/, '$1');
-    } else {
-      title = contentText.replace(/<[^>]+>/g, '').substring(0, 50);
-      if (contentText.replace(/<[^>]+>/g, '').length > 50) title += '...';
-    }
+function postTitle(post) {
+  if (post.title) return post.title;
+  const doc = new DOMParser().parseFromString(String(post.content || ''), 'text/html');
+  const title = (doc.querySelector('h1') || doc.body).textContent.replace(/\s+/g, ' ').trim().replace(/^【(.+)】$/, '$1');
+  return title.length > 80 ? `${title.slice(0, 80)}…` : title;
+}
 
-    const shortUrl = post.short_url || `/archives/${post.html_file}`;
-    return `
-      <div class="history-item" data-id="${post.id}">
-        <a href="${shortUrl}" target="_blank">${title || i18n.t('noTitle')}</a>
-        <div class="meta" onclick="handleItemClick(${post.id}, this.parentElement)">${post.author || i18n.t('unknownUser')} · ${new Date(post.created_at).toLocaleString()}</div>
-      </div>
-    `;
+function renderHistoryItems(posts, local = false) {
+  return posts.map(post => {
+    const shortUrl = local ? post.url : post.short_url || `/archives/${post.html_file}`;
+    if (!home.validMirrorPath(shortUrl) || !Number.isSafeInteger(post.id) || post.id <= 0) return '';
+    const date = new Date(local ? post.generated_at : post.created_at);
+    const time = Number.isFinite(date.getTime()) ? date.toLocaleString(i18n.currentLang === 'zh' ? 'zh-CN' : 'en', {
+      year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    }) : '';
+    return `<article class="history-item" data-id="${post.id}">
+      <a href="${escapeText(shortUrl)}" target="_blank" rel="noopener noreferrer">${escapeText(postTitle(post) || i18n.t('noTitle'))}</a>
+      <div class="meta"${local ? '' : ` onclick="handleItemClick(${post.id}, this.parentElement)"`}>${escapeText(post.author || i18n.t('unknownUser'))} · ${escapeText(time)}</div>
+    </article>`;
   }).join('');
 }
 
-function setHistoryLoadingState(isLoading) {
-  const indicator = document.getElementById('historyLoading');
-  if (!indicator) return;
+function renderLocalHistory() {
+  document.getElementById('localHistoryList').innerHTML = localRecords.length
+    ? renderHistoryItems(localRecords, true)
+    : `<p class="empty-state">${escapeText(i18n.t('localHistoryEmpty'))}</p>`;
+}
 
-  if (isLoading) {
-    indicator.textContent = i18n.t('historyLoadingMore');
-    indicator.style.display = 'block';
-  } else if (!historyHasMore && historyOffset > 0) {
-    indicator.textContent = i18n.t('historyNoMore');
-    indicator.style.display = 'block';
-  } else {
-    indicator.style.display = 'none';
+function renderPublicHistory() {
+  document.getElementById('historyList').innerHTML = renderHistoryItems(publicPosts);
+  const status = document.getElementById('historyLoading');
+  const key = historyLoading ? 'historyLoadingMore' : historyError ? 'historyLoadError'
+    : !historyHasMore ? (publicPosts.length ? 'historyNoMore' : 'publicHistoryEmpty') : null;
+  status.hidden = !key;
+  status.textContent = key ? i18n.t(key) : '';
+  document.getElementById('historyRetry').hidden = !historyError || historyLoading;
+  document.getElementById('historyMore').hidden = historyLoading || historyError || !historyHasMore;
+}
+
+function switchHistory(tab) {
+  activeHistory = tab;
+  for (const name of ['local', 'public']) {
+    const selected = name === tab;
+    document.getElementById(`${name}Tab`).setAttribute('aria-selected', String(selected));
+    document.getElementById(`${name}Tab`).tabIndex = selected ? 0 : -1;
+    document.getElementById(`${name}Panel`).hidden = !selected;
   }
+  if (tab === 'local') renderLocalHistory();
+  else if (historyNeedsReset && !historyLoading && !historyError) loadHistory(true);
+}
+
+function invalidatePublicHistory() {
+  historyGeneration += 1;
+  historyController?.abort();
+  historyLoading = false;
+  historyError = false;
+  historyNeedsReset = true;
 }
 
 async function loadHistory(reset = false) {
   if (historyLoading) return;
-
-  if (reset) {
-    historyOffset = 0;
-    historyHasMore = true;
-    const historyList = document.getElementById('historyList');
-    historyList.innerHTML = '';
-  }
-
-  if (!historyHasMore) {
-    setHistoryLoadingState(false);
-    return;
-  }
-
+  reset = reset || historyNeedsReset;
+  if (!reset && !historyHasMore) return;
+  const generation = ++historyGeneration;
+  const offset = reset ? 0 : historyOffset;
+  historyController = new AbortController();
+  const controller = historyController;
+  const timer = setTimeout(() => controller.abort(), 20000);
   historyLoading = true;
-  setHistoryLoadingState(true);
-
+  historyError = false;
+  renderPublicHistory();
   try {
-    const response = await fetch(`/api/posts?limit=${PAGE_SIZE}&offset=${historyOffset}`);
+    const response = await fetch(`/api/posts?limit=${PAGE_SIZE}&offset=${offset}`, { signal: controller.signal });
+    if (!response.ok) throw new Error('history unavailable');
     const data = await response.json();
-
-    // 兼容旧接口（直接返回数组）和新接口（返回分页对象）
-    let posts = [];
-    if (Array.isArray(data)) {
-      posts = data.slice(historyOffset, historyOffset + PAGE_SIZE);
-      historyHasMore = historyOffset + posts.length < data.length;
-    } else {
-      posts = data.posts || [];
-      historyHasMore = !!data.has_more;
-    }
-
-    if (historyOffset === 0 && posts.length === 0) {
-      document.getElementById('history').style.display = 'none';
-      historyHasMore = false;
-      setHistoryLoadingState(false);
-      return;
-    }
-
-    document.getElementById('history').style.display = 'block';
-    const historyList = document.getElementById('historyList');
-    historyList.insertAdjacentHTML('beforeend', renderHistoryItems(posts));
-
-    historyOffset += posts.length;
-  } catch (error) {
-    console.error('Load history failed:', error);
+    if (!Array.isArray(data) && !Array.isArray(data?.posts)) throw new Error('invalid history response');
+    const posts = Array.isArray(data) ? data.slice(offset, offset + PAGE_SIZE) : data.posts;
+    if (generation !== historyGeneration) return;
+    publicPosts = reset ? posts : [...publicPosts, ...posts];
+    // Keep the server offset separate from de-duplication if new public posts arrive during paging.
+    historyOffset = offset + posts.length;
+    publicPosts = publicPosts.filter((post, index, all) => all.findIndex(item => item.id === post.id) === index);
+    historyHasMore = posts.length > 0 && (Array.isArray(data) ? historyOffset < data.length : !!data.has_more);
+    historyNeedsReset = false;
+  } catch {
+    if (generation === historyGeneration) historyError = true;
   } finally {
-    historyLoading = false;
-    setHistoryLoadingState(false);
+    clearTimeout(timer);
+    if (generation === historyGeneration) {
+      historyLoading = false;
+      renderPublicHistory();
+    }
   }
 }
 
-function setupHistoryInfiniteScroll() {
-  const sentinel = document.getElementById('historySentinel');
-  if (!sentinel) return;
-
-  if (historyObserver) historyObserver.disconnect();
-
-  historyObserver = new IntersectionObserver(
-    (entries) => {
-      const [entry] = entries;
-      if (entry.isIntersecting && !historyLoading && historyHasMore) {
-        loadHistory();
-      }
-    },
-    { root: null, rootMargin: '0px 0px 200px 0px', threshold: 0 }
-  );
-
-  historyObserver.observe(sentinel);
+function updateHomeCopy() {
+  updateSubmitState();
+  renderResult();
+  renderLocalHistory();
+  renderPublicHistory();
 }
 
-// 页面加载时获取历史
-setupHistoryInfiniteScroll();
-loadHistory(true);
-
-// 回车提交
-document.getElementById('url').addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') archive();
+let homeThemeOverride = false;
+const homeColorScheme = window.matchMedia('(prefers-color-scheme: dark)');
+function toggleHomeTheme() {
+  homeThemeOverride = true;
+  document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+}
+document.documentElement.dataset.theme = homeColorScheme.matches ? 'dark' : 'light';
+homeColorScheme.addEventListener('change', event => {
+  if (!homeThemeOverride) document.documentElement.dataset.theme = event.matches ? 'dark' : 'light';
 });
 
-// 点击弹窗外部关闭
-document.getElementById('deleteModal').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) closeDeleteModal();
+document.getElementById('archiveForm').addEventListener('submit', event => {
+  event.preventDefault();
+  archive();
 });
-
-document.getElementById('deletePassword').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') confirmDelete();
+document.getElementById('url').addEventListener('input', event => event.target.removeAttribute('aria-invalid'));
+document.querySelector('.history-tabs').addEventListener('keydown', event => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const next = event.key === 'Home' ? 'local' : event.key === 'End' ? 'public' : activeHistory === 'local' ? 'public' : 'local';
+  switchHistory(next);
+  document.getElementById(`${next}Tab`).focus();
 });
+document.addEventListener('languagechange', updateHomeCopy);
+window.addEventListener('storage', event => {
+  if (event.key === home.STORAGE_KEY || event.key === null) {
+    localRecords = readLocalRecords();
+    renderLocalHistory();
+  }
+});
+document.getElementById('deleteModal').addEventListener('click', event => {
+  if (event.target === event.currentTarget) closeDeleteModal();
+});
+document.getElementById('deletePassword').addEventListener('keydown', event => {
+  if (event.key === 'Enter') confirmDelete();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeDeleteModal();
+});
+if ('IntersectionObserver' in window) {
+  historyObserver = new IntersectionObserver(entries => {
+    if (entries[0].isIntersecting && activeHistory === 'public' && !historyLoading && !historyError && historyHasMore) loadHistory();
+  }, { rootMargin: '0px 0px 200px 0px' });
+  historyObserver.observe(document.getElementById('historySentinel'));
+}
+switchHistory(activeHistory);
