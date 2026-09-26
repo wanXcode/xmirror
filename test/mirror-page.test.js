@@ -70,7 +70,7 @@ test('page script is valid JavaScript and follows the system color scheme', () =
 
 test('generated archive pages load the external page script', () => {
   const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-  assert.match(serverSource, /<script src="\/mirror-page\.js\?v=\$\{APP_VERSION\}" defer><\/script>/);
+  assert.match(serverSource, /<script src="\/mirror-page\.js\?v=\$\{APP_VERSION\}-links1" defer><\/script>/);
   assert.match(serverSource, /<link rel="stylesheet" href="\/theme\.css\?v=\$\{APP_VERSION\}">/);
   assert.match(serverSource, /Cache-Control', 'no-cache, must-revalidate/);
   assert.match(serverSource, /\/api\/posts\/:id\/subtitles/);

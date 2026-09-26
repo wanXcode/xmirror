@@ -85,6 +85,44 @@ function escapeTranslatedText(value) {
     .replace(/>/g, '&gt;').replace(/\n/g, '<br>');
 }
 
+// Work on text nodes only: existing links, media and code remain intact.
+function linkifyContent(root) {
+  if (!root || typeof document.createTreeWalker !== 'function') return;
+  const walker = document.createTreeWalker(root, 4);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    if (node.parentElement?.closest('a, script, style, textarea, code, pre')) continue;
+    const text = node.nodeValue;
+    const pattern = /\b(?:https?:\/\/|www\.)[^\s<>"'\u3000-\u303f\uff00-\uffef]+/gi;
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+    let match;
+    while ((match = pattern.exec(text))) {
+      let label = match[0].replace(/[.,;:!?]+$/, '');
+      for (const [open, close] of [['(', ')'], ['[', ']'], ['{', '}']]) {
+        while (label.endsWith(close) && label.split(close).length > label.split(open).length) {
+          label = label.slice(0, -1);
+        }
+      }
+      let url;
+      try { url = new URL(/^www\./i.test(label) ? `https://${label}` : label); } catch { continue; }
+      if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) continue;
+      fragment.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+      const link = document.createElement('a');
+      link.href = url.href;
+      link.textContent = label;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      fragment.appendChild(link);
+      cursor = match.index + label.length;
+    }
+    if (!cursor) continue;
+    fragment.appendChild(document.createTextNode(text.slice(cursor)));
+    node.parentNode.replaceChild(fragment, node);
+  }
+}
+
 function renderTranslatedBlocks(data) {
   const allowed = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote']);
   const blocks = Array.isArray(data.blocks)
@@ -145,6 +183,7 @@ function updateTranslationView(task, cfg) {
   const translatedEl = document.getElementById('translatedContent');
   if (!task || !btn || !translatedEl) return;
   translatedEl.innerHTML = renderTranslationTask(task) || '<p>暂无译文</p>';
+  linkifyContent(translatedEl);
   showContent('translated');
   btn.disabled = false;
   btn.classList.remove('is-loading');
@@ -452,6 +491,7 @@ async function toggleTranslate() {
       const legacyData = await legacy.json();
       if (!legacy.ok || !legacyData.success) throw Object.assign(new Error('translate failed'), { httpStatus: legacy.status });
       translatedEl.innerHTML = renderTranslatedBlocks(legacyData) || '<p>暂无译文</p>';
+      linkifyContent(translatedEl);
       showContent('translated');
       btn.textContent = '查看原文';
       setTranslateStatus(legacyData.cached ? '已显示缓存译文' : '翻译完成', { temporary: true });
@@ -508,6 +548,7 @@ async function resumeTranslationTask() {
 }
 
 function initializeMirrorPage() {
+  linkifyContent(document.getElementById('originContent'));
   // Discard the legacy persistent override so existing pages return to system theme.
   try { localStorage.removeItem('xmirror-theme'); } catch {}
   const colorScheme = window.matchMedia?.('(prefers-color-scheme: dark)');

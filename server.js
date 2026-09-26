@@ -947,7 +947,7 @@ function generateMirrorHtml(post) {
 ${videoHtml}
 <div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div></div>
 </div></div>
-<script src="/mirror-page.js?v=${APP_VERSION}" defer></script>
+<script src="/mirror-page.js?v=${APP_VERSION}-links1" defer></script>
 </body>
 </html>`;
 
@@ -1738,11 +1738,14 @@ app.get('/archives/:fileName', async (req, res, next) => {
 
   try {
     const post = await new Promise((resolve, reject) => {
-      db.get('SELECT short_code FROM posts WHERE html_file=?', [fileName], (err, row) => err ? reject(err) : resolve(row));
+      db.get('SELECT * FROM posts WHERE html_file=?', [fileName], (err, row) => err ? reject(err) : resolve(row));
     });
 
     if (post?.short_code) {
       return res.redirect(301, `/${post.short_code}`);
+    }
+    if (post) {
+      return res.status(200).send(generateMirrorHtml(post));
     }
   } catch (e) {
     console.error('旧链接301映射失败:', e.message);
