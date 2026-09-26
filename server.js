@@ -801,7 +801,7 @@ function generateMirrorHtml(post) {
   if (articleTitle.length >= 25) articleTitle += '...';
   const pageTitle = articleTitle ? `${escapeHtml(articleTitle)} | XMirror` : `${escapeHtml(post.author)} | XMirror`;
   const canonicalPath = post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`;
-  const canonicalUrl = `https://xmirror.app${canonicalPath}`;
+  const canonicalUrl = buildPublicUrl(canonicalPath, PUBLIC_BASE_URL);
   const refererPath = post.short_code ? `/${post.short_code}/referer` : post.url;
   const createdAt = normalizeXTimestamp(post.tweet_time, post.created_at || new Date().toISOString());
   const sourceLang = detectContentLanguage(content);
@@ -838,7 +838,7 @@ function generateMirrorHtml(post) {
 <meta name="twitter:description" content="${escapeHtml(summary)}">
 <meta name="twitter:image" content="${ogImage}">
 <meta name="twitter:creator" content="@${escapeHtml(post.author_handle)}">
-<meta name="twitter:domain" content="xmirror.app">
+<meta name="twitter:domain" content="${new URL(PUBLIC_BASE_URL).hostname}">
 <script defer data-domain="xmirror.app" src="https://a.zhxs.me/js/script.js"></script>
 <style>
 :root{--bg-color:#ffffff;--text-primary:#0f1419;--text-secondary:#536471;--border-color:#eff3f4;--link-color:#1d9bf0;--hover-bg:rgba(15,20,25,0.1);--card-shadow:0 0 15px rgba(0,0,0,0.08)}

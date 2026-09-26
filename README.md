@@ -89,14 +89,14 @@ X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 - `format=json`：返回 JSON（包含 `absolute_url`）
 - `format=text`：直接返回纯文本短链，适合快捷指令复制到剪贴板
 
-公开短链默认使用 `https://xmirror.app`。其他部署域名可通过
+公开短链默认使用 `https://xput.app`。其他部署域名可通过
 `PUBLIC_BASE_URL=https://example.com` 覆盖，避免反向代理的内部 HTTP
 协议泄漏到快捷指令返回值中。
 
 示例：
 
 ```bash
-curl "https://xmirror.app/api/archive/quick?url=https%3A%2F%2Fx.com%2Fxxx%2Fstatus%2F123&format=text"
+curl "https://xput.app/api/archive/quick?url=https%3A%2F%2Fx.com%2Fxxx%2Fstatus%2F123&format=text"
 ```
 
 ## iOS 快捷指令配置（最简）
@@ -104,7 +104,7 @@ curl "https://xmirror.app/api/archive/quick?url=https%3A%2F%2Fx.com%2Fxxx%2Fstat
 1. 动作：获取剪贴板（得到 X 链接）
 2. 动作：URL 编码（对链接编码）
 3. 动作：文本（拼接）
-   - `https://xmirror.app/api/archive/quick?url=<编码后的链接>&format=text`
+   - `https://xput.app/api/archive/quick?url=<编码后的链接>&format=text`
 4. 动作：获取 URL 内容（GET）
 5. 动作：复制到剪贴板（内容即 xmirror 存档短链）
 6. 可选：显示通知（“已生成并复制 xmirror 链接”）

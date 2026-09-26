@@ -7,8 +7,8 @@ const {
 } = require('../lib/public-url');
 
 test('public archive URLs default to the external HTTPS origin', () => {
-  assert.equal(DEFAULT_PUBLIC_BASE_URL, 'https://xmirror.app');
-  assert.equal(buildPublicUrl('/CxCwBZ'), 'https://xmirror.app/CxCwBZ');
+  assert.equal(DEFAULT_PUBLIC_BASE_URL, 'https://xput.app');
+  assert.equal(buildPublicUrl('/CxCwBZ'), 'https://xput.app/CxCwBZ');
 });
 
 test('PUBLIC_BASE_URL can override the deployment origin', () => {
