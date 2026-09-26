@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">XMirror</title>
+  <title id="title">XPut</title>
   <desc id="desc">A mirrored X on a blue-violet rounded square.</desc>
   <defs>
     <linearGradient id="background" x1="64" y1="48" x2="448" y2="464" gradientUnits="userSpaceOnUse">

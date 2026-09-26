@@ -799,7 +799,7 @@ function generateMirrorHtml(post) {
   else if (h2Match) articleTitle = h2Match[1].replace(/<[^>]+>/g, '').substring(0, 50);
   else articleTitle = summary.substring(0, 25);
   if (articleTitle.length >= 25) articleTitle += '...';
-  const pageTitle = articleTitle ? `${escapeHtml(articleTitle)} | XMirror` : `${escapeHtml(post.author)} | XMirror`;
+  const pageTitle = articleTitle ? `${escapeHtml(articleTitle)} | XPut` : `${escapeHtml(post.author)} | XPut`;
   const canonicalPath = post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`;
   const canonicalUrl = buildPublicUrl(canonicalPath, PUBLIC_BASE_URL);
   const refererPath = post.short_code ? `/${post.short_code}/referer` : post.url;
@@ -813,7 +813,7 @@ function generateMirrorHtml(post) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${pageTitle}</title>
 <meta name="description" content="${escapeHtml(summary)}">
-<meta name="keywords" content="X存档,Twitter存档,${escapeHtml(post.author)},推文备份,XMirror">
+<meta name="keywords" content="X存档,Twitter存档,${escapeHtml(post.author)},推文备份,XPut">
 <meta name="author" content="${escapeHtml(post.author)}">
 <meta name="robots" content="index, follow">
 <meta name="googlebot" content="index, follow">
@@ -829,7 +829,7 @@ function generateMirrorHtml(post) {
 <meta property="og:type" content="article">
 <meta property="og:image" content="${ogImage}">
 <meta property="og:url" content="${canonicalUrl}">
-<meta property="og:site_name" content="XMirror">
+<meta property="og:site_name" content="XPut">
 <meta property="og:locale" content="zh_CN">
 <meta property="article:published_time" content="${createdAt}">
 <meta property="article:author" content="${escapeHtml(post.author)}">
@@ -839,6 +839,7 @@ function generateMirrorHtml(post) {
 <meta name="twitter:image" content="${ogImage}">
 <meta name="twitter:creator" content="@${escapeHtml(post.author_handle)}">
 <meta name="twitter:domain" content="${new URL(PUBLIC_BASE_URL).hostname}">
+<!-- Retain the existing analytics site ID to preserve historical reporting across the domain migration. -->
 <script defer data-domain="xmirror.app" src="https://a.zhxs.me/js/script.js"></script>
 <style>
 :root{--bg-color:#ffffff;--text-primary:#0f1419;--text-secondary:#536471;--border-color:#eff3f4;--link-color:#1d9bf0;--hover-bg:rgba(15,20,25,0.1);--card-shadow:0 0 15px rgba(0,0,0,0.08)}
@@ -881,7 +882,7 @@ function generateMirrorHtml(post) {
 <div id="originContent" class="content content-view active" aria-hidden="false">${content}</div>
 <div id="translatedContent" class="content content-view" aria-hidden="true"></div>
 ${videoHtml}
-<div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div><span class="badge">🐦 XMirror</span></div>
+<div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div><span class="badge">🐦 XPut</span></div>
 </div></div>
 <script src="/mirror-page.js" defer></script>
 </body>

@@ -17,8 +17,11 @@ const i18n = {
   // 语言配置
   translations: {
     zh: {
-      title: '🐦 XMirror',
+      title: '🐦 XPut',
       subtitle: '粘贴 X 链接，生成可访问的镜像页面',
+      shortcutTitle: '🍎 iPhone 一键存档快捷指令',
+      shortcutDesc: '复制 X 链接后，一键生成 XPut 存档链接',
+      shortcutInstall: '立即安装 ↗',
       labelUrl: 'X 链接',
       placeholderUrl: 'https://x.com/username/status/1234567890',
       btnGenerate: '生成镜像',
@@ -51,8 +54,11 @@ const i18n = {
       mirrorLink: '镜像链接',
     },
     en: {
-      title: '🐦 XMirror',
+      title: '🐦 XPut',
       subtitle: 'Paste X link to generate accessible mirror page',
+      shortcutTitle: '🍎 One-tap iPhone archiving',
+      shortcutDesc: 'Copy an X link and create an XPut archive in one tap',
+      shortcutInstall: 'Install shortcut ↗',
       labelUrl: 'X Link',
       placeholderUrl: 'https://x.com/username/status/1234567890',
       btnGenerate: 'Generate Mirror',
@@ -121,6 +127,15 @@ const i18n = {
     const subtitle = document.querySelector('.subtitle');
     if (subtitle) subtitle.textContent = this.t('subtitle');
     
+    for (const [selector, key] of [
+      ['.shortcut-copy .title', 'shortcutTitle'],
+      ['.shortcut-copy .desc', 'shortcutDesc'],
+      ['.shortcut-link', 'shortcutInstall']
+    ]) {
+      const element = document.querySelector(selector);
+      if (element) element.textContent = this.t(key);
+    }
+
     // 更新标签
     const label = document.querySelector('.input-group label');
     if (label) label.textContent = this.t('labelUrl');
@@ -175,15 +190,15 @@ const i18n = {
     
     // 更新 title
     document.title = isZh 
-      ? 'XMirror - X/Twitter 内容存档工具 | 永久保存推文、图片和视频'
-      : 'XMirror - X/Twitter Content Archiver | Save Tweets, Images & Videos';
+      ? 'XPut - X/Twitter 内容存档工具 | 永久保存推文、图片和视频'
+      : 'XPut - X/Twitter Content Archiver | Save Tweets, Images & Videos';
     
     // 更新 description
     const descMeta = document.querySelector('meta[name="description"]');
     if (descMeta) {
       descMeta.content = isZh
-        ? 'XMirror 是一款专业的 X(Twitter) 内容存档工具，可永久保存推文、图片和视频，生成可访问的镜像页面。支持钉钉/微信卡片分享，防止内容丢失。'
-        : 'XMirror is a professional X(Twitter) content archiving tool that permanently saves tweets, images, and videos, generating accessible mirror pages.';
+        ? 'XPut 是一款专业的 X(Twitter) 内容存档工具，可永久保存推文、图片和视频，生成可访问的镜像页面。支持钉钉/微信卡片分享，防止内容丢失。'
+        : 'XPut is a professional X(Twitter) content archiving tool that permanently saves tweets, images, and videos, generating accessible mirror pages.';
     }
     
     // 更新 keywords
