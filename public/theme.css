@@ -1,75 +1,89 @@
 :root {
   color-scheme: light;
-  --bg-color: #ffffff;
-  --surface-color: #f6f8fa;
-  --text-primary: #17212b;
-  --text-secondary: #596775;
-  --border-color: #dce3e9;
-  --link-color: #0969c3;
-  --hover-bg: #edf4fb;
-  --card-shadow: 0 2px 12px rgba(23, 33, 43, .04);
-  --error-color: #b42318;
-  --error-bg: #fff4f2;
-  --success-color: #176645;
-  --success-bg: #f1faf5;
+  --bg-color: #f3f7fa;
+  --surface-color: #ffffff;
+  --text-primary: #17232c;
+  --text-secondary: #667783;
+  --border-color: #d7e1e6;
+  --link-color: #146b78;
+  --accent-color: #bd8052;
+  --hover-bg: #edf3f4;
+  --card-shadow: 0 18px 50px rgba(35, 63, 74, .12), 0 2px 8px rgba(35, 63, 74, .06);
+  --error-color: #a33d35;
+  --error-bg: #fff3ef;
+  --success-color: #23715e;
+  --success-bg: #eef8f3;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg-color: #15202b;
-    --surface-color: #1c2a37;
-    --text-primary: #e7edf2;
-    --text-secondary: #a2b0bd;
-    --border-color: #384957;
-    --link-color: #72b8ff;
-    --hover-bg: #233749;
-    --card-shadow: none;
-    --error-color: #ffb4ab;
-    --error-bg: #352528;
-    --success-color: #91d8b1;
-    --success-bg: #1a302b;
+    --bg-color: #10191d;
+    --surface-color: #18262b;
+    --text-primary: #edf3f3;
+    --text-secondary: #9cacb1;
+    --border-color: #30434a;
+    --link-color: #82c7c8;
+    --accent-color: #d49a6b;
+    --hover-bg: #22353b;
+    --card-shadow: 0 20px 55px rgba(0, 0, 0, .28);
+    --error-color: #ffb2a7;
+    --error-bg: #382526;
+    --success-color: #91d9bd;
+    --success-bg: #1c332d;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg-color: #15202b;
-  --surface-color: #1c2a37;
-  --text-primary: #e7edf2;
-  --text-secondary: #a2b0bd;
-  --border-color: #384957;
-  --link-color: #72b8ff;
-  --hover-bg: #233749;
-  --card-shadow: none;
-  --error-color: #ffb4ab;
-  --error-bg: #352528;
-  --success-color: #91d8b1;
-  --success-bg: #1a302b;
+  --bg-color: #10191d;
+  --surface-color: #18262b;
+  --text-primary: #edf3f3;
+  --text-secondary: #9cacb1;
+  --border-color: #30434a;
+  --link-color: #82c7c8;
+  --accent-color: #d49a6b;
+  --hover-bg: #22353b;
+  --card-shadow: 0 20px 55px rgba(0, 0, 0, .28);
+  --error-color: #ffb2a7;
+  --error-bg: #382526;
+  --success-color: #91d9bd;
+  --success-bg: #1c332d;
 }
 * { box-sizing: border-box; }
+html { min-width: 320px; }
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   background: var(--bg-color);
   color: var(--text-primary);
   line-height: 1.6;
   min-height: 100vh;
 }
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: .34;
+  background-image: radial-gradient(rgba(20, 107, 120, .12) .7px, transparent .7px);
+  background-size: 18px 18px;
+  mask-image: linear-gradient(to bottom, #000, transparent 70%);
+}
 button, input, select { font: inherit; }
 button { cursor: pointer; }
 a { color: var(--link-color); }
 button:disabled { cursor: wait; opacity: .65; }
-:focus-visible { outline: 3px solid var(--link-color); outline-offset: 3px; }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--link-color) 70%, white); outline-offset: 3px; }
 [hidden] { display: none !important; }
-.mirror-page { padding: 20px; }
+.mirror-page { padding: clamp(10px, 3vw, 28px); }
 .mirror-page .post { min-width: 0; }
 .mirror-page .author-info { min-width: 0; overflow-wrap: anywhere; }
 .mirror-page .meta { gap: 12px; flex-wrap: wrap; }
 .mirror-page .time { flex-wrap: wrap; }
-.mirror-page .badge { flex-shrink: 0; }
-.mirror-page .translate-btn, .mirror-page .subtitle-select { min-height: 40px; }
+.mirror-page .translate-btn, .mirror-page .subtitle-select { min-height: 38px; }
 .mirror-page .translate-status.is-error,
 .mirror-page .subtitle-status.is-error,
 .mirror-page .video-placeholder-error { color: var(--error-color); }
+.translation-pending { color: var(--text-secondary); font-size: .72em; font-weight: 500; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }

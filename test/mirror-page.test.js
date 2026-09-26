@@ -80,12 +80,12 @@ test('generated archive pages load the external page script', () => {
 
 test('home page uses versioned assets and current release marker', () => {
   const homeSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
-  assert.match(homeSource, /\/theme\.css\?v=1\.6\.1/);
-  assert.match(homeSource, /\/style\.css\?v=1\.6\.1/);
-  assert.match(homeSource, /\/i18n\.js\?v=1\.6\.1/);
-  assert.match(homeSource, /\/home-state\.js\?v=1\.6\.1/);
-  assert.match(homeSource, /\/app\.js\?v=1\.6\.1/);
-  assert.match(homeSource, /XPut · v1\.6\.1/);
+  assert.match(homeSource, /\/theme\.css\?v=1\.7\.0/);
+  assert.match(homeSource, /\/style\.css\?v=1\.7\.0/);
+  assert.match(homeSource, /\/i18n\.js\?v=1\.7\.0/);
+  assert.match(homeSource, /\/home-state\.js\?v=1\.7\.0/);
+  assert.match(homeSource, /\/app\.js\?v=1\.7\.0/);
+  assert.match(homeSource, /XPut · v1\.7\.0/);
 });
 
 test('home and archive pages advertise the shared site icon', () => {
@@ -97,7 +97,7 @@ test('home and archive pages advertise the shared site icon', () => {
     assert.match(source, /<link rel="icon" href="\/favicon\.svg\?v=2" type="image\/svg\+xml">/);
     assert.match(source, /<link rel="icon" href="\/favicon-16x16\.png\?v=2" sizes="16x16" type="image\/png">/);
     assert.match(source, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png\?v=2">/);
-    assert.match(source, /<link rel="mask-icon" href="\/safari-pinned-tab\.svg\?v=2" color="#667eea">/);
+    assert.match(source, /<link rel="mask-icon" href="\/safari-pinned-tab\.svg\?v=2" color="#146b78">/);
     assert.match(source, /<link rel="manifest" href="\/site\.webmanifest\?v=2">/);
   }
 
@@ -127,7 +127,7 @@ test('translation click calls the API and renders a successful result', async ()
   assert.equal(requestedUrl, '/api/translate/1?targetLang=zh-CN');
   assert.equal(dom.translated.innerHTML, '<p>你好</p>');
   assert.equal(dom.translated.classList.contains('active'), true);
-  assert.equal(dom.button.textContent, '📝 查看原文');
+  assert.equal(dom.button.textContent, '查看原文');
   assert.equal(dom.button.disabled, false);
   assert.equal(dom.button.getAttribute('aria-busy'), 'false');
   page.setTranslateStatus('');
