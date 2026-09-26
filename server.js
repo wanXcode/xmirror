@@ -996,7 +996,7 @@ function generateMirrorHtml(post) {
 ${videoHtml}
 <div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div></div>
 </div></div>
-<script src="/mirror-page.js?v=${APP_VERSION}-links1" defer></script>
+<script src="/mirror-page.js?v=${APP_VERSION}-links2" defer></script>
 </body>
 </html>`;
 
