@@ -620,7 +620,7 @@ async function translateWithSiliconFlow(parts, targetLang) {
 
       if (parts.length === 1 && !looksLikeStructuredResponse(cleaned)) {
         translations = [cleaned];
-      } else if (lines.length === parts.length) {
+      } else if (lines.length === parts.length && !lines.some(looksLikeStructuredResponse)) {
         translations = lines;
       }
     }
@@ -1414,7 +1414,7 @@ app.get('/api/translate/:id', translateRateLimit, async (req, res) => {
       try {
         translated = JSON.parse(cached.translated_json || '{}').parts || [];
       } catch {}
-      if (translated.length === parts.length) {
+      if (translated.length === parts.length && translated.every(isUsableCachedTranslation)) {
         return res.json({ success: true, cached: true, sourceLang: cached.source_lang || 'auto', targetLang, parts: translated,
           blocks: blocks.map((block, index) => ({ type: block.type, text: translated[index] })) });
       }

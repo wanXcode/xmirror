@@ -27,3 +27,8 @@ test('progress exposes pending and completed counts', () => {
   assert.equal(MAX_TRANSLATABLE_CHARS, 100000);
   assert.equal(MAX_TRANSLATABLE_SEGMENTS, 1000);
 });
+
+test('database segments respect the character budget', () => {
+  const rows = Array.from({ length: 8 }, () => ({ source_text: 'x'.repeat(800) }));
+  assert.equal(nextBatch(rows).length, 1);
+});
