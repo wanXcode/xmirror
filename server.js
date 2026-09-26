@@ -588,6 +588,15 @@ async function translateWithSiliconFlow(parts, targetLang) {
     });
   }
 
+  const looksLikeStructuredResponse = value => {
+    const normalized = String(value || '').trim();
+    return !normalized || /^\s*[\[{]/.test(normalized) || /[\]}]\s*$/.test(normalized)
+      || /(?:^|[\s"'])(?:task|targetLang|parts|translations|翻译数组|目标语言|部分)(?:\s*["']?\s*:)/i.test(normalized);
+  };
+  if (Array.isArray(translations) && translations.some(looksLikeStructuredResponse)) {
+    translations = null;
+  }
+
   if (!Array.isArray(translations) || translations.length !== parts.length) {
     const raw = String(text || '').trim();
     const cleaned = raw
@@ -598,7 +607,7 @@ async function translateWithSiliconFlow(parts, targetLang) {
 
     try {
       const maybeArray = JSON.parse(cleaned);
-      if (Array.isArray(maybeArray)) {
+      if (Array.isArray(maybeArray) && !maybeArray.some(looksLikeStructuredResponse)) {
         translations = maybeArray.map(v => String(v || '').trim());
       }
     } catch {}
@@ -609,9 +618,9 @@ async function translateWithSiliconFlow(parts, targetLang) {
         .map(s => s.replace(/^\s*\d+[\)\.、\-]\s*/, '').trim())
         .filter(Boolean);
 
-      if (parts.length === 1) {
+      if (parts.length === 1 && !looksLikeStructuredResponse(cleaned)) {
         translations = [cleaned];
-      } else if (lines.length === parts.length) {
+      } else if (lines.length === parts.length && !lines.some(looksLikeStructuredResponse)) {
         translations = lines;
       }
     }
@@ -1151,6 +1160,12 @@ function enqueueTranslationJob(jobId) {
   pumpTranslationQueue();
 }
 
+function isUsableCachedTranslation(value) {
+  const text = String(value || '').trim();
+  if (!text || /^[\[{]/.test(text) || /[\]}]$/.test(text)) return false;
+  return !/(?:^|[\s"'])(?:task|targetLang|parts|translations|翻译数组|目标语言|部分)(?:\s*["']?\s*:)/i.test(text);
+}
+
 async function translateBatchWithRetries(parts, targetLang) {
   let lastError;
   for (let attempt = 1; attempt <= TRANSLATION_BATCH_RETRIES; attempt += 1) {
@@ -1290,7 +1305,7 @@ async function createOrGetTranslationJob(postId, targetLang) {
   const cached = await dbGet('SELECT * FROM translations WHERE post_id=? AND target_lang=? AND source_hash=?', [postId, targetLang, sourceHashValue]);
   let cachedParts = [];
   try { cachedParts = JSON.parse(cached?.translated_json || '{}').parts || []; } catch {}
-  const isCachedComplete = cachedParts.length === blocks.length && cachedParts.every(value => typeof value === 'string' && value.trim());
+  const isCachedComplete = cachedParts.length === blocks.length && cachedParts.every(isUsableCachedTranslation);
   let inserted;
   try {
     inserted = await runDbWrite(
@@ -1399,7 +1414,7 @@ app.get('/api/translate/:id', translateRateLimit, async (req, res) => {
       try {
         translated = JSON.parse(cached.translated_json || '{}').parts || [];
       } catch {}
-      if (translated.length === parts.length) {
+      if (translated.length === parts.length && translated.every(isUsableCachedTranslation)) {
         return res.json({ success: true, cached: true, sourceLang: cached.source_lang || 'auto', targetLang, parts: translated,
           blocks: blocks.map((block, index) => ({ type: block.type, text: translated[index] })) });
       }

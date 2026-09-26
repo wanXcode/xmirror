@@ -80,12 +80,11 @@ test('generated archive pages load the external page script', () => {
 
 test('home page uses versioned assets and current release marker', () => {
   const homeSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
-  assert.match(homeSource, /\/theme\.css\?v=1\.7\.0/);
-  assert.match(homeSource, /\/style\.css\?v=1\.7\.0/);
-  assert.match(homeSource, /\/i18n\.js\?v=1\.7\.0/);
-  assert.match(homeSource, /\/home-state\.js\?v=1\.7\.0/);
-  assert.match(homeSource, /\/app\.js\?v=1\.7\.0/);
-  assert.match(homeSource, /XPut · v1\.7\.0/);
+  const version = require('../package.json').version;
+  for (const asset of ['theme.css', 'style.css', 'i18n.js', 'home-state.js', 'app.js']) {
+    assert.ok(homeSource.includes(`/${asset}?v=${version}`));
+  }
+  assert.ok(homeSource.includes(`XPut · v${version}`));
 });
 
 test('home and archive pages advertise the shared site icon', () => {
