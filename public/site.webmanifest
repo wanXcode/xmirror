@@ -4,8 +4,8 @@
   "description": "保存 X/Twitter 内容的镜像存档工具",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#667eea",
-  "theme_color": "#667eea",
+  "background_color": "#146b78",
+  "theme_color": "#146b78",
   "icons": [
     {
       "src": "/favicon-192x192.png",

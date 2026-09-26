@@ -24,6 +24,15 @@ const {
   translationErrorResponse
 } = require('./lib/translation');
 const {
+  STRATEGY_VERSION: TRANSLATION_STRATEGY_VERSION,
+  MAX_TRANSLATABLE_CHARS,
+  MAX_TRANSLATABLE_SEGMENTS,
+  totalCharacters,
+  jobKey: buildTranslationJobKey,
+  nextBatch: nextTranslationBatch,
+  progress: translationProgress
+} = require('./lib/translation-jobs');
+const {
   extractXPostId,
   isBrokenArticleArchive,
   normalizeXTimestamp,
@@ -55,6 +64,12 @@ const SUBTITLE_SEGMENT_SECONDS = Math.max(30, Number(process.env.SUBTITLE_SEGMEN
 const SUBTITLE_CONCURRENCY = Math.max(1, Number(process.env.SUBTITLE_CONCURRENCY) || 2);
 const MODERATION_ADMIN_TOKEN = process.env.MODERATION_ADMIN_TOKEN || '';
 const requireAdmin = createAdminGuard(MODERATION_ADMIN_TOKEN);
+const TRANSLATION_CONCURRENCY = Math.max(1, Math.min(3, Number(process.env.TRANSLATION_CONCURRENCY) || 2));
+const TRANSLATION_BATCH_RETRIES = 3;
+const translationQueue = [];
+const translationQueued = new Set();
+const translationRunning = new Set();
+let activeTranslationJobs = 0;
 
 app.use(express.json());
 registerHealthRoute(app);
@@ -231,6 +246,45 @@ db.serialize(() => {
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_translations_post_lang_hash
     ON translations(post_id, target_lang, source_hash)`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS translation_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_key TEXT NOT NULL UNIQUE,
+    post_id INTEGER NOT NULL,
+    target_lang TEXT NOT NULL,
+    source_hash TEXT NOT NULL,
+    strategy_version TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    total_segments INTEGER NOT NULL DEFAULT 0,
+    completed_segments INTEGER NOT NULL DEFAULT 0,
+    failed_segments INTEGER NOT NULL DEFAULT 0,
+    source_lang TEXT,
+    last_error TEXT,
+    lease_token TEXT,
+    lease_until DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at DATETIME
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_translation_jobs_post
+    ON translation_jobs(post_id, target_lang, source_hash)`);
+  db.run(`CREATE TABLE IF NOT EXISTS translation_segments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id INTEGER NOT NULL,
+    segment_index INTEGER NOT NULL,
+    block_type TEXT NOT NULL,
+    source_text TEXT NOT NULL,
+    translated_text TEXT,
+    status TEXT NOT NULL DEFAULT 'queued',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    error_code TEXT,
+    error_message TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(job_id, segment_index)
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_translation_segments_job
+    ON translation_segments(job_id, segment_index)`);
 
   db.run(`CREATE TABLE IF NOT EXISTS subtitle_tracks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -839,7 +893,7 @@ function generateMirrorHtml(post) {
 <link rel="icon" href="/favicon-32x32.png?v=2" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon-16x16.png?v=2" sizes="16x16" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
-<link rel="mask-icon" href="/safari-pinned-tab.svg?v=2" color="#667eea">
+<link rel="mask-icon" href="/safari-pinned-tab.svg?v=2" color="#146b78">
 <link rel="manifest" href="/site.webmanifest?v=2">
 <meta property="og:title" content="${pageTitle}">
 <meta property="og:description" content="${escapeHtml(summary)}">
@@ -860,27 +914,11 @@ function generateMirrorHtml(post) {
 <script defer data-domain="xmirror.app" src="https://a.zhxs.me/js/script.js"></script>
 <link rel="stylesheet" href="/theme.css?v=${APP_VERSION}">
 <style>
-.theme-toggle{flex-shrink:0;margin-left:12px;width:44px;height:44px;border-radius:50%;border:none;background:var(--hover-bg);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;transition:transform .2s}
-.theme-toggle:hover{transform:scale(1.1)}
-.container{max-width:640px;margin:0 auto 20px}.post{background:var(--bg-color);border:1px solid var(--border-color);border-radius:16px;padding:20px;box-shadow:var(--card-shadow);transition:border-color .3s}
-.header{display:flex;align-items:flex-start;margin-bottom:12px}.avatar{width:48px;height:48px;border-radius:50%;margin-right:12px;object-fit:cover;background:var(--border-color)}
-.author-info{flex:1}.author-name{font-weight:700;font-size:16px;color:var(--text-primary);display:flex;align-items:center;gap:4px}.author-handle{color:var(--text-secondary);font-size:15px}
-.content{margin:4px 0;font-size:17px;line-height:1.6;word-wrap:break-word;color:var(--text-primary)}
-.content h1{font-size:20px;font-weight:800;margin:16px 0}.content h2{font-size:18px;font-weight:700;margin:14px 0}.content p{margin:12px 0}.content a{color:var(--link-color);text-decoration:none}.content a:hover{text-decoration:underline}
-.content img,.media-img{max-width:100%;border-radius:16px;margin:12px 0;border:1px solid var(--border-color)}video{max-width:100%;border-radius:16px;margin:12px 0}.video-placeholder{margin:12px 0;padding:22px 18px;border:1px solid var(--border-color);border-radius:16px;background:var(--hover-bg);color:var(--text-secondary)}.video-placeholder-title{color:var(--text-primary);font-weight:600;margin-bottom:14px}.video-progress{height:8px;background:var(--border-color);border-radius:999px;overflow:hidden}.video-progress-bar{height:100%;background:var(--link-color);transition:width .4s ease}.video-progress-text{font-size:13px;margin-top:9px}.video-placeholder-error{color:#b42318}
-.subtitle-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px;color:var(--text-secondary);font-size:13px}.subtitle-select{border:1px solid var(--border-color);border-radius:999px;padding:6px 28px 6px 10px;background:var(--bg-color);color:var(--text-primary);font:inherit}.subtitle-status{font-size:12px}.subtitle-status.is-error{color:#b42318}
-.translate-toolbar{display:flex;gap:8px;margin:12px 0;align-items:center;flex-wrap:wrap}
-.translate-btn{padding:6px 12px;border:1px solid var(--border-color);border-radius:999px;background:var(--hover-bg);color:var(--text-primary);cursor:pointer;font-size:13px}
-.translate-btn[disabled]{opacity:.6;cursor:not-allowed}
-.translate-btn.is-loading::before{content:"";display:inline-block;width:12px;height:12px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:translate-spin .7s linear infinite}
-.translate-status{font-size:12px;color:var(--text-secondary);transition:opacity .2s}.translate-status.is-error{color:#b42318}.translate-status.is-fading{opacity:0}
-@keyframes translate-spin{to{transform:rotate(360deg)}}
-@media(prefers-reduced-motion:reduce){.translate-btn.is-loading::before{animation:none}.translate-status{transition:none}}
-.content-view{display:none}
-.content-view.active{display:block}
-.meta{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);color:var(--text-secondary);font-size:14px}
-.source{color:var(--link-color);text-decoration:none}.source:hover{text-decoration:underline}.badge{background:var(--link-color);color:var(--bg-color);padding:4px 12px;border-radius:9999px;font-size:12px;font-weight:600}
-.time{display:flex;align-items:center;gap:8px}@media(max-width:600px){.mirror-page{padding-top:12px}.container{margin:0 0 10px}.post{border-radius:12px}}
+.container{max-width:680px;margin:0 auto 18px}.post{background:color-mix(in srgb,var(--surface-color) 94%,transparent);border:1px solid var(--border-color);border-radius:22px;padding:clamp(16px,4vw,28px);box-shadow:var(--card-shadow);position:relative;overflow:hidden}.post::before{content:"";position:absolute;inset:0 0 auto;height:3px;background:linear-gradient(90deg,var(--link-color),var(--accent-color));opacity:.85}
+.header{display:flex;align-items:center;gap:12px;margin-bottom:8px}.avatar{width:42px;height:42px;border-radius:14px;margin-right:0;object-fit:cover;background:var(--border-color);box-shadow:0 3px 9px rgba(0,0,0,.12)}.author-info{flex:1}.author-name{font-weight:700;font-size:15px;color:var(--text-primary);display:flex;align-items:center;gap:4px}.author-handle{color:var(--text-secondary);font-size:13px}.theme-toggle{flex-shrink:0;width:36px;height:36px;border-radius:12px;border:1px solid var(--border-color);background:var(--hover-bg);color:var(--text-primary);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:transform .18s,background .18s}.theme-toggle:hover{transform:translateY(-1px);background:color-mix(in srgb,var(--accent-color) 16%,var(--hover-bg))}
+.content{margin:8px 0;font-size:17px;line-height:1.72;word-wrap:break-word;color:var(--text-primary)}.content h1{font-size:22px;font-weight:800;margin:16px 0}.content h2{font-size:19px;font-weight:750;margin:15px 0}.content p{margin:13px 0}.content a{color:var(--link-color);text-decoration:none}.content a:hover{text-decoration:underline}.content img,.media-img{max-width:100%;border-radius:16px;margin:13px 0;border:1px solid var(--border-color);box-shadow:0 8px 20px rgba(35,63,74,.08)}video{max-width:100%;border-radius:16px;margin:13px 0}.video-placeholder{margin:13px 0;padding:20px 17px;border:1px solid var(--border-color);border-radius:16px;background:var(--hover-bg);color:var(--text-secondary)}.video-placeholder-title{color:var(--text-primary);font-weight:650;margin-bottom:14px}.video-progress{height:7px;background:var(--border-color);border-radius:999px;overflow:hidden}.video-progress-bar{height:100%;background:linear-gradient(90deg,var(--link-color),var(--accent-color));transition:width .4s ease}.video-progress-text{font-size:13px;margin-top:9px}.video-placeholder-error{color:var(--error-color)}
+.subtitle-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px;color:var(--text-secondary);font-size:13px}.subtitle-select{border:1px solid var(--border-color);border-radius:10px;padding:6px 28px 6px 10px;background:var(--surface-color);color:var(--text-primary);font:inherit}.subtitle-status{font-size:12px}.subtitle-status.is-error{color:var(--error-color)}.translate-toolbar{display:flex;gap:8px;margin:8px 0 13px;align-items:center;flex-wrap:wrap}.translate-btn{padding:7px 13px;border:1px solid color-mix(in srgb,var(--link-color) 30%,var(--border-color));border-radius:11px;background:color-mix(in srgb,var(--link-color) 8%,var(--surface-color));color:var(--link-color);cursor:pointer;font-size:13px;font-weight:650;box-shadow:inset 0 1px 0 rgba(255,255,255,.35);transition:transform .16s,background .16s}.translate-btn:hover:not(:disabled){transform:translateY(-1px);background:color-mix(in srgb,var(--link-color) 14%,var(--surface-color))}.translate-btn[disabled]{opacity:.6;cursor:not-allowed}.translate-btn.is-loading::before{content:"";display:inline-block;width:12px;height:12px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:translate-spin .7s linear infinite}.translate-status{font-size:12px;color:var(--text-secondary);transition:opacity .2s}.translate-status.is-error{color:var(--error-color)}.translate-status.is-fading{opacity:0}.translate-retry{border:0;background:transparent;color:var(--link-color);font-size:12px;padding:5px 2px;cursor:pointer}.translate-retry:hover{text-decoration:underline}@keyframes translate-spin{to{transform:rotate(360deg)}}
+.content-view{display:none}.content-view.active{display:block}.meta{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border-color);color:var(--text-secondary);font-size:13px}.source{color:var(--link-color);text-decoration:none}.source:hover{text-decoration:underline}.time{display:flex;align-items:center;gap:8px}@media(max-width:600px){.mirror-page{padding:8px}.container{margin:0 0 10px}.post{border-radius:17px;padding:16px}.content{font-size:16px;line-height:1.68}}
 </style>
 </head>
 <body class="mirror-page">
@@ -892,13 +930,13 @@ function generateMirrorHtml(post) {
 <button class="theme-toggle" onclick="toggleTheme()" title="切换主题" aria-label="切换主题">🌓</button>
 </div>
 <div class="translate-toolbar">
-<button id="translateBtn" class="translate-btn" type="button" onclick="toggleTranslate()" aria-controls="originContent translatedContent" aria-busy="false">🌐 翻译为中文</button>
+<button id="translateBtn" class="translate-btn" type="button" onclick="toggleTranslate()" aria-controls="originContent translatedContent" aria-busy="false">翻译为中文</button>
 <span id="translateStatus" class="translate-status" role="status" aria-live="polite" aria-atomic="true"></span>
 </div>
 <div id="originContent" class="content content-view active" aria-hidden="false">${content}</div>
 <div id="translatedContent" class="content content-view" aria-hidden="true"></div>
 ${videoHtml}
-<div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div><span class="badge">🐦 XPut</span></div>
+<div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div></div>
 </div></div>
 <script src="/mirror-page.js?v=${APP_VERSION}" defer></script>
 </body>
@@ -1049,6 +1087,284 @@ async function upsertTranslation({ postId, targetLang, sourceLang, sourceHashVal
     [postId, targetLang, sourceLang, sourceHashValue, payload, TRANSLATE_PROVIDER]
   );
 }
+
+function dbGet(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
+  });
+}
+
+function dbAll(sql, params = []) {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows || []));
+  });
+}
+
+function translationJobPayload(job, segments = []) {
+  const counts = translationProgress(job.total_segments, job.completed_segments, job.failed_segments);
+  return {
+    id: job.id,
+    postId: job.post_id,
+    targetLang: job.target_lang,
+    sourceHash: job.source_hash,
+    status: job.status,
+    sourceLang: job.source_lang || 'auto',
+    error: job.last_error || null,
+    ...counts,
+    blocks: segments.map(segment => ({
+      index: segment.segment_index,
+      type: segment.block_type,
+      sourceText: segment.source_text,
+      text: segment.status === 'completed' ? segment.translated_text : segment.source_text,
+      translated: segment.status === 'completed',
+      status: segment.status === 'failed' ? 'failed' : segment.status
+    }))
+  };
+}
+
+async function readTranslationJob(jobId) {
+  const job = await dbGet('SELECT * FROM translation_jobs WHERE id=?', [jobId]);
+  if (!job) return null;
+  const segments = await dbAll('SELECT * FROM translation_segments WHERE job_id=? ORDER BY segment_index', [jobId]);
+  return translationJobPayload(job, segments);
+}
+
+async function persistTranslationJobCounts(jobId) {
+  const counts = await dbGet(`SELECT
+    COUNT(*) AS total,
+    SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
+    SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
+    SUM(CASE WHEN status IN ('queued','running') THEN 1 ELSE 0 END) AS pending
+    FROM translation_segments WHERE job_id=?`, [jobId]);
+  await runDbWrite(
+    `UPDATE translation_jobs SET total_segments=?, completed_segments=?, failed_segments=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+    [Number(counts?.total) || 0, Number(counts?.completed) || 0, Number(counts?.failed) || 0, jobId]
+  );
+  return counts;
+}
+
+function enqueueTranslationJob(jobId) {
+  const key = String(jobId);
+  if (translationQueued.has(key) || translationRunning.has(key)) return;
+  translationQueued.add(key);
+  translationQueue.push(Number(jobId));
+  pumpTranslationQueue();
+}
+
+async function translateBatchWithRetries(parts, targetLang) {
+  let lastError;
+  for (let attempt = 1; attempt <= TRANSLATION_BATCH_RETRIES; attempt += 1) {
+    try {
+      return await translateInBatches(parts, batch => translateWithSiliconFlow(batch, targetLang), { batchSize: parts.length });
+    } catch (error) {
+      lastError = error;
+      const providerCode = error?.providerCode || error?.code;
+      const permanent = providerCode === 'AUTH' || providerCode === 'INSUFFICIENT_BALANCE' || error?.status === 401;
+      if (permanent || attempt === TRANSLATION_BATCH_RETRIES) break;
+      await new Promise(resolve => setTimeout(resolve, Math.min(1000 * attempt, 2500)));
+    }
+  }
+  throw lastError || new Error('翻译失败');
+}
+
+async function processTranslationJob(jobId) {
+  const leaseToken = crypto.randomUUID();
+  const job = await dbGet('SELECT * FROM translation_jobs WHERE id=?', [jobId]);
+  if (!job || ['completed', 'failed'].includes(job.status)) return;
+  await runDbWrite(
+    `UPDATE translation_jobs SET status='running', lease_token=?, lease_until=datetime('now','+5 minutes'), started_at=COALESCE(started_at,CURRENT_TIMESTAMP), updated_at=CURRENT_TIMESTAMP WHERE id=?`,
+    [leaseToken, jobId]
+  );
+
+  while (true) {
+    const current = await dbGet('SELECT * FROM translation_jobs WHERE id=?', [jobId]);
+    if (!current) return;
+    const pending = await dbAll(
+      `SELECT * FROM translation_segments WHERE job_id=? AND status IN ('queued','retry') ORDER BY segment_index`,
+      [jobId]
+    );
+    if (!pending.length) {
+      const counts = await persistTranslationJobCounts(jobId);
+      const status = Number(counts.failed) > 0 ? (Number(counts.completed) ? 'partial_failed' : 'failed') : 'completed';
+      await runDbWrite(`UPDATE translation_jobs SET status=?, lease_token=NULL, lease_until=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=? AND lease_token=?`, [status, jobId, leaseToken]);
+      if (status === 'completed') {
+        const segments = await dbAll('SELECT * FROM translation_segments WHERE job_id=? ORDER BY segment_index', [jobId]);
+        await upsertTranslation({
+          postId: current.post_id,
+          targetLang: current.target_lang,
+          sourceLang: current.source_lang || 'auto',
+          sourceHashValue: current.source_hash,
+          translations: segments.map(segment => segment.translated_text || '')
+        });
+      }
+      return;
+    }
+
+    const first = Number(current.completed_segments) === 0;
+    const batch = nextTranslationBatch(pending, { first });
+    const indexes = batch.map(segment => segment.segment_index);
+    await runDbWrite(
+      `UPDATE translation_segments SET status='running', updated_at=CURRENT_TIMESTAMP WHERE job_id=? AND segment_index IN (${indexes.map(() => '?').join(',')})`,
+      [jobId, ...indexes]
+    );
+    try {
+      const result = await translateBatchWithRetries(batch.map(segment => segment.source_text), current.target_lang);
+      for (let index = 0; index < batch.length; index += 1) {
+        const translated = String(result.translations[index] || '').trim();
+        if (!translated) throw new TranslationFormatError();
+        await runDbWrite(
+          `UPDATE translation_segments SET translated_text=?, status='completed', attempts=attempts+1, error_code=NULL, error_message=NULL, updated_at=CURRENT_TIMESTAMP WHERE job_id=? AND segment_index=?`,
+          [translated, jobId, batch[index].segment_index]
+        );
+      }
+      if (result.sourceLang && result.sourceLang !== 'auto') {
+        await runDbWrite(`UPDATE translation_jobs SET source_lang=?, last_error=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?`, [result.sourceLang, jobId]);
+      }
+    } catch (error) {
+      const response = translationErrorResponse(error);
+      for (const segment of batch) {
+        const attempts = Number(segment.attempts || 0) + 1;
+        const exhausted = attempts >= TRANSLATION_BATCH_RETRIES;
+        await runDbWrite(
+          `UPDATE translation_segments SET status=?, attempts=?, error_code=?, error_message=?, updated_at=CURRENT_TIMESTAMP WHERE job_id=? AND segment_index=?`,
+          [exhausted ? 'failed' : 'retry', attempts, error?.code || error?.providerCode || 'TRANSLATION_ERROR', response.message, jobId, segment.segment_index]
+        );
+      }
+      await runDbWrite(`UPDATE translation_jobs SET last_error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?`, [response.message, jobId]);
+    }
+    await persistTranslationJobCounts(jobId);
+  }
+}
+
+function pumpTranslationQueue() {
+  while (activeTranslationJobs < TRANSLATION_CONCURRENCY && translationQueue.length) {
+    const jobId = translationQueue.shift();
+    translationQueued.delete(String(jobId));
+    if (translationRunning.has(String(jobId))) continue;
+    translationRunning.add(String(jobId));
+    activeTranslationJobs += 1;
+    processTranslationJob(jobId)
+      .catch(error => console.error(`翻译任务失败 (${jobId}):`, error.message))
+      .finally(() => {
+        activeTranslationJobs -= 1;
+        translationRunning.delete(String(jobId));
+        pumpTranslationQueue();
+      });
+  }
+}
+
+function queuePendingTranslationJobs() {
+  dbAll(`SELECT id FROM translation_jobs WHERE status IN ('queued','running','partial_failed')
+    AND (lease_until IS NULL OR lease_until < datetime('now'))`)
+    .then(rows => rows.forEach(row => enqueueTranslationJob(row.id)))
+    .catch(error => console.error('恢复翻译任务失败:', error.message));
+}
+
+async function createOrGetTranslationJob(postId, targetLang) {
+  const post = await getPostById(postId);
+  if (!post) {
+    const error = new Error('存档不存在');
+    error.code = 'ARCHIVE_NOT_FOUND';
+    throw error;
+  }
+  const blocks = extractTranslatableBlocks(post.content || '');
+  const chars = totalCharacters(blocks);
+  if (!blocks.length) {
+    const error = new Error('无可翻译内容');
+    error.code = 'NO_TRANSLATABLE_CONTENT';
+    throw error;
+  }
+  if (blocks.length > MAX_TRANSLATABLE_SEGMENTS || chars > MAX_TRANSLATABLE_CHARS) {
+    const error = new Error('文章超过翻译上限');
+    error.code = 'TRANSLATION_LIMIT';
+    throw error;
+  }
+  const sourceHashValue = translationSourceHash(blocks.map(block => block.text));
+  const key = buildTranslationJobKey({ postId, targetLang, sourceHash: sourceHashValue });
+  const existing = await dbGet('SELECT * FROM translation_jobs WHERE job_key=?', [key]);
+  if (existing) {
+    if (['queued', 'running', 'partial_failed'].includes(existing.status)) enqueueTranslationJob(existing.id);
+    return readTranslationJob(existing.id);
+  }
+
+  const cached = await dbGet('SELECT * FROM translations WHERE post_id=? AND target_lang=? AND source_hash=?', [postId, targetLang, sourceHashValue]);
+  let cachedParts = [];
+  try { cachedParts = JSON.parse(cached?.translated_json || '{}').parts || []; } catch {}
+  const isCachedComplete = cachedParts.length === blocks.length && cachedParts.every(value => typeof value === 'string' && value.trim());
+  let inserted;
+  try {
+    inserted = await runDbWrite(
+      `INSERT INTO translation_jobs(job_key,post_id,target_lang,source_hash,strategy_version,status,total_segments,completed_segments,source_lang,last_error)
+       VALUES(?,?,?,?,?,?,?,?,?,NULL)`,
+      [key, postId, targetLang, sourceHashValue, TRANSLATION_STRATEGY_VERSION, isCachedComplete ? 'completed' : 'queued', blocks.length, isCachedComplete ? blocks.length : 0, cached?.source_lang || 'auto']
+    );
+  } catch (error) {
+    // Two tabs may create the same identity at once. The unique key makes one
+    // writer win; the other request simply returns that durable task.
+    if (!String(error.message || '').includes('UNIQUE')) throw error;
+    const winner = await dbGet('SELECT id, status FROM translation_jobs WHERE job_key=?', [key]);
+    if (!winner) throw error;
+    if (['queued', 'running', 'partial_failed'].includes(winner.status)) enqueueTranslationJob(winner.id);
+    return readTranslationJob(winner.id);
+  }
+  for (let index = 0; index < blocks.length; index += 1) {
+    await runDbWrite(
+      `INSERT INTO translation_segments(job_id,segment_index,block_type,source_text,translated_text,status) VALUES(?,?,?,?,?,?)`,
+      [inserted.lastID, index, blocks[index].type, blocks[index].text, isCachedComplete ? cachedParts[index] : null, isCachedComplete ? 'completed' : 'queued']
+    );
+  }
+  if (!isCachedComplete) enqueueTranslationJob(inserted.lastID);
+  return readTranslationJob(inserted.lastID);
+}
+
+const translationTaskRateLimit = createRateLimiter({
+  windowMs: Number(process.env.TRANSLATE_RATE_WINDOW_MS) || 60000,
+  max: Number(process.env.TRANSLATE_RATE_MAX) || 10
+});
+
+app.post('/api/translate/:id/tasks', translationTaskRateLimit, async (req, res) => {
+  const postId = Number(req.params.id);
+  const targetLang = normalizeTargetLanguage(req.body?.targetLang || req.query.targetLang || 'zh-CN');
+  if (!Number.isInteger(postId) || postId <= 0) return res.status(400).json({ success: false, code: 'INVALID_POST_ID', error: '无效 postId' });
+  if (!targetLang) return res.status(400).json({ success: false, code: 'UNSUPPORTED_LANGUAGE', error: '不支持的目标语言' });
+  try {
+    const task = await createOrGetTranslationJob(postId, targetLang);
+    return res.status(task.status === 'completed' ? 200 : 202).json({ success: true, task });
+  } catch (error) {
+    if (error.code === 'ARCHIVE_NOT_FOUND') return res.status(404).json({ success: false, code: 'ARCHIVE_NOT_FOUND', error: error.message });
+    if (error.code === 'NO_TRANSLATABLE_CONTENT') return res.status(400).json({ success: false, code: error.code, error: error.message });
+    if (error.code === 'TRANSLATION_LIMIT') return res.status(413).json({ success: false, code: error.code, error: error.message });
+    console.error('Translation task creation failed:', error.message);
+    return res.status(503).json({ success: false, code: 'TRANSLATION_SERVICE_UNAVAILABLE', error: '翻译服务暂时不可用，请稍后重试' });
+  }
+});
+
+app.get('/api/translate/tasks/:taskId', async (req, res) => {
+  const taskId = Number(req.params.taskId);
+  if (!Number.isInteger(taskId) || taskId <= 0) return res.status(400).json({ success: false, code: 'INVALID_TASK_ID', error: '无效任务 ID' });
+  try {
+    const task = await readTranslationJob(taskId);
+    if (!task) return res.status(404).json({ success: false, code: 'TASK_NOT_FOUND', error: '翻译任务不存在' });
+    return res.json({ success: true, task });
+  } catch (error) {
+    return res.status(503).json({ success: false, code: 'TRANSLATION_STATUS_UNAVAILABLE', error: '翻译进度暂时无法读取' });
+  }
+});
+
+app.post('/api/translate/tasks/:taskId/retry', translationTaskRateLimit, async (req, res) => {
+  const taskId = Number(req.params.taskId);
+  if (!Number.isInteger(taskId) || taskId <= 0) return res.status(400).json({ success: false, code: 'INVALID_TASK_ID', error: '无效任务 ID' });
+  try {
+    const task = await dbGet('SELECT * FROM translation_jobs WHERE id=?', [taskId]);
+    if (!task) return res.status(404).json({ success: false, code: 'TASK_NOT_FOUND', error: '翻译任务不存在' });
+    await runDbWrite(`UPDATE translation_segments SET status='queued', attempts=0, error_code=NULL, error_message=NULL, updated_at=CURRENT_TIMESTAMP WHERE job_id=? AND status='failed'`, [taskId]);
+    await runDbWrite(`UPDATE translation_jobs SET status='queued', last_error=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?`, [taskId]);
+    enqueueTranslationJob(taskId);
+    return res.status(202).json({ success: true, task: await readTranslationJob(taskId) });
+  } catch (error) {
+    return res.status(503).json({ success: false, code: 'TRANSLATION_RETRY_UNAVAILABLE', error: '重试任务暂时无法提交' });
+  }
+});
 
 const translateRateLimit = createRateLimiter({
   windowMs: Number(process.env.TRANSLATE_RATE_WINDOW_MS) || 60000,
@@ -1486,6 +1802,7 @@ async function startServer() {
     console.log(`SQLite: ${dbPath}`);
     queuePendingVideoDownloads();
     queuePendingSubtitleJobs();
+    queuePendingTranslationJobs();
   });
 }
 

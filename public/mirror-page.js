@@ -1,4 +1,6 @@
 let translateStatusTimer;
+let translationPollTimer;
+let translationTaskId = null;
 let manualThemeOverride = false;
 let videoStatusTimer;
 let subtitleStatusTimer;
@@ -50,7 +52,7 @@ function getTranslateConfig() {
 
 function setDefaultTranslateButtonText() {
   const btn = document.getElementById('translateBtn');
-  if (btn) btn.textContent = `🌐 翻译为${getTranslateConfig().targetLabel}`;
+  if (btn) btn.textContent = `翻译为${getTranslateConfig().targetLabel}`;
 }
 
 function setTranslateStatus(message, { error = false, temporary = false } = {}) {
@@ -92,6 +94,97 @@ function renderTranslatedBlocks(data) {
     const type = allowed.has(block.type) ? block.type : 'p';
     return `<${type}>${escapeTranslatedText(block.text)}</${type}>`;
   }).join('');
+}
+
+function renderTranslationTask(task) {
+  const blocks = Array.isArray(task?.blocks) ? task.blocks : [];
+  return blocks.map(block => {
+    const type = allowedTranslationTypes.has(block.type) ? block.type : 'p';
+    const text = escapeTranslatedText(block.text || block.sourceText || '');
+    const pending = block.status !== 'completed';
+    return `<${type}>${text}${pending ? ' <span class="translation-pending" aria-label="待翻译">· 待翻译</span>' : ''}</${type}>`;
+  }).join('');
+}
+
+const allowedTranslationTypes = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote']);
+
+function translationTaskMessage(task) {
+  if (!task) return '正在准备翻译…';
+  if (task.status === 'completed') return '翻译完成';
+  if (task.status === 'partial_failed' || task.failed) {
+    return `已翻译 ${task.completed} / ${task.total} 段，${task.failed} 段未完成`;
+  }
+  if (task.status === 'queued') return `正在排队，已翻译 ${task.completed} / ${task.total} 段`;
+  return `已翻译 ${task.completed} / ${task.total} 段`;
+}
+
+function saveTranslationTask(taskId, targetLang) {
+  const postId = document.querySelector('.post')?.dataset?.postId;
+  try { sessionStorage.setItem('xput-translation-task', JSON.stringify({ taskId, targetLang, postId })); } catch {}
+}
+
+function clearTranslationTask() {
+  try { sessionStorage.removeItem('xput-translation-task'); } catch {}
+}
+
+function stopTranslationPolling() {
+  if (translationPollTimer) clearTimeout(translationPollTimer);
+  translationPollTimer = null;
+}
+
+async function fetchTranslationTask(taskId) {
+  const res = await fetch(`/api/translate/tasks/${encodeURIComponent(taskId)}`, { headers: { Accept: 'application/json' } });
+  let data = {};
+  try { data = await res.json(); } catch {}
+  if (!res.ok || !data.success) throw Object.assign(new Error('translation status failed'), { httpStatus: res.status, code: data.code });
+  return data.task;
+}
+
+function updateTranslationView(task, cfg) {
+  const btn = document.getElementById('translateBtn');
+  const translatedEl = document.getElementById('translatedContent');
+  if (!task || !btn || !translatedEl) return;
+  translatedEl.innerHTML = renderTranslationTask(task) || '<p>暂无译文</p>';
+  showContent('translated');
+  btn.disabled = false;
+  btn.classList.remove('is-loading');
+  btn.setAttribute('aria-busy', 'false');
+  btn.textContent = '查看原文';
+  setTranslateStatus(translationTaskMessage(task), { error: task.status === 'partial_failed' || task.failed });
+  let retry = document.getElementById('translationRetry');
+  if (task.status === 'partial_failed' || task.status === 'failed') {
+    if (!retry) {
+      retry = document.createElement('button');
+      retry.id = 'translationRetry';
+      retry.type = 'button';
+      retry.className = 'translate-retry';
+      retry.addEventListener('click', retryTranslation);
+      document.getElementById('translateStatus')?.after(retry);
+    }
+    retry.textContent = '重试未完成部分';
+    retry.hidden = false;
+  } else if (retry) {
+    retry.hidden = true;
+  }
+  if (task.status === 'completed' || task.status === 'partial_failed' || task.status === 'failed') {
+    stopTranslationPolling();
+    if (task.status === 'completed') clearTranslationTask();
+  }
+}
+
+async function pollTranslationTask(taskId, cfg) {
+  try {
+    const task = await fetchTranslationTask(taskId);
+    updateTranslationView(task, cfg);
+    if (!['completed', 'partial_failed', 'failed'].includes(task.status)) {
+      translationPollTimer = setTimeout(() => pollTranslationTask(taskId, cfg), document.hidden ? 6000 : 2500);
+    }
+    return task;
+  } catch (error) {
+    setTranslateStatus('翻译进度暂时无法读取，请稍后重试', { error: true });
+    translationPollTimer = setTimeout(() => pollTranslationTask(taskId, cfg), 5000);
+    return null;
+  }
 }
 
 function formatVideoBytes(bytes) {
@@ -325,10 +418,10 @@ async function toggleTranslate() {
   if (hasTranslated) {
     if (showingTranslated) {
       showContent('origin');
-      btn.textContent = `🌐 查看${cfg.targetLabel}译文`;
+      btn.textContent = `查看${cfg.targetLabel}译文`;
     } else {
       showContent('translated');
-      btn.textContent = '📝 查看原文';
+      btn.textContent = '查看原文';
     }
     setTranslateStatus('');
     return;
@@ -337,27 +430,44 @@ async function toggleTranslate() {
   btn.disabled = true;
   btn.classList.add('is-loading');
   btn.setAttribute('aria-busy', 'true');
-  btn.textContent = '正在翻译…';
-  setTranslateStatus('正在翻译，请稍候');
+  btn.textContent = '准备翻译…';
+  setTranslateStatus('正在准备翻译…');
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000);
   try {
-    const res = await fetch(`/api/translate/${postId}?targetLang=${encodeURIComponent(cfg.targetLang)}`, {
+    const res = await fetch(`/api/translate/${postId}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ targetLang: cfg.targetLang }),
       signal: controller.signal,
-      headers: { Accept: 'application/json' }
     });
     let data = {};
     try { data = await res.json(); } catch {}
     if (!res.ok || !data.success) {
-      throw Object.assign(new Error('translate failed'), { httpStatus: res.status });
+      throw Object.assign(new Error('translate failed'), { httpStatus: res.status, code: data.code });
     }
-    translatedEl.innerHTML = renderTranslatedBlocks(data) || '<p>暂无译文</p>';
-    showContent('translated');
-    btn.textContent = '📝 查看原文';
-    setTranslateStatus(data.cached ? '已显示缓存译文' : '翻译完成', { temporary: true });
+    // Keep the old endpoint usable for cached pages and older deployments during rollout.
+    if (!data.task) {
+      const legacy = await fetch(`/api/translate/${postId}?targetLang=${encodeURIComponent(cfg.targetLang)}`, { headers: { Accept: 'application/json' } });
+      const legacyData = await legacy.json();
+      if (!legacy.ok || !legacyData.success) throw Object.assign(new Error('translate failed'), { httpStatus: legacy.status });
+      translatedEl.innerHTML = renderTranslatedBlocks(legacyData) || '<p>暂无译文</p>';
+      showContent('translated');
+      btn.textContent = '查看原文';
+      setTranslateStatus(legacyData.cached ? '已显示缓存译文' : '翻译完成', { temporary: true });
+      return;
+    }
+    const task = data.task;
+    translationTaskId = task.id;
+    saveTranslationTask(task.id, cfg.targetLang);
+    updateTranslationView(task, cfg);
+    if (!['completed', 'partial_failed', 'failed'].includes(task.status)) {
+      await pollTranslationTask(task.id, cfg);
+    }
   } catch (error) {
-    btn.textContent = '↻ 重新翻译';
+    btn.textContent = '重试翻译';
     if (error.name === 'AbortError') setTranslateStatus('请求超时，请重试', { error: true });
+    else if (error.code === 'TRANSLATION_LIMIT') setTranslateStatus('文章超过翻译上限', { error: true });
     else setTranslateStatus(friendlyTranslateError(error.httpStatus), { error: true });
   } finally {
     clearTimeout(timeoutId);
@@ -365,6 +475,36 @@ async function toggleTranslate() {
     btn.classList.remove('is-loading');
     btn.setAttribute('aria-busy', 'false');
   }
+}
+
+async function retryTranslation() {
+  if (!translationTaskId) return toggleTranslate();
+  const cfg = getTranslateConfig();
+  try {
+    const res = await fetch(`/api/translate/tasks/${encodeURIComponent(translationTaskId)}/retry`, {
+      method: 'POST', headers: { Accept: 'application/json' }
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error('retry failed');
+    updateTranslationView(data.task, cfg);
+    await pollTranslationTask(translationTaskId, cfg);
+  } catch {
+    setTranslateStatus('重试未完成部分失败，请稍后再试', { error: true });
+  }
+}
+
+async function resumeTranslationTask() {
+  let saved;
+  try { saved = JSON.parse(sessionStorage.getItem('xput-translation-task') || 'null'); } catch { saved = null; }
+  const currentPostId = document.querySelector('.post')?.dataset?.postId;
+  if (!saved?.taskId || (saved.postId && saved.postId !== currentPostId)) return;
+  translationTaskId = saved.taskId;
+  const cfg = getTranslateConfig();
+  try {
+    const task = await fetchTranslationTask(saved.taskId);
+    updateTranslationView(task, cfg);
+    if (!['completed', 'partial_failed', 'failed'].includes(task.status)) pollTranslationTask(saved.taskId, cfg);
+  } catch { clearTranslationTask(); }
 }
 
 function initializeMirrorPage() {
@@ -378,6 +518,7 @@ function initializeMirrorPage() {
   setDefaultTranslateButtonText();
   initializeVideoDownload();
   initializeSubtitleControls();
+  resumeTranslationTask();
 }
 
 if (typeof document !== 'undefined') {
@@ -410,6 +551,10 @@ if (typeof module !== 'undefined') {
     pollVideoStatus,
     initializeVideoDownload,
     toggleTranslate,
+    retryTranslation,
+    renderTranslationTask,
+    translationTaskMessage,
+    resumeTranslationTask,
     initializeMirrorPage
   };
 }
