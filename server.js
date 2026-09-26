@@ -60,7 +60,8 @@ const SILICONFLOW_FALLBACK_MODELS = (process.env.SILICONFLOW_FALLBACK_MODELS || 
   .filter(Boolean);
 const SILICONFLOW_API_KEY = process.env.SILICONFLOW_API_KEY || process.env.OPENAI_API_KEY || '';
 const SILICONFLOW_TRANSCRIPTION_MODEL = process.env.SILICONFLOW_TRANSCRIPTION_MODEL || 'FunAudioLLM/SenseVoiceSmall';
-const SUBTITLE_SEGMENT_SECONDS = Math.max(30, Number(process.env.SUBTITLE_SEGMENT_SECONDS) || 60);
+const SUBTITLE_SEGMENT_SECONDS = Math.max(5, Number(process.env.SUBTITLE_SEGMENT_SECONDS) || 12);
+const SUBTITLE_TRANSCRIPTION_CONCURRENCY = Math.max(1, Math.min(8, Number(process.env.SUBTITLE_TRANSCRIPTION_CONCURRENCY) || 3));
 const SUBTITLE_CONCURRENCY = Math.max(1, Number(process.env.SUBTITLE_CONCURRENCY) || 2);
 const MODERATION_ADMIN_TOKEN = process.env.MODERATION_ADMIN_TOKEN || '';
 const requireAdmin = createAdminGuard(MODERATION_ADMIN_TOKEN);
@@ -292,6 +293,7 @@ db.serialize(() => {
     lang TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'none',
     progress INTEGER NOT NULL DEFAULT 0,
+    covered_until REAL NOT NULL DEFAULT 0,
     source_segments TEXT,
     vtt_path TEXT,
     error TEXT,
@@ -299,6 +301,7 @@ db.serialize(() => {
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(post_id, lang)
   )`);
+  db.run('ALTER TABLE subtitle_tracks ADD COLUMN covered_until REAL NOT NULL DEFAULT 0', () => {});
 
   db.run(`CREATE INDEX IF NOT EXISTS idx_subtitle_tracks_post
     ON subtitle_tracks(post_id, lang)`);
@@ -680,7 +683,7 @@ async function writeSubtitleFile(postId, lang, vtt) {
   return `/subtitles/${postId}_${lang}.vtt`;
 }
 
-async function ensureEnglishSubtitles(post, progressStart = 0, progressScale = 100) {
+async function ensureEnglishSubtitles(post, progressStart = 0, progressScale = 100, { onSegment } = {}) {
   let track = await getSubtitleTrack(post.id, 'en');
   let segments;
   try { segments = JSON.parse(track?.source_segments || 'null'); } catch { segments = null; }
@@ -691,8 +694,26 @@ async function ensureEnglishSubtitles(post, progressStart = 0, progressScale = 1
       baseUrl: SILICONFLOW_BASE_URL,
       model: SILICONFLOW_TRANSCRIPTION_MODEL,
       segmentSeconds: SUBTITLE_SEGMENT_SECONDS,
+      concurrency: SUBTITLE_TRANSCRIPTION_CONCURRENCY,
+      onSegment: async (segment, index, total) => {
+        const existing = Array.isArray(segments) ? segments : [];
+        existing[index] = segment;
+        segments = existing.filter(Boolean);
+        const vttPath = await writeSubtitleFile(post.id, 'en', segmentsToVtt(segments));
+        const coveredUntil = Math.max(...segments.map(item => Number(item.end) || 0));
+        await updateSubtitleTrack(post.id, 'en', {
+          status: 'partial',
+          progress: Math.round(progressStart + ((index + 1) / total) * progressScale),
+          covered_until: coveredUntil,
+          source_segments: JSON.stringify(segments),
+          vtt_path: vttPath,
+          error: null
+        });
+        await onSegment?.(segment, index, total);
+      },
       onProgress: value => updateSubtitleTrack(post.id, 'en', {
-        status: 'transcribing', progress: Math.round(progressStart + (value / 100) * progressScale), error: null
+        status: Array.isArray(segments) && segments.length ? 'partial' : 'transcribing',
+        progress: Math.round(progressStart + (value / 100) * progressScale), error: null
       }).catch(() => {})
     });
     if (!segments.length) throw new Error('未识别到语音内容');
@@ -709,16 +730,36 @@ async function processSubtitleJob({ postId, lang }) {
   if (!post || post.video_status !== 'completed' || !post.video) {
     throw new Error('视频尚未下载完成');
   }
-  const segments = await ensureEnglishSubtitles(post, lang === 'en' ? 0 : 0, lang === 'en' ? 100 : 60);
+  const translatedSegments = [];
+  const segments = await ensureEnglishSubtitles(post, 0, lang === 'en' ? 100 : 60, {
+    onSegment: lang === 'zh-CN' ? async (segment, index, total) => {
+      const result = await translateInBatches([segment.text], batch => translateWithSiliconFlow(batch, lang));
+      translatedSegments[index] = { ...segment, text: result.translations[0] };
+      const vttPath = await writeSubtitleFile(postId, lang, segmentsToVtt(translatedSegments.filter(Boolean)));
+      await updateSubtitleTrack(postId, lang, {
+        status: 'partial',
+        progress: 60 + Math.round(((index + 1) / total) * 40),
+        covered_until: Math.max(...translatedSegments.filter(Boolean).map(item => Number(item.end) || 0)),
+        vtt_path: vttPath,
+        error: null
+      });
+    } : undefined
+  });
   if (lang === 'en') return;
+
+  if (translatedSegments.length) {
+    const vttPath = await writeSubtitleFile(postId, lang, segmentsToVtt(translatedSegments.filter(Boolean)));
+    await updateSubtitleTrack(postId, lang, { status: 'completed', progress: 100, vtt_path: vttPath, error: null });
+    return;
+  }
 
   await updateSubtitleTrack(postId, lang, { status: 'translating', progress: 60, error: null });
   const result = await translateInBatches(
     segments.map(segment => segment.text),
     batch => translateWithSiliconFlow(batch, lang)
   );
-  const translatedSegments = segments.map((segment, index) => ({ ...segment, text: result.translations[index] }));
-  const vttPath = await writeSubtitleFile(postId, lang, segmentsToVtt(translatedSegments));
+  const fallbackTranslatedSegments = segments.map((segment, index) => ({ ...segment, text: result.translations[index] }));
+  const vttPath = await writeSubtitleFile(postId, lang, segmentsToVtt(fallbackTranslatedSegments));
   await updateSubtitleTrack(postId, lang, {
     status: 'completed', progress: 100, vtt_path: vttPath, error: null
   });
@@ -1018,7 +1059,8 @@ app.get('/api/posts/:id/subtitles', async (req, res) => {
         label,
         status: row?.status || 'none',
         progress: Number(row?.progress) || 0,
-        src: row?.status === 'completed' ? row.vtt_path : null,
+        coveredUntil: Number(row?.covered_until) || 0,
+        src: ['partial', 'completed'].includes(row?.status) ? row.vtt_path : null,
         error: row?.status === 'failed' ? (row.error || '字幕生成失败') : null
       };
     }
