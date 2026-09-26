@@ -74,6 +74,10 @@ a { color: var(--link-color); }
 button:disabled { cursor: wait; opacity: .65; }
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--link-color) 70%, white); outline-offset: 3px; }
 [hidden] { display: none !important; }
+
+/* v1.7.3: quiet paper palette shared by the home and reading experiences. */
+:root { --bg-color:#eaeae4; --surface-color:#f2f1eb; --text-primary:#30312f; --text-secondary:#696b65; --border-color:#d8d9d2; --link-color:#2563eb; --accent-color:#82adff; --hover-bg:#e5e6df; --card-shadow:none; }
+:root[data-theme="dark"] { --bg-color:#171819; --surface-color:#202122; --text-primary:#deded8; --text-secondary:#a7aaa5; --border-color:#343638; --link-color:#82adff; --accent-color:#82adff; --hover-bg:#292b2d; }
 .mirror-page { padding: clamp(10px, 3vw, 28px); }
 .mirror-page .post { min-width: 0; }
 .mirror-page .author-info { min-width: 0; overflow-wrap: anywhere; }
