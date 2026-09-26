@@ -1,6 +1,6 @@
 {
-  "name": "XMirror",
-  "short_name": "XMirror",
+  "name": "XPut",
+  "short_name": "XPut",
   "description": "保存 X/Twitter 内容的镜像存档工具",
   "start_url": "/",
   "display": "standalone",

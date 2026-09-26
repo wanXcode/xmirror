@@ -1,4 +1,4 @@
-# XMirror 🐦
+# XPut 🐦
 
 X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 
@@ -14,7 +14,13 @@ X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 
 ## 版本
 
-**当前版本：v1.5.3**
+**当前版本：v1.5.4**
+
+### v1.5.4 更新内容
+- 对外品牌统一为 XPut，官网使用 https://xput.app
+- 完善首页、存档页、分享卡片、中英文文案和安装名称
+- 继续兼容旧域名和历史短链，保留统计历史
+- [v1.5.4 需求文档](docs/requirements/xput-brand-v1.5.4.md)
 
 ### v1.5.3 更新内容
 - 🩺 新增 `/healthz`，部署脚本按生产 `.env` 的 `PORT` 检查并验证服务身份，避免端口误判
@@ -35,7 +41,7 @@ X(Twitter) 内容存档工具 - 生成可访问的镜像页面
 
 ### v1.5.0 更新内容
 - 🍎 新增 iOS 快捷指令友好接口：`GET /api/archive/quick`
-- 🔗 支持一键把 X 链接转成 xmirror 短链（可返回重定向 / JSON / 纯文本）
+- 🔗 支持一键把 X 链接转成 XPut 短链（可返回重定向 / JSON / 纯文本）
 - ♻️ 抽离归档核心逻辑，`/api/archive` 与快捷入口共用同一流程
 
 ### v1.4.0 更新内容
@@ -106,8 +112,8 @@ curl "https://xput.app/api/archive/quick?url=https%3A%2F%2Fx.com%2Fxxx%2Fstatus%
 3. 动作：文本（拼接）
    - `https://xput.app/api/archive/quick?url=<编码后的链接>&format=text`
 4. 动作：获取 URL 内容（GET）
-5. 动作：复制到剪贴板（内容即 xmirror 存档短链）
-6. 可选：显示通知（“已生成并复制 xmirror 链接”）
+5. 动作：复制到剪贴板（内容即 XPut 存档短链）
+6. 可选：显示通知（“已生成并复制 XPut 链接”）
 
 ## 部署
 
@@ -134,3 +140,5 @@ systemctl restart xmirror.service
 
 ---
 Crafted with 🌸 by Flora
+
+现有 iCloud 快捷指令分享页仍显示旧名称“XMirror 存档”，安装后可手动重命名为“XPut 存档”。已安装的快捷指令不会自动改名；旧域名请求继续通过 301 跳转兼容。
