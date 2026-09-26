@@ -256,8 +256,15 @@ function subtitleLabel(lang, track) {
   if (track.status === 'transcribing') return `${base}（识别中 ${track.progress || 0}%）`;
   if (track.status === 'translating') return `${base}（翻译中 ${track.progress || 0}%）`;
   if (track.status === 'queued') return `${base}（排队中）`;
+  if (track.status === 'partial') return `${base}（已生成至 ${formatSubtitleTime(track.coveredUntil)}）`;
   if (track.status === 'failed') return `${base}（失败，重试）`;
   return base;
+}
+
+function formatSubtitleTime(seconds) {
+  const value = Math.max(0, Math.floor(Number(seconds) || 0));
+  const minutes = Math.floor(value / 60);
+  return `${String(minutes).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
 }
 
 function setSubtitleStatus(message, { error = false } = {}) {
@@ -275,10 +282,10 @@ function applySubtitleTrack(lang, src) {
     if (track.track) track.track.mode = 'disabled';
     track.remove();
   });
-  if (!lang || !src || !/^\/subtitles\/[A-Za-z0-9_.-]+\.vtt$/.test(src)) return;
+  if (!lang || !src || !/^\/subtitles\/[A-Za-z0-9_.-]+\.vtt(?:\?[^#]*)?$/.test(src)) return;
   const track = document.createElement('track');
   track.kind = 'subtitles';
-  track.src = src;
+  track.src = `${src}${src.includes('?') ? '&' : '?'}v=${Date.now()}`;
   track.srclang = lang;
   track.label = lang === 'zh-CN' ? '简体中文' : 'English';
   track.default = true;
@@ -299,9 +306,11 @@ function updateSubtitleOptions(data) {
   }
   const selected = select.value;
   const selectedTrack = tracks[selected];
-  if (selectedTrack?.status === 'completed') {
+  if (['partial', 'completed'].includes(selectedTrack?.status)) {
     applySubtitleTrack(selected, selectedTrack.src);
-    setSubtitleStatus('字幕已就绪');
+    setSubtitleStatus(selectedTrack.status === 'partial'
+      ? `已生成至 ${formatSubtitleTime(selectedTrack.coveredUntil)}，后续字幕继续处理中`
+      : '字幕已就绪');
   } else if (selectedTrack?.status === 'failed') {
     setSubtitleStatus(selectedTrack.error || '字幕生成失败，重新选择即可重试', { error: true });
   }
@@ -350,9 +359,12 @@ async function selectSubtitleLanguage(event) {
   }
   const tracks = await refreshSubtitleTracks();
   const track = tracks[lang];
-  if (track?.status === 'completed') {
+  if (['partial', 'completed'].includes(track?.status)) {
     applySubtitleTrack(lang, track.src);
-    setSubtitleStatus('字幕已启用');
+    setSubtitleStatus(track.status === 'partial'
+      ? `已生成至 ${formatSubtitleTime(track.coveredUntil)}，后续字幕继续处理中`
+      : '字幕已启用');
+    if (track.status === 'partial') startSubtitlePolling(postId, lang);
     return;
   }
   select.disabled = true;

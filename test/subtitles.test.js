@@ -1,9 +1,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  DEFAULT_SEGMENT_SECONDS,
+  DEFAULT_TRANSCRIPTION_CONCURRENCY,
   vttTimestamp,
   segmentsToVtt
 } = require('../lib/subtitles');
+
+test('incremental subtitle defaults use short bounded segments and concurrency', () => {
+  assert.equal(DEFAULT_SEGMENT_SECONDS, 12);
+  assert.equal(DEFAULT_TRANSCRIPTION_CONCURRENCY, 3);
+});
 
 test('subtitle timestamps use WebVTT hours, milliseconds', () => {
   assert.equal(vttTimestamp(0), '00:00:00.000');
