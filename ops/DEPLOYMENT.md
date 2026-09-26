@@ -39,15 +39,24 @@ sudo XMIRROR_APP_ROOT=/opt/xmirror \
 
 ## 发布
 
-在服务器的 Git 工作副本中执行：
+先将代码同步至 GitHub `main`，确认目标提交的 CI 通过，并记录完整提交 SHA。
+生产代码必须从 GitHub 拉取，不能先部署本地未推送的提交后补推，也不能通过复制代码或 Git bundle 绕过 GitHub。
+
+服务器现有工作副本可能包含运行数据或其他修改，禁止在脏工作副本中直接 checkout/pull。
+以下命令在服务器仓库中获取 GitHub 提交并创建独立工作目录（将占位符替换为已验证的完整 SHA）：
 
 ```bash
-git fetch origin
-git checkout main
-git pull --ff-only origin main
-sudo XMIRROR_SOURCE_DIR="$PWD" XMIRROR_APP_ROOT=/opt/xmirror \
-  XMIRROR_PM2_BIN=/usr/local/node/bin/pm2 bash ops/deploy.sh
+release_commit='<GitHub main 上已验证的完整提交 SHA>'
+git fetch origin main
+git merge-base --is-ancestor "$release_commit" origin/main
+release_source="/tmp/xmirror-release-$release_commit"
+git worktree add --detach "$release_source" "$release_commit"
+sudo XMIRROR_SOURCE_DIR="$release_source" XMIRROR_APP_ROOT=/opt/xmirror \
+  XMIRROR_PM2_BIN=/usr/local/node/bin/pm2 bash "$release_source/ops/deploy.sh"
 ```
+
+上述检查和发布命令必须逐步成功后才继续；GitHub 拉取失败或目标提交不在 `origin/main` 时停止发布。
+发布后核对运行版本与目标 SHA，并验证公网健康、短链和本次改动的用户行为。
 
 未显式设置 `XMIRROR_HEALTH_URL` 时，脚本会从
 `/opt/xmirror/shared/.env` 的数字型 `PORT` 推导检查地址；未配置 `PORT` 时与应用

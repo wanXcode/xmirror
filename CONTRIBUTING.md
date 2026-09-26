@@ -10,7 +10,10 @@
 4. 创建 Pull Request，说明改动、风险、验证方式和回滚方式。
 5. CI 通过后再 Review。
 6. Review 通过后合并到 `main`。
-7. 生产发布继续使用 `ops/deploy.sh`，发布前保留数据库快照并执行健康检查。
+7. 确认代码已同步至 GitHub `main`，记录远端提交 SHA，并确认该提交的 CI 通过。
+8. 服务器从 GitHub 拉取该精确提交，在干净的独立 worktree 中使用 `ops/deploy.sh` 发布，保留数据库快照并执行健康检查。
+
+GitHub 是生产代码的发布来源。禁止先部署本地未推送的提交再补推 GitHub；不要用本机复制代码或 Git bundle 绕过 GitHub 发布。GitHub 无法同步时暂停新版本发布，先解决连接问题。
 
 紧急线上故障可以直接创建 hotfix 分支，但仍然通过 PR 合并并补齐回归测试。
 
