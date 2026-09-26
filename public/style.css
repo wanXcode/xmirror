@@ -96,3 +96,26 @@ h1 { margin:0; font-size:31px; line-height:1.25; letter-spacing:-.9px; }
 .home-page{padding:0 10px 18px;background:#eaeae4}.page-shell{width:100%;max-width:774px;padding:0 42px 22px}.page-tools{position:relative;top:auto;right:auto;max-width:690px;margin:0 auto;padding:27px 0 0;justify-content:flex-end;gap:14px}.quiet-button{min-width:36px;min-height:36px;font-size:13px;color:#696b65}.hero-heading{max-width:738px;margin:5px auto 28px;padding-top:15px;gap:26px}.hero-brand{min-width:0;padding-right:29px;gap:7px}.hero-brand .brand-mark{width:44px;height:44px;border-radius:11px}.hero-brand .brand-mark::before,.hero-brand .brand-mark::after{left:25%;top:46%;width:50%;height:3px}.hero-brand .brand-mark i{left:23%;right:23%;bottom:18%;height:19%;border-width:2px}.hero-brand strong{font-size:25px;letter-spacing:-1px;line-height:1}.hero-heading h2{font-size:35px;letter-spacing:.5px;line-height:1.35}.hero-heading .subtitle{max-width:390px;margin:0;font-size:13px;line-height:1.9;color:#696b65}.archive-section{max-width:738px;margin:0 auto}.archive-section form{min-height:0;padding:9px 9px 9px 17px;border:1px solid #d8d9d2;border-radius:11px;background:#f2f1eb}.input-group input{font-size:14px;padding:10px 0}.primary-button{min-width:0;min-height:0;padding:13px 20px;border-radius:7px;font:inherit;font-size:14px}.shortcut-card{max-width:690px;margin:4px auto 34px;padding:18px 12px;border:0;background:transparent}.shortcut-copy .title,.shortcut-link{font-size:12px}.history{max-width:690px;margin:0 auto}.history-tabs{margin:0 0 15px;padding:4px;border:1px solid #d8d9d2;border-radius:10px;background:#e5e6df}.history-tabs button{padding:10px 16px;font-size:13px}.history-tabs button[aria-selected=true]{border:0;border-radius:7px;background:#f2f1eb;color:#30312f;box-shadow:0 1px 3px #0000000d}.history-item{padding:23px 12px}.history-item a{font-size:16px;font-weight:500}.history-item .meta{font-size:12px;margin-top:6px}.page-version{max-width:690px;margin:20px auto 0;font-size:11px}.history-index,.history-excerpt,.history-arrow{display:none}:root[data-theme=dark] .home-page{background:#171819}:root[data-theme=dark] .archive-section form{background:#202122;border-color:#343638}:root[data-theme=dark] .history-tabs{background:#292b2d;border-color:#343638}:root[data-theme=dark] .history-tabs button[aria-selected=true]{background:#202122;color:#deded8}:root[data-theme=dark] .hero-heading .subtitle,:root[data-theme=dark] .shortcut-copy .title,:root[data-theme=dark] .history-item .meta{color:#a7aaa5}
 @media(max-width:600px){.home-page{padding:10px 10px 18px}.page-shell{padding:0 20px 20px}.page-tools{padding-top:12px;gap:10px}.hero-heading{padding-top:26px;gap:19px;margin-bottom:25px}.hero-brand{padding-right:19px}.hero-heading h2{font-size:29px}.hero-heading .subtitle{font-size:13px}.archive-section form{padding-left:12px}.input-group input{font-size:16px}.primary-button{padding:13px 12px}.shortcut-card{padding-left:4px;padding-right:4px}.history-tabs button{padding:11px 12px}}
 @media(max-width:430px){.hero-heading{flex-direction:column;align-items:flex-start;gap:20px}.hero-brand{flex-direction:row;border-right:0;padding-right:0}.hero-brand .brand-mark{width:34px;height:34px;border-radius:9px}.hero-brand strong{font-size:23px}.hero-heading h2{font-size:30px}}
+
+/* Wide home canvas matches the supplied 1454px prototype frame. */
+@media(min-width:701px){
+  .home-page{padding:0;background:#171819;min-height:580px}
+  .page-shell{max-width:none;width:100%;padding:0 37px 30px}
+  .page-tools{top:72px;right:37px;gap:18px}
+  .quiet-button{min-width:72px;min-height:72px;border-radius:14px;font-size:28px}
+  .quiet-button:last-child{min-width:48px;font-size:26px}
+  .hero-heading{max-width:none;margin:0 0 59px;padding-top:71px;gap:54px;align-items:flex-start}
+  .hero-brand{width:180px;min-width:180px;height:152px;padding:0 36px 0 17px;gap:12px;box-sizing:border-box}
+  .hero-brand .brand-mark{width:88px;height:88px;border-radius:19px}
+  .hero-brand strong{font-size:50px;line-height:1}
+  .hero-heading h2{margin:4px 0 0;font-size:58px;line-height:1.25}
+  .hero-heading .subtitle{margin-top:25px;font-size:25px;line-height:1.3}
+  .archive-section{max-width:none}
+  .archive-section form{height:132px;min-height:132px;padding:18px 19px 18px 58px;border:2px solid #343638;border-radius:20px;background:#202122}
+  .input-group input{font-size:28px;color:#deded8}
+  .input-group input::placeholder{color:#777873}
+  .primary-button{width:156px;height:92px;min-height:92px;border-radius:14px;font-size:28px;background:#3869d9}
+  .shortcut-card{max-width:none;margin:70px 0 0;padding:0 0 38px;border-bottom:2px solid #343638}
+  .shortcut-copy .title,.shortcut-link{font-size:22px}
+  .history{max-width:none}
+}
