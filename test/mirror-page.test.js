@@ -70,10 +70,22 @@ test('page script is valid JavaScript and follows the system color scheme', () =
 
 test('generated archive pages load the external page script', () => {
   const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-  assert.match(serverSource, /<script src="\/mirror-page\.js" defer><\/script>/);
+  assert.match(serverSource, /<script src="\/mirror-page\.js\?v=\$\{APP_VERSION\}" defer><\/script>/);
+  assert.match(serverSource, /<link rel="stylesheet" href="\/theme\.css\?v=\$\{APP_VERSION\}">/);
+  assert.match(serverSource, /Cache-Control', 'no-cache, must-revalidate/);
   assert.match(serverSource, /\/api\/posts\/:id\/subtitles/);
   assert.match(serverSource, /subtitleSelect/);
   assert.doesNotMatch(serverSource, /function escapeTranslatedText\(value\).*replace\(\/\\n\/g/s);
+});
+
+test('home page uses versioned assets and current release marker', () => {
+  const homeSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  assert.match(homeSource, /\/theme\.css\?v=1\.6\.1/);
+  assert.match(homeSource, /\/style\.css\?v=1\.6\.1/);
+  assert.match(homeSource, /\/i18n\.js\?v=1\.6\.1/);
+  assert.match(homeSource, /\/home-state\.js\?v=1\.6\.1/);
+  assert.match(homeSource, /\/app\.js\?v=1\.6\.1/);
+  assert.match(homeSource, /XPut · v1\.6\.1/);
 });
 
 test('home and archive pages advertise the shared site icon', () => {
