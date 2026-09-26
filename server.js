@@ -6,6 +6,7 @@ const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const https = require('https');
 const crypto = require('crypto');
+const { version: APP_VERSION } = require('./package.json');
 const {
   transcribeVideo,
   segmentsToVtt
@@ -79,7 +80,22 @@ for (const dir of [DATA_DIR, ARCHIVES_DIR, path.join(DATA_DIR, 'images'), path.j
   try { fs.chmodSync(dir, 0o750); } catch {}
 }
 
-app.use(express.static(PUBLIC_DIR));
+// Keep the document shell fresh so it can point browsers at the current
+// versioned assets. The assets themselves are cacheable because their query
+// string changes with each release.
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path.endsWith('.html')) {
+    res.set('Cache-Control', 'no-cache, must-revalidate');
+  }
+  next();
+});
+app.use(express.static(PUBLIC_DIR, {
+  setHeaders(res, filePath) {
+    if (path.basename(filePath) === 'index.html') {
+      res.set('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+}));
 app.use('/images', express.static(path.join(DATA_DIR, 'images')));
 app.use('/videos', express.static(path.join(DATA_DIR, 'videos')));
 app.use('/subtitles', express.static(path.join(DATA_DIR, 'subtitles')));
@@ -842,7 +858,7 @@ function generateMirrorHtml(post) {
 <meta name="twitter:domain" content="${new URL(PUBLIC_BASE_URL).hostname}">
 <!-- Retain the existing analytics site ID to preserve historical reporting across the domain migration. -->
 <script defer data-domain="xmirror.app" src="https://a.zhxs.me/js/script.js"></script>
-<link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/theme.css?v=${APP_VERSION}">
 <style>
 .theme-toggle{flex-shrink:0;margin-left:12px;width:44px;height:44px;border-radius:50%;border:none;background:var(--hover-bg);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;transition:transform .2s}
 .theme-toggle:hover{transform:scale(1.1)}
@@ -884,7 +900,7 @@ function generateMirrorHtml(post) {
 ${videoHtml}
 <div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span><span>·</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></div><span class="badge">🐦 XPut</span></div>
 </div></div>
-<script src="/mirror-page.js" defer></script>
+<script src="/mirror-page.js?v=${APP_VERSION}" defer></script>
 </body>
 </html>`;
 
