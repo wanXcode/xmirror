@@ -132,6 +132,14 @@ test('translation click calls the API and renders a successful result', async ()
   page.setTranslateStatus('');
 });
 
+test('translated rendering clones the original content so media remains visible', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'mirror-page.js'), 'utf8');
+  assert.match(source, /translated\.innerHTML = origin\.innerHTML/);
+  assert.match(source, /replaceElementTextPreservingMedia/);
+  assert.match(source, /querySelectorAll\('h1,h2,h3,h4,h5,h6,p,li,blockquote'\)/);
+  assert.match(source, /<img|media/);
+});
+
 test('video status polling replaces the placeholder only with a local video', async () => {
   const dom = installDom({ dark: false, video: true });
   const page = require('../public/mirror-page');
