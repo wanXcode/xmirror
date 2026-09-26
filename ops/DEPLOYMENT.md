@@ -39,6 +39,21 @@ sudo XMIRROR_APP_ROOT=/opt/xmirror \
 
 ## 发布
 
+### 固定发布顺序
+
+每次生产发布严格按以下顺序执行，不直接向受保护的 `main` 推送，也不从本地脏工作区部署：
+
+1. 在本地确认 `git status`、版本号、测试和语法检查均通过。
+2. 提交变更，创建 `release/vX.Y.Z` 分支并推送到 GitHub。
+3. 创建 PR 到 `main`，等待所有 CI 通过后合并。
+4. 读取合并后的 `origin/main` 完整 SHA，确认它属于 `origin/main`。
+5. SSH 登录生产机，在服务器执行 `git fetch origin main`，从该完整 SHA 创建 `/tmp/xmirror-release-<SHA>` 独立 worktree。
+6. 在该 worktree 中执行 `XMIRROR_SOURCE_DIR=... XMIRROR_APP_ROOT=/opt/xmirror XMIRROR_PM2_BIN=/usr/local/node/bin/pm2 bash ops/deploy.sh`。
+7. 部署脚本成功后验证 `/healthz`、首页版本号、静态资源版本、PM2 `xmirror` 为 online，再验证本次改动的关键接口或页面行为。
+8. 发布失败时保留旧 `current`，先看部署脚本的自动回滚结果，再检查 PM2 与健康端点。
+
+发布前需要记住：`git push` 本身不会部署；生产机必须使用 GitHub `main` 的合并提交；不得打印 `/opt/xmirror/shared/.env`、API Key 或其他密钥。
+
 先将代码同步至 GitHub `main`，确认目标提交的 CI 通过，并记录完整提交 SHA。
 生产代码必须从 GitHub 拉取，不能先部署本地未推送的提交后补推，也不能通过复制代码或 Git bundle 绕过 GitHub。
 
