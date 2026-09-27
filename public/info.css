@@ -1,0 +1,23 @@
+.info-page { max-width:738px;margin:0 auto;padding:36px 24px 28px; }
+.info-nav, .info-footer, .browse-pagination { display:flex;justify-content:space-between;align-items:center;gap:12px 24px;flex-wrap:wrap;font-size:13px; }
+.info-heading { margin:36px 0 28px; }
+.info-heading h1 { margin:0 0 10px;font-size:30px;font-weight:600;letter-spacing:-.5px; }
+.info-heading p { margin:0;color:var(--xp-muted);font-size:14px; }
+.help-content { font-size:15px;line-height:1.9; }
+.help-content > p { margin:20px 0; }
+.usage-steps { padding-left:24px; }
+.usage-steps li { padding:5px 0; }
+.seo-faq { margin-top:36px; }
+.seo-faq h2 { font-size:20px;font-weight:600;margin:0 0 12px; }
+.seo-faq details { border-bottom:1px solid var(--xp-line); }
+.seo-faq summary { padding:16px 0;cursor:pointer; }
+.seo-faq p { margin:0 0 18px;color:var(--xp-muted); }
+.info-footer { margin-top:36px;padding-top:20px;border-top:1px solid var(--xp-line); }
+.archive-list { list-style:none;padding:0;margin:0;border-top:1px solid var(--xp-line); }
+.archive-list li { padding:20px 0;border-bottom:1px solid var(--xp-line); }
+.archive-list a { color:var(--xp-text);font-size:16px;line-height:1.7;overflow-wrap:anywhere; }
+.archive-list a:hover { color:var(--xp-blue); }
+.archive-list .archive-author { margin:8px 0 0;font-size:12px;color:var(--xp-muted);overflow-wrap:anywhere; }
+.browse-pagination { margin:24px 0; }
+.browse-pagination span, .browse-empty { color:var(--xp-muted);font-size:13px; }
+@media(max-width:430px) { .info-page { padding:24px 20px; }.info-heading { margin:28px 0 24px; }.info-heading h1 { font-size:28px; } }
