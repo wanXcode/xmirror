@@ -95,11 +95,11 @@ test('home and archive pages advertise the shared site icon', () => {
   for (const markup of [homeSource, serverSource]) {
     // Relative home assets also resolve when index.html is opened via file://.
     const source = markup.replaceAll('href="./', 'href="/');
-    assert.match(source, /<link rel="icon" href="\/favicon\.svg\?v=2" type="image\/svg\+xml">/);
-    assert.match(source, /<link rel="icon" href="\/favicon-16x16\.png\?v=2" sizes="16x16" type="image\/png">/);
-    assert.match(source, /<link rel="apple-touch-icon" href="\/apple-touch-icon\.png\?v=2">/);
-    assert.match(source, /<link rel="mask-icon" href="\/safari-pinned-tab\.svg\?v=2" color="#146b78">/);
-    assert.match(source, /<link rel="manifest" href="\/site\.webmanifest\?v=2">/);
+    assert.match(source, /<link rel="icon" href="\/favicon\.svg\?v=1\.7\.6" type="image\/svg\+xml">/);
+    assert.match(source, /<link rel="icon" href="\/xput-logo\.svg\?v=1\.7\.6" type="image\/svg\+xml">/);
+    assert.match(source, /<link rel="apple-touch-icon" href="\/xput-logo\.svg\?v=1\.7\.6">/);
+    assert.match(source, /<link rel="mask-icon" href="\/safari-pinned-tab\.svg\?v=1\.7\.6" color="#2563eb">/);
+    assert.match(source, /<link rel="manifest" href="\/site\.webmanifest\?v=1\.7\.6">/);
   }
 
   for (const asset of [

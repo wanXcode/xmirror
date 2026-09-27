@@ -1,6 +1,10 @@
 # XPut 版本说明
 
-## 版本：v1.7.5
+## 版本：v1.7.6
+
+## v1.7.6 (2026-09-27)
+
+- 使用新版 XPut Logo 统一浏览器 favicon、Apple Touch Icon 和 Web App 图标
 
 ## v1.7.5 (2026-09-27)
 
