@@ -958,11 +958,11 @@ function generateMirrorHtml(post) {
 <meta name="robots" content="${seo.robotsFor(post)}">
 
 <link rel="canonical" href="${canonicalUrl}">
-<link rel="icon" href="/favicon.svg?v=1.9.2" type="image/svg+xml">
-<link rel="icon" href="/xput-logo.svg?v=1.9.2" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.9.2">
-<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.9.2" color="#2563eb">
-<link rel="manifest" href="/site.webmanifest?v=1.9.2">
+<link rel="icon" href="/favicon.ico?v=xput-tray-1" sizes="16x16 32x32 48x48">
+<link rel="icon" href="/favicon.svg?v=xput-tray-1" type="image/svg+xml" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=xput-tray-1">
+<link rel="mask-icon" href="/safari-pinned-tab.svg?v=xput-tray-1" color="#2563eb">
+<link rel="manifest" href="/site.webmanifest?v=xput-tray-1">
 <meta property="og:title" content="${pageTitle}">
 <meta property="og:description" content="${escapeHtml(summary)}">
 <meta property="og:type" content="article">

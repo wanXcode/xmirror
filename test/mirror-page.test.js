@@ -92,14 +92,12 @@ test('home and archive pages advertise the shared site icon', () => {
   const homeSource = fs.readFileSync(path.join(projectRoot, 'public', 'index.html'), 'utf8');
   const serverSource = fs.readFileSync(path.join(projectRoot, 'server.js'), 'utf8');
 
-  for (const markup of [homeSource, serverSource]) {
-    // Relative home assets also resolve when index.html is opened via file://.
-    const source = markup.replaceAll('href="./', 'href="/');
-    assert.match(source, /<link rel="icon" href="\/favicon\.svg\?v=1\.9\.2" type="image\/svg\+xml">/);
-    assert.match(source, /<link rel="icon" href="\/xput-logo\.svg\?v=1\.9\.2" type="image\/svg\+xml">/);
-    assert.match(source, /<link rel="apple-touch-icon" href="\/xput-logo\.svg\?v=1\.9\.2">/);
-    assert.match(source, /<link rel="mask-icon" href="\/safari-pinned-tab\.svg\?v=1\.9\.2" color="#2563eb">/);
-    assert.match(source, /<link rel="manifest" href="\/site\.webmanifest\?v=1\.9\.2">/);
+  const otherPages = ['admin-xput.html', 'help.html', 'report.html'].map(name => fs.readFileSync(path.join(projectRoot, 'public', name), 'utf8'));
+  for (const markup of [homeSource, serverSource, ...otherPages]) {
+    assert.ok(markup.includes('href="/favicon.svg?v=xput-tray-1"'));
+    assert.ok(markup.includes('href="/favicon.ico?v=xput-tray-1"'));
+    assert.ok(markup.includes('href="/apple-touch-icon.png?v=xput-tray-1"'));
+    assert.ok(markup.includes('href="/site.webmanifest?v=xput-tray-1"'));
   }
 
   for (const asset of [
