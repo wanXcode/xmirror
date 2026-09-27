@@ -53,6 +53,20 @@ test('Unix seconds are normalized to a valid ISO date', () => {
   assert.equal(normalizeXTimestamp('1788428618'), '2026-09-03T09:43:38.000Z');
 });
 
+test('image-only tweets render all archived images in order without needing text', () => {
+  for (const text of ['', undefined]) {
+    for (const images of [['/images/one.jpg'], ['/images/one.jpg', '/images/two.png']]) {
+      const { htmlContent } = renderTweetContent({ tweet: { text }, localImages: images, escapeHtml });
+      assert.deepEqual([...htmlContent.matchAll(/src="([^"]+)"/g)].map(match => match[1]), images);
+      assert.ok(!htmlContent.startsWith('<br>'));
+    }
+  }
+});
+
+test('empty tweets without images remain empty', () => {
+  assert.equal(renderTweetContent({ tweet: {}, escapeHtml }).htmlContent, '');
+});
+
 test('broken article-only archives are detected for one-time refresh', () => {
   const broken = 'https://x.com/i/article/2095431394029707267<br><br><img src="/images/a.jpg">';
   assert.equal(isBrokenArticleArchive(broken), true);
