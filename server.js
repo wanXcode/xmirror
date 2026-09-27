@@ -932,7 +932,7 @@ function generateMirrorHtml(post) {
   const ogPath = seo.imagesFor(post).find(image => {
     try { return fs.statSync(path.join(DATA_DIR, image)).size > 0; } catch { return false; }
   });
-  const ogImage = buildPublicUrl(ogPath || '/favicon-512x512.png', PUBLIC_BASE_URL);
+  const ogImage = buildPublicUrl(ogPath || '/xput-share.png', PUBLIC_BASE_URL);
   const pageTitle = `${escapeHtml(meta.title)} | XPut`;
   const canonicalPath = post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`;
   const canonicalUrl = buildPublicUrl(canonicalPath, PUBLIC_BASE_URL);
@@ -954,11 +954,11 @@ function generateMirrorHtml(post) {
 <meta name="robots" content="${seo.robotsFor(post)}">
 
 <link rel="canonical" href="${canonicalUrl}">
-<link rel="icon" href="/favicon.svg?v=1.8.0" type="image/svg+xml">
-<link rel="icon" href="/xput-logo.svg?v=1.8.0" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.8.0">
-<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.8.0" color="#2563eb">
-<link rel="manifest" href="/site.webmanifest?v=1.8.0">
+<link rel="icon" href="/favicon.svg?v=1.8.1" type="image/svg+xml">
+<link rel="icon" href="/xput-logo.svg?v=1.8.1" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.8.1">
+<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.8.1" color="#2563eb">
+<link rel="manifest" href="/site.webmanifest?v=1.8.1">
 <meta property="og:title" content="${pageTitle}">
 <meta property="og:description" content="${escapeHtml(summary)}">
 <meta property="og:type" content="article">
