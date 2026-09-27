@@ -20,12 +20,13 @@ function element() {
   };
 }
 
-function harness({ archiveFetch, historyFetch, storage } = {}) {
+function harness({ archiveFetch, historyFetch, storage, initialHistory } = {}) {
   const elements = new Map();
   const get = key => {
     if (!elements.has(key)) elements.set(key, element());
     return elements.get(key);
   };
+  if (initialHistory) get('initialPosts').textContent = JSON.stringify(initialHistory);
   let value = null;
   const timers = new Map();
   const requests = [];
@@ -153,4 +154,15 @@ test('pagination failure keeps loaded posts and retries the same offset', async 
   assert.deepEqual(page.requests.map(request => request.url), [
     '/api/posts?limit=10&offset=0', '/api/posts?limit=10&offset=1', '/api/posts?limit=10&offset=1'
   ]);
+});
+
+test('SSR history initializes paging without clearing or re-fetching the first page',async()=>{
+ const initial={posts:[{id:7,short_url:'/Ab1234',title:'Server title',author:'Alice',created_at:'2026-09-27'}],has_more:true};
+ const page=harness({initialHistory:initial,historyFetch:()=>reply({posts:[],has_more:false})});
+ assert.equal(page.requests.length,0);
+ assert.equal(page.run('publicPosts.length'),1);
+ assert.equal(page.run('historyOffset'),1);
+ await page.run('loadHistory()');
+ assert.match(page.requests[0].url,/offset=1/);
+ assert.equal(page.run('publicPosts.length'),1);
 });
