@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>XPut Moderation Admin</title>
+  <title>XPut 内容管理</title>
   <meta name="robots" content="noindex, follow">
   <style>
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;background:#0f172a;color:#e2e8f0}
@@ -33,7 +33,7 @@
 <body>
   <div class="wrap">
     <div class="card">
-      <h1>Moderation Admin</h1>
+      <h1>XPut 内容管理</h1>
       <div class="row">
         <input id="token" type="password" placeholder="输入 MODERATION_ADMIN_TOKEN" />
         <button onclick="saveTokenAndReload()">连接后台</button>
@@ -42,7 +42,7 @@
         <button class="secondary" onclick="clearToken()">清空</button>
         <button class="secondary" onclick="refreshAll()">刷新</button>
       </div>
-      <p class="muted">这是 XPut 的简易审核后台。当前支持：开关新增审核、查看最近审核日志、按 reject 过滤命中记录。</p>
+      <p class="muted">内容审核、存档删除、投诉处理和搜索收录在此统一管理。</p>
       <div id="flash" class="muted"></div>
     </div>
 
@@ -81,11 +81,16 @@
     </div>
 
     <div class="card">
-      <h2>搜索收录</h2>
+      <h2>存档与搜索收录</h2><p id="seoSummary" class="muted"></p>
       <p class="muted">自动评估不保证 Google 收录。封禁优先于人工推荐；恢复自动后重新计算。</p>
-      <select id="seoFilter" onchange="loadSeo()"><option value="review">待评估</option><option value="index">可推荐</option><option value="noindex">不推荐</option></select>
+      <select id="seoFilter" onchange="seoPage=1;loadSeo()"><option value="all">全部存档</option><option value="unchecked">尚未评估</option><option value="failed">评估失败</option><option value="review">待复核</option><option value="index">可推荐</option><option value="noindex">不推荐</option></select>
       <button onclick="loadSeo()">刷新收录状态</button>
-      <div id="seoRows"></div>
+      <div id="seoRows"></div><button id="seoPrev" onclick="seoPage--;loadSeo()">上一页</button><span id="seoPage"></span><button id="seoNext" onclick="seoPage++;loadSeo()">下一页</button>
+    </div>
+    <div class="card"><h2>投诉与删除申请</h2>
+      <select id="reportFilter" onchange="reportPage=1;loadReports()"><option value="open">待处理</option><option value="closed">已处理</option></select>
+      <button onclick="loadReports()">刷新申请</button><div id="reportRows"></div>
+      <button id="reportPrev" onclick="reportPage--;loadReports()">上一页</button><span id="reportPage"></span><button id="reportNext" onclick="reportPage++;loadReports()">下一页</button>
     </div>
     <div class="card">
       <h2>选中日志详情</h2>
@@ -124,9 +129,10 @@
         await loadSettings();
       } catch (e) { setFlash(e.message, true); }
     }
+    function escapeText(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
     function renderMatched(matched=[]){
       if(!matched.length) return '<span class="muted">-</span>';
-      return matched.map(item => `<span class="pill">${item.type}: ${item.value || item.label || ''}${item.score?` (+${item.score})`:''}</span>`).join('');
+      return matched.map(item => `<span class="pill">${escapeText(item.type)}: ${escapeText(item.value || item.label || '')}${item.score?` (+${escapeText(item.score)})`:''}</span>`).join('');
     }
     function showDetails(index){
       const log = currentLogs[index];
@@ -143,11 +149,11 @@
         currentLogs = data.logs || [];
         const rows = currentLogs.map((log, index) => `
           <tr onclick="showDetails(${index})" style="cursor:pointer">
-            <td>${log.ts || '-'}</td>
-            <td class="${log.action === 'reject' ? 'reject' : 'ok'}">${log.action || '-'}</td>
-            <td>${log.stage || '-'}</td>
-            <td><code>${log.authorHandle || log.handle || '-'}</code></td>
-            <td class="url">${log.url || '-'}</td>
+            <td>${escapeText(log.ts || '-')}</td>
+            <td class="${log.action === 'reject' ? 'reject' : 'ok'}">${escapeText(log.action || '-')}</td>
+            <td>${escapeText(log.stage || '-')}</td>
+            <td><code>${escapeText(log.authorHandle || log.handle || '-')}</code></td>
+            <td class="url">${escapeText(log.url || '-')}</td>
             <td>${renderMatched(log.matched || [])}</td>
           </tr>
         `).join('');
@@ -155,15 +161,21 @@
         document.getElementById('detailBox').value = currentLogs.length ? JSON.stringify(currentLogs[0], null, 2) : '';
       } catch (e) { setFlash(e.message, true); }
     }
+    let seoPage=1, reportPage=1;
     async function loadSeo(){
       try {
-        const data = await api('/api/admin/seo?status=' + document.getElementById('seoFilter').value);
+        const data = await api('/api/admin/seo?status=' + document.getElementById('seoFilter').value + '&page=' + seoPage);
+        document.getElementById('seoSummary').textContent = data.summary.map(s=>s.status+' '+s.count).join(' · ') + ' · 尚未评估 '+(data.pending.unchecked||0)+' · 失败 '+(data.pending.failed||0);
+        document.getElementById('seoPrev').disabled = seoPage<=1;
+        document.getElementById('seoNext').disabled = !data.hasMore;
+        document.getElementById('seoPage').textContent = ' 第 '+seoPage+' 页 ';
         const root = document.getElementById('seoRows'); root.replaceChildren();
         for(const post of data.posts){
           const row = document.createElement('p');
           const label = document.createElement('span');
           label.textContent = `${post.id} · ${post.short_code} · ${post.seo_status} · ${post.seo_score} 分 · ${post.seo_reason} `;
           row.appendChild(label);
+          const link=document.createElement('a');link.href='/'+post.short_code;link.target='_blank';link.rel='noopener';link.textContent=post.title;row.appendChild(link);
           for(const [text, override, blocked] of [['自动', null, undefined], ['推荐', 'index', undefined], ['不推荐', 'noindex', undefined], ['封禁', null, true], ['解除封禁', null, false]]){
             const button = document.createElement('button'); button.textContent = text;
             button.onclick = async () => {
@@ -173,10 +185,40 @@
             };
             row.appendChild(button);
           }
+          const remove=document.createElement('button');remove.textContent='删除存档';remove.onclick=()=>deleteArchive(post.id);row.appendChild(remove);
           root.appendChild(row);
         }
         if(!data.posts.length) root.textContent = '暂无记录';
       } catch(e){ setFlash(e.message, true); }
+    }
+    async function deleteArchive(id,reportId){
+      if(!confirm('删除后公开链接将返回 404，且媒体文件会移除。确定删除这条存档？'))return;
+      try {
+        await api('/api/delete',{method:'POST',body:JSON.stringify({id})});
+        if(reportId)await api('/api/admin/reports/'+reportId,{method:'POST',body:JSON.stringify({action:'close'})});
+        await Promise.all([loadSeo(),loadReports()]);setFlash('存档已删除');
+      }catch(e){setFlash(e.message,true);}
+    }
+    async function loadReports(){
+      try{
+        const data=await api('/api/admin/reports?status='+document.getElementById('reportFilter').value+'&page='+reportPage);
+        const root=document.getElementById('reportRows');root.replaceChildren();
+        document.getElementById('reportPrev').disabled=reportPage<=1;
+        document.getElementById('reportNext').disabled=!data.hasMore;
+        document.getElementById('reportPage').textContent=' 第 '+reportPage+' 页 ';
+        for(const report of data.reports){
+          const row=document.createElement('section');row.style.cssText='padding:16px 0;border-bottom:1px solid #334155;overflow-wrap:anywhere';
+          const info=document.createElement('p');info.textContent='#'+report.id+' · '+report.kind+' · '+report.created_at+' · '+(report.contact||'未留联系方式');
+          const link=document.createElement('a');link.href='/'+report.short_code;link.target='_blank';link.rel='noopener';link.textContent=report.short_code;
+          const reason=document.createElement('p');reason.textContent=report.reason;reason.style.whiteSpace='pre-wrap';
+          row.append(info,link,reason);
+          for(const [label,action] of [['禁止搜索收录并结案','block'],['已处理／无需操作，结案','close']]){
+            const b=document.createElement('button');b.textContent=label;b.onclick=async()=>{b.disabled=true;try{await api('/api/admin/reports/'+report.id,{method:'POST',body:JSON.stringify({action})});await Promise.all([loadReports(),loadSeo()]);}catch(e){setFlash(e.message,true);}finally{b.disabled=false;}};row.append(b);
+          }
+          const remove=document.createElement('button');remove.textContent='删除存档并结案';remove.onclick=()=>deleteArchive(report.post_id,report.id);row.append(remove);root.append(row);
+        }
+        if(!data.reports.length)root.textContent='暂无申请';
+      }catch(e){setFlash(e.message,true);}
     }
     async function refreshAll(){
       localStorage.setItem('xmirror_admin_token', getToken());
@@ -184,6 +226,7 @@
         await loadSettings();
         await loadLogs();
         await loadSeo();
+        await loadReports();
         setFlash('后台已连接');
       } catch (e) { setFlash(e.message, true); }
     }

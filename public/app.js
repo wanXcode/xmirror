@@ -7,12 +7,17 @@ let submitting = false;
 let resultState = null;
 let localRecords = readLocalRecords();
 let activeHistory = localRecords.length ? 'local' : 'public';
-let publicPosts = [];
-let historyOffset = 0;
-let historyHasMore = true;
+let initialHistory = null;
+try {
+  const data = JSON.parse(document.getElementById('initialPosts')?.textContent || 'null');
+  if (Array.isArray(data?.posts) && data.posts.every(p=>Number.isSafeInteger(p.id) && home.validMirrorPath(p.short_url))) initialHistory = data;
+} catch {}
+let publicPosts = initialHistory?.posts || [];
+let historyOffset = publicPosts.length;
+let historyHasMore = initialHistory ? initialHistory.has_more : true;
 let historyLoading = false;
 let historyError = false;
-let historyNeedsReset = true;
+let historyNeedsReset = !initialHistory;
 let historyGeneration = 0;
 let historyController;
 let historyObserver;
@@ -84,6 +89,7 @@ async function archive() {
     return;
   }
   input.removeAttribute('aria-invalid');
+  window.xputTrack?.('Archive start');
   submitting = true;
   resultState = null;
   updateSubmitState();
@@ -112,6 +118,7 @@ async function archive() {
     try { stored = home.saveRecord(localStorage, record); }
     catch { stored = { saved: false }; }
     localRecords = stored.saved ? stored.records : home.normalizeRecords([record, ...localRecords.filter(item => item.id !== record.id)]);
+    window.xputTrack?.('Archive completed');
     resultState = { kind: 'success', data, saved: stored.saved };
     input.value = '';
     invalidatePublicHistory();
@@ -266,7 +273,7 @@ function renderLocalHistory() {
 }
 
 function renderPublicHistory() {
-  document.getElementById('historyList').innerHTML = renderHistoryItems(publicPosts);
+  if (publicPosts.length || !historyNeedsReset) document.getElementById('historyList').innerHTML = renderHistoryItems(publicPosts);
   const status = document.getElementById('historyLoading');
   const key = historyLoading ? 'historyLoadingMore' : historyError ? 'historyLoadError'
     : !historyHasMore ? (publicPosts.length ? 'historyNoMore' : 'publicHistoryEmpty') : null;

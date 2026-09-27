@@ -26,3 +26,26 @@ test('idempotent migrations, dry evaluation, overrides, duplicates and persisted
   assert.equal((await store.override(1, 'index', false)).status, 'noindex');
   assert.equal((await store.eligible()).length, 0);
 });
+
+test('hash backfill does not publish history; scheduled reevaluation respects errors and blocks',async t=>{
+ const db=new sqlite3.Database(':memory:');t.after(()=>new Promise(r=>db.close(r)));
+ await run(db,'CREATE TABLE posts(id INTEGER PRIMARY KEY,url TEXT,short_code TEXT,content TEXT,images TEXT,video TEXT,video_status TEXT,author TEXT,author_handle TEXT,tweet_time TEXT)');
+ const store=createSeoStore(db,{dataDir:'/tmp',moderator:{moderateArchivedContent:()=>({action:'allow'})}});await store.migrate();
+ for(const id of [1,2])await run(db,'INSERT INTO posts(id,url,short_code,content,images,author,author_handle,tweet_time) VALUES(?,?,?,?,?,?,?,?)',[id,'https://x.com/i/status/'+id,id===1?'Ab1234':'Cd5678','<p>'+'text '.repeat(180)+'</p>','[]','Alice','alice','1770736224']);
+ await store.backfillHashes();
+ assert.equal((await store.eligible()).length,0);
+ assert.equal((await store.get('SELECT seo_managed FROM posts WHERE id=1')).seo_managed,0);
+ assert.equal((await store.refresh(2)).status,'noindex');
+ assert.equal((await store.sweep()).processed,0,'unmanaged history is not admitted by the worker');
+ await store.refresh(1);
+ await run(db,"UPDATE posts SET seo_rule_version='1' WHERE id=1");
+ assert.equal((await store.sweep()).processed,1);
+ await run(db,"CREATE TRIGGER break_evaluation BEFORE UPDATE OF seo_rule_version ON posts BEGIN SELECT RAISE(FAIL,'transient'); END");
+ await assert.rejects(store.refresh(1));
+ const failed=await store.get('SELECT * FROM posts WHERE id=1');
+ assert.equal(failed.seo_status,'review');assert.equal(failed.seo_attempts,1);assert.equal(failed.seo_error,'evaluation_failed');
+ assert.equal((await store.sweep()).processed,0,'do not retry before due time');
+ await run(db,'DROP TRIGGER break_evaluation');await run(db,"UPDATE posts SET seo_next_check='2000-01-01',seo_blocked=1 WHERE id=1");
+ assert.equal((await store.sweep()).processed,1);
+ assert.equal((await store.get('SELECT * FROM posts WHERE id=1')).seo_status,'noindex');
+});

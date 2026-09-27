@@ -1,6 +1,6 @@
 {
   "name": "xmirror",
-  "version": "1.8.1",
+  "version": "1.9.0",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -16,6 +16,7 @@
   "dependencies": {
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "image-size": "^2.0.4",
     "linkedom": "^0.18.13",
     "sqlite3": "^6.0.1"
   }

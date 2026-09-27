@@ -8,6 +8,8 @@ const https = require('https');
 const crypto = require('crypto');
 const { version: APP_VERSION } = require('./package.json');
 const seo = require('./lib/seo');
+const { prepareContent, structuredData } = require('./lib/seo-content');
+const { migrateReports, registerReportRoutes } = require('./lib/content-reports');
 const { createSeoStore } = require('./lib/seo-store');
 const { registerSeoRoutes } = require('./lib/seo-routes');
 const {
@@ -130,6 +132,7 @@ const db = new sqlite3.Database(
 db.configure('busyTimeout', 10000);
 const seoStore = createSeoStore(db, { dataDir: DATA_DIR, moderator: seoModerator, autoIndex: process.env.SEO_AUTO_INDEX !== 'false' });
 registerSeoRoutes(app, { store: seoStore, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
+registerReportRoutes(app, { store: seoStore, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 app.use(express.static(PUBLIC_DIR, {
   setHeaders(res, filePath) {
     if (path.basename(filePath) === 'index.html') {
@@ -903,12 +906,13 @@ async function fetchXPost(url) {
     video_bytes: 0,
     video_total_bytes: 0,
     video_error: null,
-    tweet_time: normalizeXTimestamp(tweet.created_timestamp)
+    tweet_time: normalizeXTimestamp(tweet.created_timestamp, null)
   };
 }
 
 function generateMirrorHtml(post) {
-  const content = post.content || '';
+  const prepared = prepareContent(post, DATA_DIR);
+  const content = prepared.html;
   const videoStatus = post.video_status || (post.video ? 'completed' : (post.video_source_url ? 'queued' : 'none'));
   const videoBytes = Number(post.video_bytes) || 0;
   const videoTotal = Number(post.video_total_bytes) || 0;
@@ -937,7 +941,7 @@ function generateMirrorHtml(post) {
   const canonicalPath = post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`;
   const canonicalUrl = buildPublicUrl(canonicalPath, PUBLIC_BASE_URL);
   const refererPath = post.short_code ? `/${post.short_code}/referer` : post.url;
-  const publishedAt = normalizeXTimestamp(post.tweet_time, post.created_at || new Date().toISOString());
+  const publishedAt = normalizeXTimestamp(post.tweet_time, null);
   const savedAt = post.created_at ? (post.created_at.includes("T") ? post.created_at : post.created_at.replace(" ", "T") + "Z") : new Date().toISOString();
   const createdAt = normalizeXTimestamp(savedAt);
   const sourceLang = detectContentLanguage(content);
@@ -954,25 +958,26 @@ function generateMirrorHtml(post) {
 <meta name="robots" content="${seo.robotsFor(post)}">
 
 <link rel="canonical" href="${canonicalUrl}">
-<link rel="icon" href="/favicon.svg?v=1.8.1" type="image/svg+xml">
-<link rel="icon" href="/xput-logo.svg?v=1.8.1" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.8.1">
-<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.8.1" color="#2563eb">
-<link rel="manifest" href="/site.webmanifest?v=1.8.1">
+<link rel="icon" href="/favicon.svg?v=1.9.0" type="image/svg+xml">
+<link rel="icon" href="/xput-logo.svg?v=1.9.0" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.9.0">
+<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.9.0" color="#2563eb">
+<link rel="manifest" href="/site.webmanifest?v=1.9.0">
 <meta property="og:title" content="${pageTitle}">
 <meta property="og:description" content="${escapeHtml(summary)}">
 <meta property="og:type" content="article">
 <meta property="og:image" content="${escapeHtml(ogImage)}">
 <meta property="og:url" content="${canonicalUrl}">
 <meta property="og:site_name" content="XPut">
-<meta property="og:locale" content="zh_CN">
-<meta property="article:published_time" content="${publishedAt}">
+<meta property="og:locale" content="${({en:'en_US',zh:'zh_CN','zh-CN':'zh_CN',ja:'ja_JP',ko:'ko_KR'})[sourceLang] || 'en_US'}">
+${publishedAt ? `<meta property="article:published_time" content="${publishedAt}">` : ''}
 <meta property="article:author" content="${escapeHtml(post.author)}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${pageTitle}">
 <meta name="twitter:description" content="${escapeHtml(summary)}">
 <meta name="twitter:image" content="${escapeHtml(ogImage)}">
 <meta name="twitter:creator" content="@${escapeHtml(post.author_handle)}">
+<script type="application/ld+json">${structuredData(post, PUBLIC_BASE_URL, sourceLang, ogPath ? ogImage : null)}</script>
 <meta name="twitter:domain" content="${new URL(PUBLIC_BASE_URL).hostname}">
 <!-- Retain the existing analytics site ID to preserve historical reporting across the domain migration. -->
 <script defer data-domain="xmirror.app" src="https://a.zhxs.me/js/script.js"></script>
@@ -985,9 +990,11 @@ function generateMirrorHtml(post) {
 <div class="container">
 <div class="post" data-post-id="${post.id}" data-source-lang="${sourceLang}">
 <div class="article-byline">
-<img class="avatar" src="${post.author_avatar}" onerror="this.style.display='none'">
+<img class="avatar" width="38" height="38" alt="" decoding="async" src="${escapeHtml(post.author_avatar)}" onerror="this.style.display='none'">
 <div class="author-info"><div class="author-name">${escapeHtml(post.author)}</div><div class="author-handle">@${escapeHtml(post.author_handle)}</div></div>
 </div>
+${prepared.headingHtml}
+${publishedAt ? `<p class="post-published">原帖发布于 <time datetime="${publishedAt}">${publishedAt.slice(0,10)}</time></p>` : ''}
 <div class="translate-toolbar">
 <button id="translateBtn" class="translate-btn" type="button" onclick="toggleTranslate()" aria-controls="originContent translatedContent" aria-busy="false">翻译为中文</button>
 <span id="translateStatus" class="translate-status" role="status" aria-live="polite" aria-atomic="true"></span>
@@ -995,8 +1002,11 @@ function generateMirrorHtml(post) {
 <div id="originContent" class="content content-view active" aria-hidden="false">${content}</div>
 <div id="translatedContent" class="content content-view" aria-hidden="true"></div>
 ${videoHtml}
+<nav class="archive-navigation" aria-label="存档导航"><a href="/browse">浏览公开存档</a><a href="/report?post=${post.short_code}">投诉／删除申请</a></nav>
+${post.related?.length ? `<section class="related-posts"><h2>同一作者的其他存档</h2><ul>${post.related.map(p => `<li><a href="/${p.short_code}">${seo.escape(seo.metadata(p).title)}</a></li>`).join('')}</ul></section>` : ''}
 <div class="article-end"><a class="back-home" href="/">← 返回 XPut 首页</a><span class="saved-mark"><time class="article-time" datetime="${createdAt}">${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time> 保存</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">在 X 查看原帖 ↗</a></div>
 </div></div>
+<script src="/seo-events.js?v=${APP_VERSION}" defer></script>
 <script src="/mirror-page.js?v=${APP_VERSION}-links2" defer></script>
 </body>
 </html>`;
@@ -1006,7 +1016,7 @@ ${videoHtml}
 
 function buildVideoPlayerHtml(post) {
   return `<div class="video-shell" data-video-post-id="${post.id}">
-    <video controls style="max-width:100%;margin:10px 0;"><source src="${escapeHtml(post.video)}" type="video/mp4"></video>
+    <video controls preload="metadata" aria-label="${escapeHtml(seo.metadata(post).title)}" style="max-width:100%;margin:10px 0;"><source src="${escapeHtml(post.video)}" type="video/mp4"></video>
     <div class="subtitle-toolbar" role="group" aria-label="字幕设置">
       <label for="subtitleSelect">CC 字幕</label>
       <select id="subtitleSelect" class="subtitle-select">
@@ -1815,7 +1825,7 @@ app.get(/^\/([A-Za-z0-9]{6})\/referer$/, async (req, res, next) => {
 
     if (!post?.url) return next();
 
-    return res.redirect(302, post.url);
+    return res.set('X-Robots-Tag', 'noindex, follow').redirect(302, post.url);
   } catch (e) {
     console.error('中转链接跳转失败:', e.message);
     return next();
@@ -1840,6 +1850,7 @@ app.get(/^\/([A-Za-z0-9]{6})$/, async (req, res, next) => {
 
     if (post.short_code !== shortCode) return res.redirect(301, `/${post.short_code}`);
     res.set('Cache-Control', 'no-store');
+    post.related = await seoStore.related(post);
     const htmlContent = generateMirrorHtml(post);
     return res.status(200).send(htmlContent);
   } catch (e) {
@@ -1852,7 +1863,6 @@ async function refreshSeo(id) {
   try { return await seoStore.refresh(id); }
   catch (error) {
     console.error('SEO evaluation failed:', id, error.message);
-    await seoStore.invalidate(id);
     return null;
   }
 }
@@ -1862,6 +1872,10 @@ async function startServer() {
     await ensureShortCodeReady();
     await ensureVideoColumnsReady();
     await seoStore.migrate();
+    await migrateReports(seoStore);
+    let hashBatch;
+    let hashCursor = 0;
+    do { hashBatch = await seoStore.backfillHashes(100, hashCursor); hashCursor = hashBatch.lastId; } while (hashBatch.scanned === 100);
     console.log('短链字段与历史数据检查完成');
   } catch (e) {
     console.error('短链初始化失败:', e.message);
@@ -1871,6 +1885,9 @@ async function startServer() {
   app.listen(PORT,'0.0.0.0',()=>{
     console.log(`XMirror运行在http://0.0.0.0:${PORT}`);
     console.log(`SQLite: ${dbPath}`);
+    const maintainSeo = () => seoStore.sweep(20).catch(e => console.error('SEO maintenance:', e.message));
+    maintainSeo();
+    setInterval(maintainSeo, 60000).unref();
     queuePendingVideoDownloads();
     queuePendingSubtitleJobs();
     queuePendingTranslationJobs();

@@ -21,6 +21,11 @@ async function main() {
   const limit = option('limit', 100);
   const after = option('after-id', 0);
   if (apply) await store.migrate();
+  if (process.argv.includes('--hash-only')) {
+    if (!apply) throw new Error('--hash-only requires --apply; it never changes indexing decisions');
+    console.log(JSON.stringify(await store.backfillHashes(limit, after)));
+    return;
+  }
   const rows = await store.all('SELECT * FROM posts WHERE id>? ORDER BY id LIMIT ?', [after, limit]);
   const seen = new Set();
   // Hash earlier rows for read-only preview even on a pre-migration database.
