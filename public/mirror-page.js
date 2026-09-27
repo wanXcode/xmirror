@@ -150,12 +150,31 @@ function renderTranslatedContent(data, origin) {
   if (!origin || typeof document === 'undefined' || !document.createElement) return null;
   const translated = document.createElement('div');
   translated.innerHTML = origin.innerHTML;
-  const semanticElements = [...translated.querySelectorAll('h1,h2,h3,h4,h5,h6,p,li,blockquote')]
-    .filter(element => element.textContent.trim());
-  // Some tweet archives contain one root text node followed by images and
-  // no semantic paragraph wrapper. Translate that root while preserving
-  // every image/video child in its original position.
-  const targetElements = semanticElements.length ? semanticElements : [translated];
+  // Match the server's semantic blocks and plain text lines independently.
+  // Never treat the entire root (including later paragraphs) as one segment.
+  const targetElements = [];
+  const semantic = /^(H[1-6]|P|LI|BLOCKQUOTE)$/;
+  function collect(parent) {
+    for (const node of [...parent.childNodes]) {
+      if (node.nodeType === 3) {
+        const lines = node.textContent.split(/\n+/);
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const span = document.createElement('span');
+          span.textContent = line;
+          parent.insertBefore(span, node);
+          targetElements.push(span);
+        }
+        node.remove();
+      } else if (node.nodeType === 1) {
+        if (/^(IMG|VIDEO|BR|SCRIPT|STYLE)$/.test(node.tagName)) continue;
+        if (semantic.test(node.tagName)) {
+          if (node.textContent.trim()) targetElements.push(node);
+        } else collect(node);
+      }
+    }
+  }
+  collect(translated);
   blocks.forEach((block, index) => {
     const target = targetElements[index];
     if (!target) return;

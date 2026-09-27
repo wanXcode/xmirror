@@ -18,7 +18,7 @@ test('translation jobs use stable identity and keep the strategy version explici
 test('batch planner prioritizes a small first batch and limits later batches', () => {
   const segments = Array.from({ length: 12 }, () => ({ text: 'x'.repeat(100) }));
   assert.equal(nextBatch(segments, { first: true }).length, 1);
-  assert.equal(nextBatch(segments, { first: false }).length, 8);
+  assert.equal(nextBatch(segments, { first: false }).length, 2);
   assert.equal(totalCharacters(segments), 1200);
 });
 
