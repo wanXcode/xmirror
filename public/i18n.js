@@ -20,8 +20,7 @@ const i18n = {
       btnGenerating: "正在生成…",
       localHistoryTab: "本机记录",
       publicHistoryTab: "最新公开存档",
-      localHistoryNote: "仅保存在当前浏览器",
-      localHistoryEmpty: "这里会保留你在当前浏览器生成的存档。",
+      localHistoryEmpty: "本机记录仅保存在当前浏览器，之后生成的存档会显示在这里。",
       publicHistoryEmpty: "暂无公开存档。",
       historyLoadError: "存档列表暂时加载失败，",
       historyRetry: "请重试",
@@ -83,8 +82,7 @@ const i18n = {
       btnGenerating: "Generating…",
       localHistoryTab: "On this device",
       publicHistoryTab: "Public archives",
-      localHistoryNote: "Saved only in this browser",
-      localHistoryEmpty: "Archives you generate in this browser will appear here.",
+      localHistoryEmpty: "Local records stay in this browser, and new archives will appear here.",
       publicHistoryEmpty: "No public archives yet.",
       historyLoadError: "Could not load archives.",
       historyRetry: "Please try again",
@@ -207,7 +205,7 @@ const i18n = {
     
     for (const [id, key] of [
       ['localTab', 'localHistoryTab'], ['publicTab', 'publicHistoryTab'],
-      ['localHistoryNote', 'localHistoryNote'], ['historyRetry', 'historyRetry'], ['historyMore', 'loadMore']
+      ['historyRetry', 'historyRetry'], ['historyMore', 'loadMore']
     ]) {
       const element = document.getElementById(id);
       if (element) element.textContent = this.t(key);
