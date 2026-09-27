@@ -40,3 +40,14 @@ test('share images only include safe local files and sitemap excludes blocked/un
   assert.doesNotMatch(xml, /De5678|Gh9012|lastmod/);
   assert.equal(seo.robotsFor({}), 'noindex, follow');
 });
+
+test('historical Unix seconds and milliseconds are valid without inventing missing dates', () => {
+  for (const tweet_time of ['1770736224',1770736224000,'2026-02-10T12:30:24Z']) assert.equal(seo.evaluate(post({tweet_time}),{moderation:'allow'}).status,'index');
+  for (const tweet_time of ['',null,'garbage',' ']) assert.equal(seo.evaluate(post({tweet_time}),{moderation:'allow'}).status,'review');
+});
+test('informative short content needs preserved media and readable structure to qualify',()=>{
+ const content='<p>'+'信息'.repeat(50)+'</p>';
+ assert.equal(seo.evaluate(post({content}),{moderation:'allow',hasMedia:true}).status,'index');
+ assert.notEqual(seo.evaluate(post({content}),{moderation:'allow',hasMedia:false}).status,'index');
+ assert.notEqual(seo.evaluate(post({content:'<p>'+'信息'.repeat(30)+'</p>'}),{moderation:'allow',hasMedia:true}).status,'index');
+});

@@ -84,6 +84,7 @@ async function archive() {
     return;
   }
   input.removeAttribute('aria-invalid');
+  window.xputTrack?.('Archive start');
   submitting = true;
   resultState = null;
   updateSubmitState();
@@ -112,6 +113,7 @@ async function archive() {
     try { stored = home.saveRecord(localStorage, record); }
     catch { stored = { saved: false }; }
     localRecords = stored.saved ? stored.records : home.normalizeRecords([record, ...localRecords.filter(item => item.id !== record.id)]);
+    window.xputTrack?.('Archive completed');
     resultState = { kind: 'success', data, saved: stored.saved };
     input.value = '';
     invalidatePublicHistory();

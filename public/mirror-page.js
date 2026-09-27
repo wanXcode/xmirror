@@ -113,7 +113,7 @@ function linkifyContent(root) {
       link.href = url.href;
       link.textContent = label;
       link.target = '_blank';
-      link.rel = 'noopener noreferrer';
+      link.rel = 'ugc nofollow noopener noreferrer';
       fragment.appendChild(link);
       cursor = match.index + label.length;
     }
@@ -551,6 +551,7 @@ async function toggleTranslate() {
     return;
   }
 
+  window.xputTrack?.('Translation requested');
   btn.disabled = true;
   btn.classList.add('is-loading');
   btn.setAttribute('aria-busy', 'true');

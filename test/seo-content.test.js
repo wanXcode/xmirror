@@ -1,0 +1,32 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const {parseHTML} = require('linkedom');
+const {prepareContent,structuredData,localImageSize} = require('../lib/seo-content');
+const path=require('node:path'),fs=require('node:fs'),os=require('node:os');
+const post={author:'Alice',author_handle:'alice',short_code:'Ab1234',url:'https://x.com/i/status/123',tweet_time:'1770736224'};
+test('semantic rendering keeps all text, media and lists while selecting one main heading',()=>{
+ const source='<h1>Main</h1><p>Paragraph one</p><img src="/images/a.jpg"><h1>Section</h1><ol><li>First</li><li>Second</li></ol><img src="/images/b.jpg"><a href="https://example.com">Reference</a>';
+ const result=prepareContent({...post,content:source},'/tmp');
+ const doc=parseHTML('<html><body>'+result.html+'</body></html>').document;
+ assert.equal(doc.querySelectorAll('h1').length,1);
+ assert.equal(doc.querySelector('h2').textContent,'Section');
+ assert.deepEqual([...doc.querySelectorAll('li')].map(n=>n.textContent),['First','Second']);
+ assert.deepEqual([...doc.querySelectorAll('img')].map(n=>n.getAttribute('src')),['/images/a.jpg','/images/b.jpg']);
+ assert.equal(doc.querySelectorAll('img')[1].getAttribute('loading'),'lazy');
+ assert.match(doc.querySelector('a').getAttribute('rel'),/ugc nofollow/);
+ assert.equal(result.headingHtml,'');
+ assert.match(prepareContent({...post,content:'Plain text'},'/tmp').headingHtml,/<h1/);
+});
+test('image dimensions come from real file headers and unsafe content cannot escape metadata',t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'xput-img-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ fs.mkdirSync(path.join(dir,'images'));fs.copyFileSync(path.join(__dirname,'../public/xput-share.png'),path.join(dir,'images/a.png'));
+ assert.deepEqual(localImageSize('/images/a.png',dir),{width:512,height:512});
+ assert.equal(localImageSize('/images/../secret',dir),null);
+ const rendered=prepareContent({...post,content:'<img src="/images/a.png" onerror="evil()"><a href="javascript:evil()">text</a><script>evil()</script>'},dir);
+ assert.doesNotMatch(rendered.html,/onerror|javascript:|<script>/);
+ assert.match(rendered.html,/width="512"/);
+ const schema=structuredData({...post,content:'<h1>A &lt;/script&gt; B</h1>'},'https://xput.app','en',null);
+ assert.doesNotMatch(schema,/<\/script>/);
+ const data=JSON.parse(schema);assert.equal(data['@type'],'SocialMediaPosting');assert.equal(data.datePublished,new Date(1770736224*1000).toISOString());
+ assert.equal(JSON.parse(structuredData({...post,tweet_time:null},'https://xput.app','en',null)).datePublished,undefined);
+});

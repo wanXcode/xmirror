@@ -1,6 +1,7 @@
 {
-  "version": "1",
+  "version": "2",
   "minUnits": 40,
+  "mediumTextUnits": 80,
   "longTextUnits": 160,
   "indexScore": 70,
   "reviewScore": 40

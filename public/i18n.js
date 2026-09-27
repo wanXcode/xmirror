@@ -41,7 +41,7 @@ const i18n = {
       pageSettings: "页面设置",
       archiveSection: "生成存档",
       historySection: "存档记录",
-      heroTitle: '好内容，留在这里。',
+      heroTitle: 'X 内容存档与分享',
       title: 'XPut',
       subtitle: '保存 X 上的图文与视频，随时阅读，轻松分享。',
       shortcutTitle: 'iPhone 快捷指令，一键存档',
@@ -104,7 +104,7 @@ const i18n = {
       pageSettings: "Page settings",
       archiveSection: "Create archive",
       historySection: "Archive history",
-      heroTitle: 'Keep what matters.',
+      heroTitle: 'Archive and share X posts',
       title: 'XPut',
       subtitle: 'Save posts and videos from X, read anytime, share with ease.',
       shortcutTitle: 'iPhone Shortcut, one-tap archive',
@@ -179,7 +179,7 @@ const i18n = {
     const subtitle = document.querySelector('.home-subtitle');
     if (subtitle) subtitle.textContent = this.t('subtitle');
 
-    const heroTitle = document.querySelector('.hero-title h2');
+    const heroTitle = document.querySelector('.hero-title h1');
     if (heroTitle) heroTitle.textContent = this.t('heroTitle');
     
     for (const [selector, key] of [
@@ -260,14 +260,6 @@ const i18n = {
       descMeta.content = isZh
         ? 'XPut 是一款专业的 X(Twitter) 内容存档工具，可保存推文、图片和视频，生成可访问的镜像页面。支持钉钉/微信卡片分享，防止内容丢失。'
         : 'XPut is a professional X(Twitter) content archiving tool that saves tweets, images, and videos, generating accessible mirror pages.';
-    }
-    
-    // 更新 keywords
-    const keywordsMeta = document.querySelector('meta[name="keywords"]');
-    if (keywordsMeta) {
-      keywordsMeta.content = isZh
-        ? 'X存档,Twitter存档,推文备份,内容镜像,X内容保存,Twitter备份工具,推文存档,社交媒体备份'
-        : 'X archive,Twitter archive,tweet backup,content mirror,X content save,Twitter backup tool,tweet archive,social media backup';
     }
     
     // 更新 og:locale

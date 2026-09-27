@@ -15,11 +15,11 @@
   <link rel="canonical" href="https://xput.app/">
 
   <!-- Site icon -->
-  <link rel="icon" href="./favicon.svg?v=1.8.1" type="image/svg+xml">
-  <link rel="icon" href="./xput-logo.svg?v=1.8.1" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./xput-logo.svg?v=1.8.1">
-  <link rel="mask-icon" href="./safari-pinned-tab.svg?v=1.8.1" color="#2563eb">
-  <link rel="manifest" href="./site.webmanifest?v=1.8.1">
+  <link rel="icon" href="./favicon.svg?v=1.9.0" type="image/svg+xml">
+  <link rel="icon" href="./xput-logo.svg?v=1.9.0" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./xput-logo.svg?v=1.9.0">
+  <link rel="mask-icon" href="./safari-pinned-tab.svg?v=1.9.0" color="#2563eb">
+  <link rel="manifest" href="./site.webmanifest?v=1.9.0">
   
   <!-- 主题色 -->
   <meta name="theme-color" content="#2563eb">
@@ -37,6 +37,8 @@
   <meta property="og:site_name" content="XPut">
   <meta property="og:locale" content="zh_CN">
   
+  <meta property="og:image" content="https://xput.app/xput-share.png">
+  <meta name="twitter:image" content="https://xput.app/xput-share.png">
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:url" content="https://xput.app/">
@@ -65,9 +67,9 @@
   }
   </script>
   
-  <link rel="stylesheet" href="./theme.css?v=1.8.1">
-  <link rel="stylesheet" href="./home.css?v=1.8.1">
-  <link rel="stylesheet" href="./style.css?v=1.8.1">
+  <link rel="stylesheet" href="./theme.css?v=1.9.0">
+  <link rel="stylesheet" href="./home.css?v=1.9.0">
+  <link rel="stylesheet" href="./style.css?v=1.9.0">
   <!-- Retain the existing analytics site ID to preserve historical reporting across the domain migration. -->
   <script defer data-domain="xmirror.app" src="https://a.zhxs.me/js/script.js"></script>
 </head>
@@ -79,11 +81,11 @@
     </nav>
     <main>
       <header class="header">
-        <a class="brand" href="/" aria-label="XPut 首页"><span class="brand-mark" aria-hidden="true">X</span><h1>XPut</h1></a>
+        <a class="brand" href="/" aria-label="XPut 首页"><span class="brand-mark" aria-hidden="true">X</span><strong>XPut</strong></a>
         <div class="header-right"><span>留住值得再读的内容</span><a href="#archiveForm">存档链接 ↗</a></div>
       </header>
       <section class="archive-section" aria-label="生成存档">
-        <div class="hero-heading"><div class="hero-brand"><img class="logo-image" src="./xput-logo.svg" alt="" aria-hidden="true"><strong>XPut</strong></div><div class="hero-title"><h2>好内容，留在这里。</h2><p class="home-subtitle">保存 X 上的图文与视频，随时阅读，轻松分享。</p></div></div>
+        <div class="hero-heading"><div class="hero-brand"><img class="logo-image" src="./xput-logo.svg" alt="" aria-hidden="true"><strong>XPut</strong></div><div class="hero-title"><h1>X 内容存档与分享</h1><p class="home-subtitle">保存 X 上的图文与视频，随时阅读，轻松分享。</p></div></div>
         <form id="archiveForm" novalidate>
           <svg class="archive-link-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
           <div class="input-group">
@@ -121,8 +123,21 @@
         </div>
       </section>
     </main>
-    <section class="seo-guide" aria-label="使用说明"><h2>保存 X / Twitter 内容，随时阅读与分享</h2><p>粘贴公开帖子链接，保存图文与视频并生成 XPut 存档链接。阅读存档无需登录；外文内容可按需翻译为中文。</p><p>存档是公开页面，请勿提交私人信息。媒体能否完整保存取决于原帖可访问性及下载结果。</p><p><a href="/browse">浏览公开存档 →</a></p></section>
-    <footer class="page-version"><span class="footer-brand"><img src="./xput-logo.svg" alt="" aria-hidden="true">XPut · v1.8.1</span><span class="footer-slogan">存下来，慢慢读，分享出去。</span></footer>
+    <section class="seo-guide" lang="zh-CN" aria-label="使用说明">
+      <div class="seo-guide-heading"><h2>保存 X / Twitter 内容，随时阅读与分享</h2><a href="/browse">浏览公开存档 →</a></div>
+      <p>粘贴公开帖子链接，保存图文与视频并生成 XPut 存档链接。阅读存档无需登录；外文内容可按需翻译为中文。</p>
+      <ol class="usage-steps"><li>复制公开的 x.com 或 twitter.com 帖子链接。</li><li>粘贴到上方输入框，点击“存档”。</li><li>打开生成的链接阅读，或分享给朋友。视频可能需要继续等待下载。</li></ol>
+      <p>适合保存教程、长文、讨论和图文资料。存档是公开页面，请勿提交私人信息。媒体能否完整保存取决于原帖可访问性及下载结果。</p>
+      <div class="seo-faq"><h2>常见问题</h2>
+        <details><summary>支持哪些链接？</summary><p>支持公开的 X / Twitter 帖子和 X Article 链接。受限、已删除或无法访问的内容可能不能保存。</p></details>
+        <details><summary>图片和视频会立即保存吗？</summary><p>图片随存档抓取，视频可能在后台继续下载。页面会显示实际下载状态；下载失败时可以重新提交原帖链接。</p></details>
+        <details><summary>翻译会修改原文吗？</summary><p>不会。阅读页可按需生成中文翻译并切回原文，译文可能存在错误，请结合原文理解。</p></details>
+        <details><summary>存档能一直保留吗？</summary><p>服务会尽力保留已保存内容，但不承诺永久保存。内容可能因权益投诉、维护或其他原因移除，重要资料请自行备份。</p></details>
+        <details><summary>怎样申请删除或处理版权、隐私问题？</summary><p>请通过<a href="/report">投诉与删除申请</a>提交存档链接和说明。申请仅管理员可见，核实后处理；提交不会自动删除内容。</p></details>
+      </div>
+      <!-- FEATURED_ARCHIVES -->
+    </section>
+    <footer class="page-version"><span class="footer-brand"><img src="./xput-logo.svg" alt="" aria-hidden="true">XPut · v1.9.0</span><span class="footer-slogan">存下来，慢慢读，分享出去。</span></footer>
   </div>
 
   <!-- 删除确认弹窗 -->
@@ -148,8 +163,9 @@
     </div>
   </div>
 
-  <script src="./i18n.js?v=1.8.1"></script>
-  <script src="./home-state.js?v=1.8.1"></script>
-  <script src="./app.js?v=1.8.1"></script>
+  <script src="./seo-events.js?v=1.9.0" defer></script>
+  <script src="./i18n.js?v=1.9.0"></script>
+  <script src="./home-state.js?v=1.9.0"></script>
+  <script src="./app.js?v=1.9.0"></script>
 </body>
 </html>
