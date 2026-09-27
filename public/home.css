@@ -27,7 +27,6 @@
 .history-arrow { width: 16px; height: 16px; }
 .empty-state { padding: 28px 0; }
 
-.browse-link { flex-shrink:0;white-space:nowrap;font-size:12px; }
 .footer-links { display:flex;justify-content:flex-end;gap:16px;flex-wrap:wrap;margin-left:auto; }
 .footer-links a { color:var(--xp-muted); }
 .footer-links a:hover { color:var(--xp-blue); }
@@ -35,6 +34,5 @@
   .history-head { gap:8px;flex-wrap:nowrap; }
   .history-tabs { gap:0;padding:3px; }
   .history-tabs button { padding:10px 6px;font-size:12px;white-space:nowrap; }
-  .browse-link { font-size:11px; }
 }
 @media(max-width:360px) { .history-tabs button { font-size:11px; } }
