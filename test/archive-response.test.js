@@ -24,7 +24,7 @@ test('source responses distinguish missing posts from upstream service failures'
 test('technical error details never appear in API errors', () => {
   const secret = 'SQLITE details /path/private upstream credentials';
   for (const [code, expected, status] of [
-    ['INVALID_URL', 'INVALID_URL', 400], ['CONTENT_MODERATION_REJECTED', 'CONTENT_UNSUPPORTED', 400],
+    ['INVALID_URL', 'INVALID_URL', 400], ['CONTENT_MODERATION_REJECTED', 'CONTENT_MODERATION_REJECTED', 422], ['CONTENT_MODERATION_PENDING', 'CONTENT_MODERATION_PENDING', 409],
     ['ECONNRESET', 'NETWORK_ERROR', 502], ['ENOTFOUND', 'NETWORK_ERROR', 502],
     ['ETIMEDOUT', 'REQUEST_TIMEOUT', 504], ['REQUEST_TIMEOUT', 'REQUEST_TIMEOUT', 504],
     ['SQLITE_ERROR', 'SERVICE_UNAVAILABLE', 503]

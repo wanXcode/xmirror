@@ -78,33 +78,11 @@ test('allows ordinary technical language containing 露出, 射, 含, 主人, an
   assert.deepEqual(result.matched, []);
 });
 
-test('still rejects 高潮 when combined with private-message sales language', () => {
+test('ambiguous promotion signals require context or allow rather than reject', () => {
   const moderator = createTestModerator();
-
-  assert.throws(
-    () => moderator.moderateArchivedContent({
-      url: 'https://x.com/example/status/5',
-      authorName: 'example',
-      authorHandle: 'example',
-      content: '高潮内容请私信我获取购买方式'
-    }),
-    error => error instanceof ModerationRejectError
-  );
-});
-
-test('still rejects private-message sales language in either word order', () => {
-  const moderator = createTestModerator();
-
-  for (const content of ['私信我获取购买方式', '购买后请私信我']) {
-    assert.throws(
-      () => moderator.moderateArchivedContent({
-        url: 'https://x.com/example/status/4',
-        authorName: 'example',
-        authorHandle: 'example',
-        content
-      }),
-      error => error instanceof ModerationRejectError
-    );
+  for (const content of ['私信我获取购买方式', '购买后请私信我', '完整版私信购买', '高潮内容请私信我获取购买方式']) {
+    const result = moderator.moderateArchivedContent({ content });
+    assert.ok(['allow','review'].includes(result.action));
   }
 });
 
@@ -169,20 +147,6 @@ test('allows benign article references to a full version', () => {
   assert.ok(result.score < 6);
 });
 
-test('still rejects full-version promotional language', () => {
-  const moderator = createTestModerator();
-
-  assert.throws(
-    () => moderator.moderateArchivedContent({
-      url: 'https://x.com/example/status/5',
-      authorName: 'example',
-      authorHandle: 'example',
-      content: '完整版私信购买'
-    }),
-    error => error instanceof ModerationRejectError
-  );
-});
-
 test('allows technical words containing English moderation stems', () => {
   const moderator = createTestModerator();
   const result = moderator.moderateArchivedContent({
@@ -193,21 +157,29 @@ test('allows technical words containing English moderation stems', () => {
   });
 
   assert.equal(result.action, 'allow');
-  assert.equal(result.score, 3);
+  assert.equal(result.score, 0);
   assert.ok(!result.matched.some(match => match.value === 'anal'));
   assert.ok(!result.matched.some(match => match.value === '英文色情词'));
 });
 
-test('still rejects standalone English adult terms', () => {
-  const moderator = createTestModerator();
+test('isolated English sexual terms are reviewed in context', () => {
+  assert.equal(createTestModerator().moderateArchivedContent({content:'explicit anal content'}).action, 'review');
+});
 
-  assert.throws(
-    () => moderator.moderateArchivedContent({
-      url: 'https://x.com/example/status/8',
-      authorName: 'example',
-      authorHandle: 'example',
-      content: 'explicit anal content'
-    }),
-    error => error instanceof ModerationRejectError
-  );
+for (const [label, payload] of [
+  ['Telegram channel', {content:'软件更新通知 https://t.me/product'}],
+  ['surname', {authorName:'Sonny Dickson', authorHandle:'gar_goon',content:'New iPhone prototype'}],
+  ['government reference', {content:'Privacy news https://gov.uk/nude-images'}],
+  ['profanity', {content:'What the fuck happened to my game account?'}],
+  ['marketing', {content:'购买软件请联系我，欢迎进群看教学视频'}],
+  ['entities', {content:'<p>documentary &amp; analysis</p>'}]
+]) test('allows audit regression: '+label, () => assert.equal(createTestModerator().moderateArchivedContent(payload).action,'allow'));
+
+test('AI training ambiguity and explicit adult compound tags enter review', () => {
+  for(const content of ['模型被调教成好好先生', '#smalldick #humiliation', '＃sm ＃露出 ＃女仆']) {
+    const result=createTestModerator().moderateArchivedContent({content});
+    assert.equal(result.action,'review');
+    assert.ok(result.matched.every(m=>m.field==='content' && m.evidence));
+    assert.equal(result.ruleVersion,6);
+  }
 });
