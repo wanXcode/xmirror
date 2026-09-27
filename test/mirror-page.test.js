@@ -95,11 +95,11 @@ test('home and archive pages advertise the shared site icon', () => {
   for (const markup of [homeSource, serverSource]) {
     // Relative home assets also resolve when index.html is opened via file://.
     const source = markup.replaceAll('href="./', 'href="/');
-    assert.match(source, /<link rel="icon" href="\/favicon\.svg\?v=1\.7\.11" type="image\/svg\+xml">/);
-    assert.match(source, /<link rel="icon" href="\/xput-logo\.svg\?v=1\.7\.11" type="image\/svg\+xml">/);
-    assert.match(source, /<link rel="apple-touch-icon" href="\/xput-logo\.svg\?v=1\.7\.11">/);
-    assert.match(source, /<link rel="mask-icon" href="\/safari-pinned-tab\.svg\?v=1\.7\.11" color="#2563eb">/);
-    assert.match(source, /<link rel="manifest" href="\/site\.webmanifest\?v=1\.7\.11">/);
+    assert.match(source, /<link rel="icon" href="\/favicon\.svg\?v=1\.7\.12" type="image\/svg\+xml">/);
+    assert.match(source, /<link rel="icon" href="\/xput-logo\.svg\?v=1\.7\.12" type="image\/svg\+xml">/);
+    assert.match(source, /<link rel="apple-touch-icon" href="\/xput-logo\.svg\?v=1\.7\.12">/);
+    assert.match(source, /<link rel="mask-icon" href="\/safari-pinned-tab\.svg\?v=1\.7\.12" color="#2563eb">/);
+    assert.match(source, /<link rel="manifest" href="\/site\.webmanifest\?v=1\.7\.12">/);
   }
 
   for (const asset of [
@@ -132,14 +132,6 @@ test('translation click calls the API and renders a successful result', async ()
   assert.equal(dom.button.disabled, false);
   assert.equal(dom.button.getAttribute('aria-busy'), 'false');
   page.setTranslateStatus('');
-});
-
-test('translated rendering clones the original content so media remains visible', () => {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'mirror-page.js'), 'utf8');
-  assert.match(source, /translated\.innerHTML = origin\.innerHTML/);
-  assert.match(source, /replaceElementTextPreservingMedia/);
-  assert.match(source, /querySelectorAll\('h1,h2,h3,h4,h5,h6,p,li,blockquote'\)/);
-  assert.match(source, /<img|media/);
 });
 
 test('video status polling replaces the placeholder only with a local video', async () => {

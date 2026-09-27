@@ -527,7 +527,7 @@ function extractSummary(content) {
   return content.replace(/<[^>]+>/g, '').substring(0, 200);
 }
 
-async function translateWithSiliconFlow(parts, targetLang) {
+async function translateWithSiliconFlow(parts, targetLang, attempt = null) {
   if (!SILICONFLOW_API_KEY) throw new Error('未配置翻译API Key');
 
   const langName = targetLang === 'zh-CN' ? '简体中文' : (targetLang === 'en' ? 'English' : targetLang);
@@ -554,7 +554,7 @@ async function translateWithSiliconFlow(parts, targetLang) {
   const { json } = await createChatCompletion({
     baseUrl: SILICONFLOW_BASE_URL,
     apiKey: SILICONFLOW_API_KEY,
-    models,
+    models: attempt === null ? models : [models[Math.min(attempt, models.length - 1)]],
     body
   });
   const rawContent = json?.choices?.[0]?.message?.content;
@@ -939,11 +939,11 @@ function generateMirrorHtml(post) {
 <meta name="robots" content="index, follow">
 <meta name="googlebot" content="index, follow">
 <link rel="canonical" href="${canonicalUrl}">
-<link rel="icon" href="/favicon.svg?v=1.7.11" type="image/svg+xml">
-<link rel="icon" href="/xput-logo.svg?v=1.7.11" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.7.11">
-<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.7.11" color="#2563eb">
-<link rel="manifest" href="/site.webmanifest?v=1.7.11">
+<link rel="icon" href="/favicon.svg?v=1.7.12" type="image/svg+xml">
+<link rel="icon" href="/xput-logo.svg?v=1.7.12" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.7.12">
+<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.7.12" color="#2563eb">
+<link rel="manifest" href="/site.webmanifest?v=1.7.12">
 <meta property="og:title" content="${pageTitle}">
 <meta property="og:description" content="${escapeHtml(summary)}">
 <meta property="og:type" content="article">
@@ -1202,22 +1202,6 @@ function isUsableCachedTranslation(value) {
   return !/(?:^|[\s"'])(?:task|targetLang|parts|translations|翻译数组|目标语言|部分)(?:\s*["']?\s*:)/i.test(text);
 }
 
-async function translateBatchWithRetries(parts, targetLang) {
-  let lastError;
-  for (let attempt = 1; attempt <= TRANSLATION_BATCH_RETRIES; attempt += 1) {
-    try {
-      return await translateInBatches(parts, batch => translateWithSiliconFlow(batch, targetLang), { batchSize: parts.length });
-    } catch (error) {
-      lastError = error;
-      const providerCode = error?.providerCode || error?.code;
-      const permanent = providerCode === 'AUTH' || providerCode === 'INSUFFICIENT_BALANCE' || error?.status === 401;
-      if (permanent || attempt === TRANSLATION_BATCH_RETRIES) break;
-      await new Promise(resolve => setTimeout(resolve, Math.min(1000 * attempt, 2500)));
-    }
-  }
-  throw lastError || new Error('翻译失败');
-}
-
 async function processTranslationJob(jobId) {
   const leaseToken = crypto.randomUUID();
   const job = await dbGet('SELECT * FROM translation_jobs WHERE id=?', [jobId]);
@@ -1259,7 +1243,7 @@ async function processTranslationJob(jobId) {
       [jobId, ...indexes]
     );
     try {
-      const result = await translateBatchWithRetries(batch.map(segment => segment.source_text), current.target_lang);
+      const result = await translateWithSiliconFlow(batch.map(segment => segment.source_text), current.target_lang, Math.max(...batch.map(segment => Number(segment.attempts) || 0)));
       for (let index = 0; index < batch.length; index += 1) {
         const translated = String(result.translations[index] || '').trim();
         if (!translated) throw new TranslationFormatError();
@@ -1275,7 +1259,7 @@ async function processTranslationJob(jobId) {
       const response = translationErrorResponse(error);
       for (const segment of batch) {
         const attempts = Number(segment.attempts || 0) + 1;
-        const exhausted = attempts >= TRANSLATION_BATCH_RETRIES;
+        const exhausted = attempts >= TRANSLATION_BATCH_RETRIES || [401, 402, 403].includes(error?.providerStatus) || (!SILICONFLOW_API_KEY);
         await runDbWrite(
           `UPDATE translation_segments SET status=?, attempts=?, error_code=?, error_message=?, updated_at=CURRENT_TIMESTAMP WHERE job_id=? AND segment_index=?`,
           [exhausted ? 'failed' : 'retry', attempts, error?.code || error?.providerCode || 'TRANSLATION_ERROR', response.message, jobId, segment.segment_index]
