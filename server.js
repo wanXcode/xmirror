@@ -939,11 +939,11 @@ function generateMirrorHtml(post) {
 <meta name="robots" content="index, follow">
 <meta name="googlebot" content="index, follow">
 <link rel="canonical" href="${canonicalUrl}">
-<link rel="icon" href="/favicon.svg?v=1.7.8" type="image/svg+xml">
-<link rel="icon" href="/xput-logo.svg?v=1.7.8" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.7.8">
-<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.7.8" color="#2563eb">
-<link rel="manifest" href="/site.webmanifest?v=1.7.8">
+<link rel="icon" href="/favicon.svg?v=1.7.9" type="image/svg+xml">
+<link rel="icon" href="/xput-logo.svg?v=1.7.9" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.7.9">
+<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.7.9" color="#2563eb">
+<link rel="manifest" href="/site.webmanifest?v=1.7.9">
 <meta property="og:title" content="${pageTitle}">
 <meta property="og:description" content="${escapeHtml(summary)}">
 <meta property="og:type" content="article">
@@ -980,7 +980,7 @@ function generateMirrorHtml(post) {
 <div id="originContent" class="content content-view active" aria-hidden="false">${content}</div>
 <div id="translatedContent" class="content content-view" aria-hidden="true"></div>
 ${videoHtml}
-<div class="article-end"><a class="back-home" href="/">← 返回 XPut 首页</a><time class="article-time" datetime="${createdAt}">存档于 ${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time><span class="saved-mark">已保存于 XPut</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">在 X 查看原帖 ↗</a></div>
+<div class="article-end"><a class="back-home" href="/">← 返回 XPut 首页</a><span class="saved-mark">已保存于 XPut · <time class="article-time" datetime="${createdAt}">${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time></span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">在 X 查看原帖 ↗</a></div>
 </div></div>
 <script src="/mirror-page.js?v=${APP_VERSION}-links2" defer></script>
 </body>
