@@ -34,6 +34,15 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   assert.match(page, /content="noindex, follow"/);
   assert.match(page, /property="og:image" content="https:\/\/xput.app\/images\/sample.jpg"/);
   assert.match(page, /<html lang="en">/);
+  await run(db, "UPDATE posts SET images='[]' WHERE id=1");
+  const fallbackPage = await (await fetch(base+'/Ab1234')).text();
+  for (const tag of ['property="og:image"', 'name="twitter:image"']) {
+    assert.ok(fallbackPage.includes(`<meta ${tag} content="https://xput.app/xput-share.png">`));
+  }
+  const shareImage = await fetch(base+'/xput-share.png');
+  assert.equal(shareImage.status, 200);
+  assert.match(shareImage.headers.get('content-type'), /image\/png/);
+  await run(db, 'UPDATE posts SET images=? WHERE id=1', ['["/images/sample.jpg"]']);
   assert.match(await (await fetch(base+'/')).text(), /href="\/Ab1234"/);
   assert.equal((await fetch(base+'/api/admin/seo')).status,403);
   const action=async body=>fetch(base+'/api/admin/seo/1',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':'test-only-token'},body:JSON.stringify(body)});
