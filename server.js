@@ -939,11 +939,11 @@ function generateMirrorHtml(post) {
 <meta name="robots" content="index, follow">
 <meta name="googlebot" content="index, follow">
 <link rel="canonical" href="${canonicalUrl}">
-<link rel="icon" href="/favicon.svg?v=1.7.10" type="image/svg+xml">
-<link rel="icon" href="/xput-logo.svg?v=1.7.10" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.7.10">
-<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.7.10" color="#2563eb">
-<link rel="manifest" href="/site.webmanifest?v=1.7.10">
+<link rel="icon" href="/favicon.svg?v=1.7.11" type="image/svg+xml">
+<link rel="icon" href="/xput-logo.svg?v=1.7.11" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.7.11">
+<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.7.11" color="#2563eb">
+<link rel="manifest" href="/site.webmanifest?v=1.7.11">
 <meta property="og:title" content="${pageTitle}">
 <meta property="og:description" content="${escapeHtml(summary)}">
 <meta property="og:type" content="article">
