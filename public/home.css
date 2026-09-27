@@ -27,8 +27,7 @@
 .history-arrow { width: 16px; height: 16px; }
 .empty-state { padding: 28px 0; }
 
-.archive-hint { display:flex;align-items:baseline;justify-content:space-between;gap:6px 16px;flex-wrap:wrap;margin:10px 4px 0;color:var(--xp-muted);font-size:12px; }
-.archive-hint a, .browse-link { flex-shrink:0;white-space:nowrap;font-size:12px; }
+.browse-link { flex-shrink:0;white-space:nowrap;font-size:12px; }
 .footer-links { display:flex;gap:16px;flex-wrap:wrap; }
 .footer-links a { color:var(--xp-muted); }
 .footer-links a:hover { color:var(--xp-blue); }
@@ -36,7 +35,6 @@
   .history-head { gap:8px;flex-wrap:nowrap; }
   .history-tabs { gap:0;padding:3px; }
   .history-tabs button { padding:10px 6px;font-size:12px;white-space:nowrap; }
-  .browse-link, .archive-hint { font-size:11px; }
-  .archive-hint a { font-size:11px; }
+  .browse-link { font-size:11px; }
 }
 @media(max-width:360px) { .history-tabs button { font-size:11px; } }
