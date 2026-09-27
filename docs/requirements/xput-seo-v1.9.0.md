@@ -35,8 +35,8 @@ PUBLIC_BASE_URL 保持实际主域；未新增必填密钥。SEO_AUTO_INDEX=fals
 ## 验证与外部边界
 
 - 自动测试覆盖时间兼容、评分可达性、哈希与历史放行分离、周期重评/失败重试、H1/媒体/编号保留、JSON 安全、公开申请与后台鉴权及处理。
-- 隔离浏览器覆盖 1200px 桌面和 390px 手机布局、主题切换、站内申请到既有后台结案。
+- 隔离浏览器覆盖 1200px 桌面和 390px 手机布局、站内申请到既有后台结案与删除。
 - `PUBLIC_BASE_URL=https://xput.app node ops/check-seo.js` 检查公开 robots、sitemap、HTTP、canonical、H1、JSON-LD。它不证明 Googlebot 访问或实际收录。
-- Lighthouse 移动实验结果单独记录；真实 Core Web Vitals 需实际访问数据，不能由实验分数替代。
+- 移动浏览器实验样本单独记录 LCP 与布局偏移；本次未获得 Lighthouse 分数。真实 Core Web Vitals 需实际访问数据，不能由实验结果替代。
 - 用户已明确暂缓 Search Console：后续需验证域名、提交 https://xput.app/sitemap.xml、抽查规范 URL 和 4–8 周非品牌展示/点击。
 - 保留历史统计 site ID；统计后台是否成功接收 xput.app 来源、事件目标配置和真实搜索转化，需要对应后台权限，不能单靠前端脚本确认。
