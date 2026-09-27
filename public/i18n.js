@@ -47,7 +47,6 @@ const i18n = {
       shortcutTitle: 'iPhone 快捷指令，一键存档',
       shortcutDesc: '复制 X 链接后，一键生成 XPut 存档链接',
       shortcutInstall: '获取快捷指令 ↗',
-      usageHint: '粘贴链接 → 生成存档 → 阅读与分享',
       helpLink: '使用帮助',
       browseLink: '浏览公开存档 →',
       reportLink: '投诉／删除申请',
@@ -114,7 +113,6 @@ const i18n = {
       shortcutTitle: 'iPhone Shortcut, one-tap archive',
       shortcutDesc: 'Copy an X link and create an XPut archive in one tap',
       shortcutInstall: 'Get shortcut ↗',
-      usageHint: 'Paste → Archive → Read & share',
       helpLink: 'Help',
       browseLink: 'Browse →',
       reportLink: 'Report / removal',
@@ -202,7 +200,7 @@ const i18n = {
 
     document.querySelectorAll('[data-i18n]').forEach(element => {
       const key = element.getAttribute('data-i18n');
-      if (['usageHint', 'helpLink', 'browseLink', 'reportLink'].includes(key)) element.textContent = this.t(key);
+      if (['helpLink', 'browseLink', 'reportLink'].includes(key)) element.textContent = this.t(key);
     });
 
     // 更新标签
