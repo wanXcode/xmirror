@@ -71,7 +71,7 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   assert.equal(closed.status,200);
   assert.equal((await fetch(base+'/report')).status,200);
   const home=await (await fetch(base+'/')).text();
-  assert.match(home,/seo-guide-heading/);assert.match(home,/og:image/);assert.match(home,/href="\/report"/);
+  assert.match(home,/href="\/help"/);assert.match(home,/og:image/);assert.match(home,/href="\/report"/);
   assert.match(await (await fetch(base+'/Ab1234')).text(),/SocialMediaPosting/);
   assert.match((await fetch(base+'/Ab1234/referer',{redirect:'manual'})).headers.get('x-robots-tag'),/noindex/);
   await run(db,'DELETE FROM posts WHERE id=1');

@@ -15,11 +15,11 @@
   <link rel="canonical" href="https://xput.app/">
 
   <!-- Site icon -->
-  <link rel="icon" href="./favicon.svg?v=1.9.0" type="image/svg+xml">
-  <link rel="icon" href="./xput-logo.svg?v=1.9.0" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="./xput-logo.svg?v=1.9.0">
-  <link rel="mask-icon" href="./safari-pinned-tab.svg?v=1.9.0" color="#2563eb">
-  <link rel="manifest" href="./site.webmanifest?v=1.9.0">
+  <link rel="icon" href="./favicon.svg?v=1.9.1" type="image/svg+xml">
+  <link rel="icon" href="./xput-logo.svg?v=1.9.1" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./xput-logo.svg?v=1.9.1">
+  <link rel="mask-icon" href="./safari-pinned-tab.svg?v=1.9.1" color="#2563eb">
+  <link rel="manifest" href="./site.webmanifest?v=1.9.1">
   
   <!-- 主题色 -->
   <meta name="theme-color" content="#2563eb">
@@ -67,9 +67,9 @@
   }
   </script>
   
-  <link rel="stylesheet" href="./theme.css?v=1.9.0">
-  <link rel="stylesheet" href="./home.css?v=1.9.0">
-  <link rel="stylesheet" href="./style.css?v=1.9.0">
+  <link rel="stylesheet" href="./theme.css?v=1.9.1">
+  <link rel="stylesheet" href="./home.css?v=1.9.1">
+  <link rel="stylesheet" href="./style.css?v=1.9.1">
   <!-- Retain the existing analytics site ID to preserve historical reporting across the domain migration. -->
   <script defer data-domain="xmirror.app" src="https://a.zhxs.me/js/script.js"></script>
 </head>
@@ -94,6 +94,7 @@
           </div>
           <button class="primary-button" id="submit" type="submit">存档</button>
         </form>
+        <div class="archive-hint"><span data-i18n="usageHint">粘贴链接 → 生成存档 → 阅读与分享</span><a href="/help" data-i18n="helpLink">使用帮助</a></div>
         <div class="loading" id="loading" role="status" hidden><span class="spinner" aria-hidden="true"></span><p>正在抓取内容…</p></div>
         <div class="result" id="result" role="status" aria-live="polite" aria-atomic="true" hidden></div>
       </section>
@@ -108,7 +109,7 @@
         <div class="history-head"><div class="history-tabs" role="tablist" aria-label="存档记录">
           <button id="publicTab" role="tab" type="button" aria-controls="publicPanel" aria-selected="true" onclick="switchHistory('public')">最新公开存档</button>
           <button id="localTab" role="tab" type="button" aria-controls="localPanel" aria-selected="false" tabindex="-1" onclick="switchHistory('local')">本机记录</button>
-        </div></div>
+        </div><a class="browse-link" href="/browse" data-i18n="browseLink">浏览公开存档 →</a></div>
         <div id="localPanel" role="tabpanel" aria-labelledby="localTab" tabindex="0" hidden>
           <div id="localHistoryList"></div>
         </div>
@@ -123,21 +124,7 @@
         </div>
       </section>
     </main>
-    <section class="seo-guide" lang="zh-CN" aria-label="使用说明">
-      <div class="seo-guide-heading"><h2>保存 X / Twitter 内容，随时阅读与分享</h2><a href="/browse">浏览公开存档 →</a></div>
-      <p>粘贴公开帖子链接，保存图文与视频并生成 XPut 存档链接。阅读存档无需登录；外文内容可按需翻译为中文。</p>
-      <ol class="usage-steps"><li>复制公开的 x.com 或 twitter.com 帖子链接。</li><li>粘贴到上方输入框，点击“存档”。</li><li>打开生成的链接阅读，或分享给朋友。视频可能需要继续等待下载。</li></ol>
-      <p>适合保存教程、长文、讨论和图文资料。存档是公开页面，请勿提交私人信息。媒体能否完整保存取决于原帖可访问性及下载结果。</p>
-      <div class="seo-faq"><h2>常见问题</h2>
-        <details><summary>支持哪些链接？</summary><p>支持公开的 X / Twitter 帖子和 X Article 链接。受限、已删除或无法访问的内容可能不能保存。</p></details>
-        <details><summary>图片和视频会立即保存吗？</summary><p>图片随存档抓取，视频可能在后台继续下载。页面会显示实际下载状态；下载失败时可以重新提交原帖链接。</p></details>
-        <details><summary>翻译会修改原文吗？</summary><p>不会。阅读页可按需生成中文翻译并切回原文，译文可能存在错误，请结合原文理解。</p></details>
-        <details><summary>存档能一直保留吗？</summary><p>服务会尽力保留已保存内容，但不承诺永久保存。内容可能因权益投诉、维护或其他原因移除，重要资料请自行备份。</p></details>
-        <details><summary>怎样申请删除或处理版权、隐私问题？</summary><p>请通过<a href="/report">投诉与删除申请</a>提交存档链接和说明。申请仅管理员可见，核实后处理；提交不会自动删除内容。</p></details>
-      </div>
-      <!-- FEATURED_ARCHIVES -->
-    </section>
-    <footer class="page-version"><span class="footer-brand"><img src="./xput-logo.svg" alt="" aria-hidden="true">XPut · v1.9.0</span><span class="footer-slogan">存下来，慢慢读，分享出去。</span></footer>
+    <footer class="page-version"><span class="footer-brand"><img src="./xput-logo.svg" alt="" aria-hidden="true">XPut · v1.9.1</span><nav class="footer-links" aria-label="帮助与权益"><a href="/help" data-i18n="helpLink">使用帮助</a><a href="/report" data-i18n="reportLink">投诉／删除申请</a></nav><span class="footer-slogan">存下来，慢慢读，分享出去。</span></footer>
   </div>
 
   <!-- 删除确认弹窗 -->
@@ -163,9 +150,9 @@
     </div>
   </div>
 
-  <script src="./seo-events.js?v=1.9.0" defer></script>
-  <script src="./i18n.js?v=1.9.0"></script>
-  <script src="./home-state.js?v=1.9.0"></script>
-  <script src="./app.js?v=1.9.0"></script>
+  <script src="./seo-events.js?v=1.9.1" defer></script>
+  <script src="./i18n.js?v=1.9.1"></script>
+  <script src="./home-state.js?v=1.9.1"></script>
+  <script src="./app.js?v=1.9.1"></script>
 </body>
 </html>
