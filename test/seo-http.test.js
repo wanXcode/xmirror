@@ -55,7 +55,7 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   assert.equal(legacy.status,301);assert.equal(legacy.headers.get('location'),'/Ab1234');
   await run(db,'INSERT INTO post_aliases(alias_code,target_post_id) VALUES(?,?)',['Cd5678',1]);
   assert.equal((await fetch(base+'/Cd5678',{redirect:'manual'})).status,301);
-  for(const p of ['/demo/','/admin-moderation.html','/api/posts']) assert.match((await fetch(base+p)).headers.get('x-robots-tag'),/noindex/);
+  for(const p of ['/demo/','/admin-xput.html','/api/posts']) assert.match((await fetch(base+p)).headers.get('x-robots-tag'),/noindex/);
   const robots=await(await fetch(base+'/robots.txt')).text();assert.match(robots,/Sitemap: https:\/\/xput.app\/sitemap.xml/);assert.match(robots,/Disallow: \/api\/archive\//);assert.doesNotMatch(robots,/Disallow: \/(?:demo|admin)/);
   await action({override:'index',blocked:true});
   assert.equal((await (await action({override:'index'})).json()).status,'noindex', 'recommend does not clear a block');
