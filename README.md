@@ -156,4 +156,4 @@ systemctl restart xmirror.service
 ---
 Crafted with 🌸 by Flora
 
-新版 [XPut 存档快捷指令](https://www.icloud.com/shortcuts/2fdd008bff274ce382cc66dacaf3b566) 使用 xput.app，并显示“已复制 XPut 链接”。已安装的旧版不会自动更新，可继续通过旧域名 301 跳转兼容；建议安装新版以直接使用新域名。
+新版 [XPut 存档快捷指令](https://www.icloud.com/shortcuts/e2c41e2726044bc38dc57c8fbd45c734) 使用 xput.app，并显示“已复制 XPut 链接”。已安装的旧版不会自动更新，可继续通过旧域名 301 跳转兼容；建议安装新版以直接使用新域名。
