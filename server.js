@@ -974,15 +974,11 @@ function generateMirrorHtml(post) {
 <img class="avatar" src="${post.author_avatar}" onerror="this.style.display='none'">
 <div class="author-info"><div class="author-name">${escapeHtml(post.author)}</div><div class="author-handle">@${escapeHtml(post.author_handle)}</div></div>
 </div>
-${(() => {
-  const titleMatch = content.match(/^\s*(<h1[^>]*>[\s\S]*?<\/h1>)/i);
-  return titleMatch ? `<div class="article-title">${titleMatch[1]}</div>` : '';
-})()}
 <div class="translate-toolbar">
 <button id="translateBtn" class="translate-btn" type="button" onclick="toggleTranslate()" aria-controls="originContent translatedContent" aria-busy="false">翻译为中文</button>
 <span id="translateStatus" class="translate-status" role="status" aria-live="polite" aria-atomic="true"></span>
 </div>
-<div id="originContent" class="content content-view active" aria-hidden="false">${content.replace(/^\s*<h1[^>]*>[\s\S]*?<\/h1>/i, '')}</div>
+<div id="originContent" class="content content-view active" aria-hidden="false">${content}</div>
 <div id="translatedContent" class="content content-view" aria-hidden="true"></div>
 ${videoHtml}
 <div class="meta"><div class="time"><span>${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</span></div></div>

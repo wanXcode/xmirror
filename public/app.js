@@ -271,6 +271,7 @@ function renderPublicHistory() {
   const key = historyLoading ? 'historyLoadingMore' : historyError ? 'historyLoadError'
     : !historyHasMore ? (publicPosts.length ? 'historyNoMore' : 'publicHistoryEmpty') : null;
   status.hidden = !key;
+  status.setAttribute('data-loading', String(historyLoading));
   status.textContent = key ? i18n.t(key) : '';
   document.getElementById('historyRetry').hidden = !historyError || historyLoading;
   document.getElementById('historyMore').hidden = historyLoading || historyError || !historyHasMore;
