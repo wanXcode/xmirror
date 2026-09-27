@@ -50,7 +50,6 @@ const i18n = {
       helpLink: '使用帮助',
       browseLink: '浏览公开存档 →',
       reportLink: '投诉／删除申请',
-      footerSlogan: '存下来，慢慢读，分享出去。',
       labelUrl: 'X 链接',
       placeholderUrl: '粘贴 X / Twitter 帖子链接',
       btnGenerate: '存档',
@@ -116,7 +115,6 @@ const i18n = {
       helpLink: 'Help',
       browseLink: 'Browse →',
       reportLink: 'Report / removal',
-      footerSlogan: 'Save it, read slowly, share it.',
       labelUrl: 'X Link',
       placeholderUrl: 'Paste an X / Twitter post link',
       btnGenerate: 'Archive',
@@ -192,7 +190,6 @@ const i18n = {
       ['.shortcut-copy .title', 'shortcutTitle'],
       ['.shortcut-copy .desc', 'shortcutDesc'],
       ['.shortcut-link', 'shortcutInstall'],
-      ['.footer-slogan', 'footerSlogan']
     ]) {
       const element = document.querySelector(selector);
       if (element) element.textContent = this.t(key);
