@@ -1,0 +1,59 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
+const sqlite3 = require('sqlite3');
+const net = require('node:net');
+const { once } = require('node:events');
+const root = path.join(__dirname, '..');
+const run = (db, sql, args=[]) => new Promise((resolve,reject)=>db.run(sql,args,e=>e?reject(e):resolve()));
+
+test('real server serves canonical, sitemap, noindex, admin guard and SSR links consistently', {timeout:30000}, async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xput-seo-'));
+  t.after(() => fs.rmSync(dir, {recursive:true,force:true}));
+  const listener = net.createServer(); listener.listen(0,'127.0.0.1'); await once(listener,'listening');
+  const port = listener.address().port; await new Promise(r=>listener.close(r));
+  const env = {...process.env, PORT:String(port), DATA_DIR:dir, ARCHIVES_DIR:path.join(dir,'archives'), SQLITE_PATH:path.join(dir,'db.sqlite'), PUBLIC_BASE_URL:'https://xput.app', MODERATION_ADMIN_TOKEN:'test-only-token', SEO_AUTO_INDEX:'true'};
+  const child = spawn(process.execPath, ['server.js'], {cwd:root, env, stdio:['ignore','pipe','pipe']});
+  t.after(async()=>{ if(child.exitCode===null){ child.kill(); await once(child,'exit'); } });
+  let output=''; child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>output+=b);
+  const base = `http://127.0.0.1:${port}`;
+  for(let i=0;i<100;i++){
+    try { if((await fetch(base+'/healthz')).ok) break; } catch {}
+    if(child.exitCode!==null) throw new Error(output);
+    await new Promise(r=>setTimeout(r,50));
+  }
+  const db = new sqlite3.Database(env.SQLITE_PATH);
+  t.after(()=>new Promise(r=>db.close(r)));
+  fs.mkdirSync(path.join(dir,'images'),{recursive:true});fs.writeFileSync(path.join(dir,'images','sample.jpg'),'test');
+  const content = '<p>'+Array.from({length:170},(_,i)=>`word${i}`).join(' ')+'</p>';
+  await run(db, 'INSERT INTO posts(id,url,short_code,content,images,author,author_handle,tweet_time,html_file) VALUES(?,?,?,?,?,?,?,?,?)', [1,'https://x.com/i/status/123','Ab1234',content,'["/images/sample.jpg"]','Alice','alice','2026-09-26T01:00:00Z','post_123.html']);
+  let page = await (await fetch(base+'/Ab1234')).text();
+  assert.match(page, /content="noindex, follow"/);
+  assert.match(page, /property="og:image" content="https:\/\/xput.app\/images\/sample.jpg"/);
+  assert.match(page, /<html lang="en">/);
+  assert.match(await (await fetch(base+'/')).text(), /href="\/Ab1234"/);
+  assert.equal((await fetch(base+'/api/admin/seo')).status,403);
+  const action=async body=>fetch(base+'/api/admin/seo/1',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':'test-only-token'},body:JSON.stringify(body)});
+  assert.equal((await action({override:'index',blocked:'false'})).status,400);
+  assert.equal((await (await action({override:null,blocked:false})).json()).status,'index');
+  page = await (await fetch(base+'/Ab1234')).text();assert.match(page,/content="index, follow"/);
+  assert.match(await (await fetch(base+'/sitemap.xml')).text(), /\/Ab1234/);
+  assert.match(await (await fetch(base+'/browse')).text(), /\/Ab1234/);
+  const legacy=await fetch(base+'/archives/post_123.html',{redirect:'manual'});
+  assert.equal(legacy.status,301);assert.equal(legacy.headers.get('location'),'/Ab1234');
+  await run(db,'INSERT INTO post_aliases(alias_code,target_post_id) VALUES(?,?)',['Cd5678',1]);
+  assert.equal((await fetch(base+'/Cd5678',{redirect:'manual'})).status,301);
+  for(const p of ['/demo/','/admin-moderation.html','/api/posts']) assert.match((await fetch(base+p)).headers.get('x-robots-tag'),/noindex/);
+  const robots=await(await fetch(base+'/robots.txt')).text();assert.match(robots,/Sitemap: https:\/\/xput.app\/sitemap.xml/);assert.match(robots,/Disallow: \/api\/archive\//);assert.doesNotMatch(robots,/Disallow: \/(?:demo|admin)/);
+  await action({override:'index',blocked:true});
+  assert.equal((await (await action({override:'index'})).json()).status,'noindex', 'recommend does not clear a block');
+  assert.doesNotMatch(await(await fetch(base+'/sitemap.xml')).text(),/Ab1234/);
+  assert.match(await(await fetch(base+'/Ab1234')).text(),/noindex/);
+  await run(db,'DELETE FROM posts WHERE id=1');
+  fs.writeFileSync(path.join(dir,'archives','post_123.html'),'stale indexable html');
+  assert.equal((await fetch(base+'/Ab1234')).status,404);
+  assert.equal((await fetch(base+'/archives/post_123.html')).status,404);
+});

@@ -1,0 +1,24 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+const sqlite3 = require('sqlite3');
+const root = path.join(__dirname,'..');
+const run=(db,sql,args=[])=>new Promise((r,j)=>db.run(sql,args,e=>e?j(e):r()));
+test('CLI preview leaves pre-migration database unchanged and apply matches its decisions', async t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'xput-seo-cli-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'db.sqlite');const db=new sqlite3.Database(file);
+ await run(db,'CREATE TABLE posts(id INTEGER PRIMARY KEY,url TEXT,short_code TEXT,content TEXT,images TEXT,video TEXT,video_status TEXT,author TEXT,author_handle TEXT,tweet_time TEXT)');
+ for(const id of [1,2]) await run(db,'INSERT INTO posts VALUES(?,?,?,?,?,?,?,?,?,?)',[id,`https://x.com/i/status/${id}`,id===1?'Ab1234':'Cd5678','an informative text '.repeat(60),'[]',null,'none','Author','author','2026-09-27T00:00:00Z']);
+ await new Promise(r=>db.close(r));
+ const before=fs.readFileSync(file);
+ const env={...process.env,SQLITE_PATH:file,DATA_DIR:dir,SEO_AUTO_INDEX:'true'};
+ const invoke=args=>execFileSync(process.execPath,['ops/evaluate-seo.js',...args],{cwd:root,env,encoding:'utf8'}).trim().split('\n').map(JSON.parse);
+ const preview=invoke([]);assert.deepEqual(fs.readFileSync(file),before);
+ assert.deepEqual(preview.slice(0,2).map(x=>x.status),['index','noindex']);
+ const applied=invoke(['--apply']);assert.deepEqual(applied.slice(0,2).map(x=>x.status),preview.slice(0,2).map(x=>x.status));
+ const second=invoke(['--after-id=1']);assert.equal(second[0].status,'noindex');
+ assert.equal(fs.existsSync(path.join(dir,'moderation.log.jsonl')),false);
+});

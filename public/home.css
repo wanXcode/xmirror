@@ -26,3 +26,7 @@
 .page-version { display: flex; align-items: center; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap; }.footer-brand { display: inline-flex; align-items: center; gap: 8px; }.footer-brand img { width: 12px; height: 12px; }.footer-slogan { margin-left: auto; }
 .history-arrow { width: 16px; height: 16px; }
 .empty-state { padding: 28px 0; }
+
+.seo-guide { margin: 40px 0 24px; font-size: 14px; line-height: 1.8; color: var(--text-secondary, #777); }
+.seo-guide h2 { font-size: 18px; font-weight: 600; }
+.seo-guide a { color: inherit; }

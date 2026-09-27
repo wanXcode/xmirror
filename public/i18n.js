@@ -251,15 +251,15 @@ const i18n = {
     
     // 更新 title
     document.title = isZh 
-      ? 'XPut - X/Twitter 内容存档工具 | 永久保存推文、图片和视频'
+      ? 'XPut - X/Twitter 内容存档工具 | 保存推文、图片和视频'
       : 'XPut - X/Twitter Content Archiver | Save Tweets, Images & Videos';
     
     // 更新 description
     const descMeta = document.querySelector('meta[name="description"]');
     if (descMeta) {
       descMeta.content = isZh
-        ? 'XPut 是一款专业的 X(Twitter) 内容存档工具，可永久保存推文、图片和视频，生成可访问的镜像页面。支持钉钉/微信卡片分享，防止内容丢失。'
-        : 'XPut is a professional X(Twitter) content archiving tool that permanently saves tweets, images, and videos, generating accessible mirror pages.';
+        ? 'XPut 是一款专业的 X(Twitter) 内容存档工具，可保存推文、图片和视频，生成可访问的镜像页面。支持钉钉/微信卡片分享，防止内容丢失。'
+        : 'XPut is a professional X(Twitter) content archiving tool that saves tweets, images, and videos, generating accessible mirror pages.';
     }
     
     // 更新 keywords
@@ -278,16 +278,16 @@ const i18n = {
     const ogDesc = document.querySelector('meta[property="og:description"]');
     if (ogDesc) {
       ogDesc.content = isZh
-        ? '专业的 X(Twitter) 内容存档工具，永久保存推文、图片和视频，生成可访问的镜像页面。'
-        : 'Professional X(Twitter) content archiving tool that permanently saves tweets, images, and videos.';
+        ? '专业的 X(Twitter) 内容存档工具，保存推文、图片和视频，生成可访问的镜像页面。'
+        : 'Professional X(Twitter) content archiving tool that saves tweets, images, and videos.';
     }
     
     // 更新 twitter:description
     const twDesc = document.querySelector('meta[name="twitter:description"]');
     if (twDesc) {
       twDesc.content = isZh
-        ? '专业的 X(Twitter) 内容存档工具，永久保存推文、图片和视频。'
-        : 'Professional X(Twitter) content archiving tool that permanently saves tweets, images, and videos.';
+        ? '专业的 X(Twitter) 内容存档工具，保存推文、图片和视频。'
+        : 'Professional X(Twitter) content archiving tool that saves tweets, images, and videos.';
     }
   },
 

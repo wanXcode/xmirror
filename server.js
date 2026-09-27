@@ -7,6 +7,9 @@ const fs = require('fs');
 const https = require('https');
 const crypto = require('crypto');
 const { version: APP_VERSION } = require('./package.json');
+const seo = require('./lib/seo');
+const { createSeoStore } = require('./lib/seo-store');
+const { registerSeoRoutes } = require('./lib/seo-routes');
 const {
   transcribeVideo,
   segmentsToVtt
@@ -83,6 +86,10 @@ const moderator = createModerator({
   rulesPath: path.join(ROOT_DIR, 'config', 'moderation-rules.json'),
   logPath: path.join(DATA_DIR, 'moderation.log.jsonl')
 });
+const seoModerator = createModerator({
+  rulesPath: path.join(ROOT_DIR, 'config', 'moderation-rules.json'),
+  logPath: null
+});
 const MODERATION_SETTINGS_PATH = path.join(DATA_DIR, 'moderation-settings.json');
 const MODERATION_LOG_PATH = path.join(DATA_DIR, 'moderation.log.jsonl');
 
@@ -105,16 +112,7 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.static(PUBLIC_DIR, {
-  setHeaders(res, filePath) {
-    if (path.basename(filePath) === 'index.html') {
-      res.set('Cache-Control', 'no-cache, must-revalidate');
-    }
-  }
-}));
-app.use('/images', express.static(path.join(DATA_DIR, 'images')));
-app.use('/videos', express.static(path.join(DATA_DIR, 'videos')));
-app.use('/subtitles', express.static(path.join(DATA_DIR, 'subtitles')));
+
 
 const dbPath = process.env.SQLITE_PATH || path.join(DATA_DIR, 'db.sqlite');
 if (fs.existsSync(dbPath)) {
@@ -128,6 +126,20 @@ const db = new sqlite3.Database(
     else console.log(`SQLite open ok: ${dbPath}`);
   }
 );
+
+db.configure('busyTimeout', 10000);
+const seoStore = createSeoStore(db, { dataDir: DATA_DIR, moderator: seoModerator, autoIndex: process.env.SEO_AUTO_INDEX !== 'false' });
+registerSeoRoutes(app, { store: seoStore, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
+app.use(express.static(PUBLIC_DIR, {
+  setHeaders(res, filePath) {
+    if (path.basename(filePath) === 'index.html') {
+      res.set('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+}));
+app.use('/images', express.static(path.join(DATA_DIR, 'images')));
+app.use('/videos', express.static(path.join(DATA_DIR, 'videos')));
+app.use('/subtitles', express.static(path.join(DATA_DIR, 'subtitles')));
 
 const SHORT_CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
@@ -367,14 +379,18 @@ function videoPathForFilename(filename) {
   return path.join(DATA_DIR, 'videos', filename);
 }
 
-function updateVideoRow(postId, fields) {
+async function updateVideoRow(postId, fields) {
   const keys = Object.keys(fields);
   if (!keys.length) return Promise.resolve();
   const values = keys.map(key => fields[key]);
-  return runDbWrite(
+  await runDbWrite(
     `UPDATE posts SET ${keys.map(key => `${key}=?`).join(',')} WHERE id=?`,
     [...values, postId]
   );
+  if (fields.video_status) {
+    await seoStore.invalidate(postId);
+    await refreshSeo(postId);
+  }
 }
 
 function formatBytes(bytes) {
@@ -911,52 +927,51 @@ function generateMirrorHtml(post) {
     videoHtml = `<div class="video-placeholder video-placeholder-error" data-video-status="failed" data-video-post-id="${post.id}" role="status">视频下载失败，请重新提交原链接重试。</div>`;
   }
 
-  const summary = extractSummary(content);
-  const ogImage = post.images && post.images.length > 0 ? post.images[0] : '';
-  let articleTitle = '';
-  const h1Match = content.match(/<h1[^>]*>(.+?)<\/h1>/i);
-  const h2Match = content.match(/<h2[^>]*>(.+?)<\/h2>/i);
-  if (h1Match) articleTitle = h1Match[1].replace(/<[^>]+>/g, '').substring(0, 50);
-  else if (h2Match) articleTitle = h2Match[1].replace(/<[^>]+>/g, '').substring(0, 50);
-  else articleTitle = summary.substring(0, 25);
-  if (articleTitle.length >= 25) articleTitle += '...';
-  const pageTitle = articleTitle ? `${escapeHtml(articleTitle)} | XPut` : `${escapeHtml(post.author)} | XPut`;
+  const meta = seo.metadata(post);
+  const summary = meta.description;
+  const ogPath = seo.imagesFor(post).find(image => {
+    try { return fs.statSync(path.join(DATA_DIR, image)).size > 0; } catch { return false; }
+  });
+  const ogImage = buildPublicUrl(ogPath || '/favicon-512x512.png', PUBLIC_BASE_URL);
+  const pageTitle = `${escapeHtml(meta.title)} | XPut`;
   const canonicalPath = post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`;
   const canonicalUrl = buildPublicUrl(canonicalPath, PUBLIC_BASE_URL);
   const refererPath = post.short_code ? `/${post.short_code}/referer` : post.url;
-  const createdAt = normalizeXTimestamp(post.tweet_time, post.created_at || new Date().toISOString());
+  const publishedAt = normalizeXTimestamp(post.tweet_time, post.created_at || new Date().toISOString());
+  const savedAt = post.created_at ? (post.created_at.includes("T") ? post.created_at : post.created_at.replace(" ", "T") + "Z") : new Date().toISOString();
+  const createdAt = normalizeXTimestamp(savedAt);
   const sourceLang = detectContentLanguage(content);
 
   const html = `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${escapeHtml(sourceLang)}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${pageTitle}</title>
 <meta name="description" content="${escapeHtml(summary)}">
-<meta name="keywords" content="X存档,Twitter存档,${escapeHtml(post.author)},推文备份,XPut">
+
 <meta name="author" content="${escapeHtml(post.author)}">
-<meta name="robots" content="index, follow">
-<meta name="googlebot" content="index, follow">
+<meta name="robots" content="${seo.robotsFor(post)}">
+
 <link rel="canonical" href="${canonicalUrl}">
-<link rel="icon" href="/favicon.svg?v=1.7.13" type="image/svg+xml">
-<link rel="icon" href="/xput-logo.svg?v=1.7.13" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.7.13">
-<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.7.13" color="#2563eb">
-<link rel="manifest" href="/site.webmanifest?v=1.7.13">
+<link rel="icon" href="/favicon.svg?v=1.8.0" type="image/svg+xml">
+<link rel="icon" href="/xput-logo.svg?v=1.8.0" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/xput-logo.svg?v=1.8.0">
+<link rel="mask-icon" href="/safari-pinned-tab.svg?v=1.8.0" color="#2563eb">
+<link rel="manifest" href="/site.webmanifest?v=1.8.0">
 <meta property="og:title" content="${pageTitle}">
 <meta property="og:description" content="${escapeHtml(summary)}">
 <meta property="og:type" content="article">
-<meta property="og:image" content="${ogImage}">
+<meta property="og:image" content="${escapeHtml(ogImage)}">
 <meta property="og:url" content="${canonicalUrl}">
 <meta property="og:site_name" content="XPut">
 <meta property="og:locale" content="zh_CN">
-<meta property="article:published_time" content="${createdAt}">
+<meta property="article:published_time" content="${publishedAt}">
 <meta property="article:author" content="${escapeHtml(post.author)}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${pageTitle}">
 <meta name="twitter:description" content="${escapeHtml(summary)}">
-<meta name="twitter:image" content="${ogImage}">
+<meta name="twitter:image" content="${escapeHtml(ogImage)}">
 <meta name="twitter:creator" content="@${escapeHtml(post.author_handle)}">
 <meta name="twitter:domain" content="${new URL(PUBLIC_BASE_URL).hostname}">
 <!-- Retain the existing analytics site ID to preserve historical reporting across the domain migration. -->
@@ -1131,6 +1146,7 @@ async function upsertTranslation({ postId, targetLang, sourceLang, sourceHashVal
      DO UPDATE SET translated_json=excluded.translated_json, source_lang=excluded.source_lang, provider=excluded.provider, updated_at=CURRENT_TIMESTAMP`,
     [postId, targetLang, sourceLang, sourceHashValue, payload, TRANSLATE_PROVIDER]
   );
+  await refreshSeo(postId);
 }
 
 function dbGet(sql, params = []) {
@@ -1560,6 +1576,9 @@ async function archiveXUrl(url) {
       existing.short_code = await generateUniqueShortCode();
       await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing.short_code, existing.id]);
     }
+    await seoStore.invalidate(existing.id);
+    await refreshSeo(existing.id);
+    Object.assign(existing, await getPostById(existing.id));
     const htmlPath = path.join(ARCHIVES_DIR, existing.html_file);
     const htmlContent = generateMirrorHtml(existing);
     fs.writeFileSync(htmlPath, htmlContent, 'utf8');
@@ -1611,6 +1630,8 @@ async function archiveXUrl(url) {
           await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing2.short_code, existing2.id]);
         }
         const htmlPath = path.join(ARCHIVES_DIR, existing2.html_file);
+        await refreshSeo(existing2.id);
+        Object.assign(existing2, await getPostById(existing2.id));
         const htmlContent = generateMirrorHtml(existing2);
         fs.writeFileSync(htmlPath, htmlContent, 'utf8');
         await resumeVideoDownloadIfNeeded(existing2);
@@ -1621,7 +1642,8 @@ async function archiveXUrl(url) {
   }
 
   const result = stmt.lastID;
-  const htmlContent = generateMirrorHtml({ id: result, url: canonicalUrl, ...content, html_file: htmlFile, short_code: shortCode });
+  await refreshSeo(result);
+  const htmlContent = generateMirrorHtml(await getPostById(result));
   fs.writeFileSync(path.join(ARCHIVES_DIR, htmlFile), htmlContent, 'utf8');
   if (content.video_source_url) {
     queueVideoDownload({ postId: result, url: content.video_source_url, filename: content.video_filename });
@@ -1765,16 +1787,17 @@ app.get('/archives/:fileName', async (req, res, next) => {
       return res.redirect(301, `/${post.short_code}`);
     }
     if (post) {
-      return res.status(200).send(generateMirrorHtml(post));
+      return res.set('Cache-Control', 'no-store').status(200).send(generateMirrorHtml(post));
     }
   } catch (e) {
     console.error('旧链接301映射失败:', e.message);
+    return res.sendStatus(503);
   }
 
   return next();
 });
 
-app.use('/archives', express.static(ARCHIVES_DIR));
+app.use('/archives', (_req, res) => res.sendStatus(404));
 
 app.get(/^\/([A-Za-z0-9]{6})\/referer$/, async (req, res, next) => {
   try {
@@ -1815,20 +1838,30 @@ app.get(/^\/([A-Za-z0-9]{6})$/, async (req, res, next) => {
 
     if (!post) return next();
 
+    if (post.short_code !== shortCode) return res.redirect(301, `/${post.short_code}`);
+    res.set('Cache-Control', 'no-store');
     const htmlContent = generateMirrorHtml(post);
     return res.status(200).send(htmlContent);
   } catch (e) {
     console.error('短链访问失败:', e.message);
-    return next();
+    return res.sendStatus(503);
   }
 });
 
-app.get('/', (req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
+async function refreshSeo(id) {
+  try { return await seoStore.refresh(id); }
+  catch (error) {
+    console.error('SEO evaluation failed:', id, error.message);
+    await seoStore.invalidate(id);
+    return null;
+  }
+}
 
 async function startServer() {
   try {
     await ensureShortCodeReady();
     await ensureVideoColumnsReady();
+    await seoStore.migrate();
     console.log('短链字段与历史数据检查完成');
   } catch (e) {
     console.error('短链初始化失败:', e.message);
