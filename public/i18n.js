@@ -41,6 +41,7 @@ const i18n = {
       pageSettings: "页面设置",
       archiveSection: "生成存档",
       historySection: "存档记录",
+      heroTitle: '好内容，留在这里。',
       title: 'XPut',
       subtitle: '保存 X 上的图文与视频，随时阅读，轻松分享。',
       shortcutTitle: 'iPhone 快捷指令，一键存档',
@@ -103,6 +104,7 @@ const i18n = {
       pageSettings: "Page settings",
       archiveSection: "Create archive",
       historySection: "Archive history",
+      heroTitle: 'Keep what matters.',
       title: 'XPut',
       subtitle: 'Save posts and videos from X, read anytime, share with ease.',
       shortcutTitle: 'iPhone Shortcut, one-tap archive',
@@ -176,6 +178,9 @@ const i18n = {
     // 更新副标题
     const subtitle = document.querySelector('.home-subtitle');
     if (subtitle) subtitle.textContent = this.t('subtitle');
+
+    const heroTitle = document.querySelector('.hero-title h2');
+    if (heroTitle) heroTitle.textContent = this.t('heroTitle');
     
     for (const [selector, key] of [
       ['.shortcut-copy .title', 'shortcutTitle'],
