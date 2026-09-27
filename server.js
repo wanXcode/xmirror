@@ -17,6 +17,7 @@ const {
   segmentsToVtt
 } = require('./lib/subtitles');
 const { createModerator, ModerationRejectError } = require('./lib/moderation');
+const { createReviewService, groupLogs } = require('./lib/moderation-review');
 const { createChatCompletion } = require('./lib/siliconflow');
 const {
   normalizeTargetLanguage,
@@ -94,6 +95,8 @@ const seoModerator = createModerator({
 });
 const MODERATION_SETTINGS_PATH = path.join(DATA_DIR, 'moderation-settings.json');
 const MODERATION_LOG_PATH = path.join(DATA_DIR, 'moderation.log.jsonl');
+const reviewService = createReviewService({ moderator, dataDir: DATA_DIR, logPath: MODERATION_LOG_PATH });
+
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(ARCHIVES_DIR, { recursive: true });
@@ -1521,11 +1524,7 @@ function readRecentModerationLogs(limit = 50, action = '') {
       try { return JSON.parse(line); } catch { return null; }
     }).filter(Boolean);
 
-    if (action) {
-      logs = logs.filter(log => log.action === action);
-    }
-
-    return logs.slice(-limit).reverse();
+    return groupLogs(logs, { action, limit });
   } catch (err) {
     console.warn('读取 moderation logs 失败:', err.message);
     return [];
@@ -1565,7 +1564,7 @@ async function archiveXUrl(url) {
     if (isBrokenArticleArchive(existing.content)) {
       const refreshed = await fetchXPost(canonicalUrl);
       if (moderationSettings.enabled) {
-        moderator.moderateArchivedContent({
+        await reviewService.assess({
           url: canonicalUrl,
           authorHandle: refreshed.author_handle,
           authorName: refreshed.author,
@@ -1603,14 +1602,14 @@ async function archiveXUrl(url) {
 
   if (moderationSettings.enabled) {
     try {
-      moderator.moderateArchivedContent({
+      await reviewService.assess({
         url: canonicalUrl,
         authorHandle: content.author_handle,
         authorName: content.author,
         content: content.content
       });
     } catch (err) {
-      if (err instanceof ModerationRejectError) {
+      if (err instanceof ModerationRejectError || err.code === 'CONTENT_MODERATION_PENDING') {
         cleanupFetchedAssets(content);
       }
       throw err;
@@ -1728,6 +1727,8 @@ app.get('/api/posts', (req, res) => {
   );
 });
 
+app.use('/api/admin/moderation', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+
 app.get('/api/admin/moderation/settings', requireAdmin, (req, res) => {
   return res.json({ success: true, settings: getModerationSettings() });
 });
@@ -1742,6 +1743,35 @@ app.get('/api/admin/moderation/logs', requireAdmin, (req, res) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
   const action = (req.query.action || '').toString().trim();
   return res.json({ success: true, logs: readRecentModerationLogs(limit, action) });
+});
+
+
+// Admin rechecks retrieve text only; they do not create archives or download media.
+const reviewAdminLimit = createRateLimiter({ windowMs: 60000, max: 10 });
+app.post('/api/admin/moderation/recheck', requireAdmin, reviewAdminLimit, async (req, res) => {
+  try {
+    const url = normalizeArchiveUrl(req.body?.url);
+    const tweet = await fetchFromFxTwitter(extractTweetId(url));
+    if (tweet.possibly_sensitive === true) return res.status(409).json({ error: '原平台敏感标记需人工检查媒体，本次未放行' });
+    const rendered = renderTweetContent({ tweet, escapeHtml });
+    try {
+      await reviewService.assess({ url, authorHandle: tweet.author?.screen_name || '', authorName: tweet.author?.name || '', content: rendered.htmlContent }, { retry: true });
+    } catch (e) {
+      if (!['CONTENT_MODERATION_REJECTED', 'CONTENT_MODERATION_PENDING'].includes(e.code)) throw e;
+    }
+    return res.json({ success: true });
+  } catch { return res.status(502).json({ error: '重新获取原文失败，请稍后再试' }); }
+});
+app.get('/api/admin/moderation/reviews/:id', requireAdmin, (req, res) => {
+  const record = reviewService.read(req.params.id);
+  if (!record) return res.status(404).json({ error: '没有可复核的正文，请先重新审核' });
+  return res.json({ success: true, record });
+});
+app.post('/api/admin/moderation/reviews/:id', requireAdmin, (req, res) => {
+  try {
+    const record = reviewService.decide(req.params.id, req.body?.action, req.body?.note);
+    return res.json({ success: true, action: record.action });
+  } catch (e) { return res.status(400).json({ error: e.message }); }
 });
 
 app.post('/api/delete', requireAdmin, async (req, res) => {

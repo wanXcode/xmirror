@@ -4,6 +4,8 @@
   const failureMessages = {
     INVALID_URL: ['errorInvalidUrl', false],
     SOURCE_UNAVAILABLE: ['errorSourceUnavailable', false],
+    CONTENT_MODERATION_PENDING: ['errorModerationPending', true],
+    CONTENT_MODERATION_REJECTED: ['errorModerationRejected', false],
     CONTENT_UNSUPPORTED: ['errorContentUnsupported', false],
     NETWORK_ERROR: ['errorNetwork', true],
     REQUEST_TIMEOUT: ['errorTimeout', true],
