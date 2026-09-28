@@ -112,6 +112,18 @@ test('budget is reserved atomically across workers and survives restart',async t
   const restarted=await ctx.worker(options);await restarted.tick();assert.equal(calls,1);
 });
 
+test('temporary test window bypasses budget and call-count gates until its UTC deadline',async t=>{
+  const ctx=await setup(t);const p1=await ctx.insert();const p2=await ctx.insert({...sample,id:2,url:'https://x.com/i/status/43',short_code:'Cd5678',content:body+' Extra context.'});
+  let calls=0,time=new Date('2026-09-29T10:00:00Z');
+  const ai=await ctx.worker({config:{...cfg,daily:0.000001,monthly:0.000001,maxCallsDay:1,maxCallsMonth:1,unlimitedUntil:Date.parse('2026-09-29T16:00:00Z')},now:()=>time,fetchImpl:async()=>{calls++;return goodResponse();}});
+  await ai.enqueue(p1);await ai.enqueue(p2);await ai.tick();await ai.tick();
+  assert.equal(calls,2);
+  time=new Date('2026-09-29T16:00:00Z');
+  const p3=await ctx.insert({...sample,id:3,url:'https://x.com/i/status/44',short_code:'Ef9012',content:body+' Final context.'});
+  await ai.enqueue(p3);await ai.tick();
+  assert.equal(calls,2,'the normal budget gate resumes at the deadline');
+});
+
 test('unknown billing remains reserved; at most two calls, then automatic fallback',async t=>{
   const ctx=await setup(t);const p=await ctx.insert();let calls=0,time=new Date('2026-09-28T00:00:00Z');
   const ai=await ctx.worker({now:()=>time,fetchImpl:async()=>{calls++;throw new Error('network');}});
