@@ -19,12 +19,12 @@ let ai;
 async function main(){
   const config=settings();
   if(process.argv.includes('--resume')){
-    if(!apply||!configured(config)||config.priceValidUntil<=Date.now())throw new Error('Resume requires --apply and valid model/price configuration');
+    if(!apply||!configured(config))throw new Error('Resume requires --apply and enabled provider configuration');
     ai=createSeoAI({store,dataDir,config});await ai.migrate();await ai.resume();console.log(JSON.stringify(await ai.summary()));return;
   }
   const ids=(process.argv.find(s=>s.startsWith('--ids='))||'').slice(6).split(',').filter(Boolean).map(Number);
   if(!ids.length||ids.length>20||ids.some(id=>!Number.isSafeInteger(id)||id<1)||new Set(ids).size!==ids.length)throw new Error('Provide 1–20 unique IDs with --ids=1,2; no automatic history expansion');
-  if(apply&&(!configured(config)||config.priceValidUntil<=Date.now()))throw new Error('Configure model, verified prices and enable AI before applying');
+  if(apply&&(!configured(config)))throw new Error('Configure the provider and enable AI before applying');
   if(apply){await store.migrate();ai=createSeoAI({store,dataDir,config});await ai.migrate();}
   for(const id of ids){
     const post=await store.get('SELECT * FROM posts WHERE id=?',[id]);

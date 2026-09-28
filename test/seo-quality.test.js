@@ -17,7 +17,8 @@ const body = '<p>Docker container network troubleshooting. Check the DNS resolve
 const sample = { id:1,content:body,url:'https://x.com/i/status/42',short_code:'Ab1234',author:'Author',author_handle:'author',tweet_time:'2026-09-28T00:00:00Z',images:'[]',seo_override:'index',seo_quality_version:'3',seo_ai_enabled:1 };
 const output = {title:'Docker container network troubleshooting',description:'Check the DNS resolver configuration first.',keywords:['Docker','network'],evidence:['Check the DNS resolver configuration first.']};
 const goodResponse = () => ({ok:true,json:async()=>({choices:[{message:{content:JSON.stringify(output)}}],usage:{prompt_tokens:300,completion_tokens:100}})});
-const cfg = {...settings({}),enabled:true,model:'test-model',apiKey:'test-key',inputPrice:1,outputPrice:2,priceValidUntil:Date.parse('2099-01-01')};
+const cfg = {...settings({}),enabled:true,model:'test-model',apiKey:'test-key'};
+const testPolicy = (model='test-model') => ({select:async()=>model,exclude:()=>{},summary:()=>({status:'verified',models:[model],model,checkedAt:'2026-01-01T00:00:00.000Z',nextCheckAt:'2099-01-01T00:00:00.000Z',source:'test'})});
 
 async function setup(t, moderator) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'seo-quality-'));
@@ -30,7 +31,7 @@ async function setup(t, moderator) {
     await store.refresh(post.id);return store.get('SELECT * FROM posts WHERE id=?',[post.id]);
   }
   const workers=[];
-  async function worker(options={}) {const ai=createSeoAI({store,dataDir:dir,config:cfg,fetchImpl:goodResponse,...options});await ai.migrate();workers.push(ai);return ai;}
+  async function worker(options={}) {const ai=createSeoAI({store,dataDir:dir,config:cfg,fetchImpl:goodResponse,modelPolicy:testPolicy(cfg.model),...options});await ai.migrate();workers.push(ai);return ai;}
   t.after(async()=>{for(const ai of workers)await ai.close();await new Promise(r=>db.close(r));fs.rmSync(dir,{recursive:true,force:true});});
   return {store,dir,insert,worker,db};
 }
@@ -98,36 +99,31 @@ test('AI generation is cached, shared across page surfaces, and never charges on
   const saved=await ctx.store.get('SELECT * FROM posts WHERE id=1');
   assert.equal(title.metadata(saved).title,output.title);assert.equal(calls,1);
   assert.equal((await ai.jobFor(1)).status,'completed');
-  assert.equal((await ai.summary()).day.calls,1);
-  assert.equal((await ai.summary()).day.reservedCny,(8192+512*2)/1e6,'reservation kept conservatively');
+  assert.equal((await ai.summary()).day.calls,1);assert.equal((await ai.summary()).day.reservedCny,0);
+  assert.equal((await ai.summary()).day.reservedCny,0,'verified free model has no charge reservation');
   await ai.enqueue(saved);await ai.tick();assert.equal(calls,1);
 });
 
-test('budget is reserved atomically across workers and survives restart',async t=>{
+test('free title calls remain safe across workers and survive restart',async t=>{
   const ctx=await setup(t);const p1=await ctx.insert();const p2=await ctx.insert({...sample,id:2,url:'https://x.com/i/status/43',short_code:'Cd5678',content:body+' Extra context.'});
-  let calls=0;const options={config:{...cfg,daily:0.01},fetchImpl:async()=>{calls++;await new Promise(r=>setTimeout(r,15));return goodResponse();}};
+  let calls=0;const options={config:{...cfg},modelPolicy:testPolicy(),fetchImpl:async()=>{calls++;await new Promise(r=>setTimeout(r,15));return goodResponse();}};
   const a=await ctx.worker(options),b=await ctx.worker(options);
   await a.enqueue(p1);await b.enqueue(p2);await Promise.all([a.tick(),b.tick()]);await b.tick();
-  assert.equal(calls,1);assert.equal((await a.summary()).day.calls,1);
-  const restarted=await ctx.worker(options);await restarted.tick();assert.equal(calls,1);
+  assert.equal(calls,2);assert.equal((await a.summary()).day.calls,2);
+  const restarted=await ctx.worker(options);await restarted.tick();assert.equal(calls,2);
 });
 
-test('temporary test window bypasses budget and call-count gates until its UTC deadline',async t=>{
+test('free mode ignores legacy budget fields',async t=>{
   const ctx=await setup(t);const p1=await ctx.insert();const p2=await ctx.insert({...sample,id:2,url:'https://x.com/i/status/43',short_code:'Cd5678',content:body+' Extra context.'});
-  let calls=0,time=new Date('2026-09-29T10:00:00Z');
-  const ai=await ctx.worker({config:{...cfg,daily:0.000001,monthly:0.000001,maxCallsDay:1,maxCallsMonth:1,unlimitedUntil:Date.parse('2026-09-29T16:00:00Z')},now:()=>time,fetchImpl:async()=>{calls++;return goodResponse();}});
+  let calls=0;const ai=await ctx.worker({config:{...cfg,daily:0.000001,monthly:0.000001,maxCallsDay:1,maxCallsMonth:1},modelPolicy:testPolicy(),fetchImpl:async()=>{calls++;return goodResponse();}});
   await ai.enqueue(p1);await ai.enqueue(p2);await ai.tick();await ai.tick();
-  assert.equal(calls,2);
-  time=new Date('2026-09-29T16:00:00Z');
-  const p3=await ctx.insert({...sample,id:3,url:'https://x.com/i/status/44',short_code:'Ef9012',content:body+' Final context.'});
-  await ai.enqueue(p3);await ai.tick();
-  assert.equal(calls,2,'the normal budget gate resumes at the deadline');
+  assert.equal(calls,2);assert.equal((await ai.summary()).day.reservedCny,0);
 });
 
-test('unknown billing remains reserved; at most two calls, then automatic fallback',async t=>{
+test('unknown billing keeps free reservation at zero and still falls back after retries',async t=>{
   const ctx=await setup(t);const p=await ctx.insert();let calls=0,time=new Date('2026-09-28T00:00:00Z');
   const ai=await ctx.worker({now:()=>time,fetchImpl:async()=>{calls++;throw new Error('network');}});
-  await ai.enqueue(p);await ai.tick();assert.equal((await ai.summary()).day.calls,1);
+  await ai.enqueue(p);await ai.tick();assert.equal((await ai.summary()).day.calls,1);assert.equal((await ai.summary()).day.reservedCny,0);
   await ai.tick();assert.equal(calls,1);
   time=new Date(time.getTime()+61000);await ai.tick();await ai.tick();
   assert.equal(calls,2);assert.equal((await ai.jobFor(1)).status,'fallback');
@@ -137,8 +133,8 @@ test('unknown billing remains reserved; at most two calls, then automatic fallba
 test('missing prices and long input do not make paid requests; translation has priority',async t=>{
   const ctx=await setup(t);const p=await ctx.insert();let calls=0;
   const opts={fetchImpl:async()=>{calls++;return goodResponse();}};
-  assert.equal(Boolean(configured({...cfg,inputPrice:NaN})),false);
-  const disabled=await ctx.worker({...opts,config:{...cfg,inputPrice:NaN}});await disabled.enqueue(p);await disabled.tick();
+  assert.equal(Boolean(configured({...cfg,apiKey:''})),false);
+  const disabled=await ctx.worker({...opts,config:{...cfg,apiKey:''}});await disabled.enqueue(p);await disabled.tick();
   const busy=await ctx.worker({...opts,isBusy:()=>true});await busy.tick();assert.equal(calls,0);
   const long=await ctx.insert({...sample,id:2,url:'https://x.com/i/status/43',content:body.repeat(80),short_code:'Cd5678'});
   await ctx.store.run("UPDATE posts SET seo_status='noindex' WHERE id=1");
@@ -163,21 +159,19 @@ test('history retains its cohort on daily sweeps while explicit v3 detects repet
   assert.equal((await ctx.store.get('SELECT * FROM posts WHERE id=1')).seo_status,'index','preview does not mutate');
 });
 
-test('monthly budget persists across days and expired prices disable requests',async t=>{
+test('free mode does not stop at month boundaries',async t=>{
   const ctx=await setup(t);let time=new Date('2026-09-28T00:00:00Z'),calls=0;
   const a=await ctx.insert();const b=await ctx.insert({...sample,id:2,url:'https://x.com/i/status/43',short_code:'Cd5678',content:body+' Extra context.'});
-  const ai=await ctx.worker({config:{...cfg,monthly:0.01},now:()=>time,fetchImpl:async()=>{calls++;return goodResponse();}});
+  const ai=await ctx.worker({now:()=>time,modelPolicy:testPolicy(),fetchImpl:async()=>{calls++;return goodResponse();}});
   await ai.enqueue(a);await ai.enqueue(b);await ai.tick();time=new Date('2026-09-29T00:00:00Z');await ai.tick();
-  assert.equal(calls,1);assert.equal((await ai.summary()).month.calls,1);
-  const expired=await ctx.worker({config:{...cfg,priceValidUntil:Date.parse('2020-01-01')},fetchImpl:async()=>{calls++;return goodResponse();}});
-  await expired.tick();assert.equal(calls,1);assert.equal((await expired.summary()).enabled,false);
+  assert.equal(calls,2);assert.equal((await ai.summary()).month.reservedCny,0);
 });
 
 test('auth failures pause all jobs without clearing prior reservations',async t=>{
   const ctx=await setup(t);const p=await ctx.insert();let calls=0;
   const ai=await ctx.worker({fetchImpl:async()=>{calls++;return {ok:false,status:403,headers:new Headers()};}});
   await ai.enqueue(p);await ai.tick();await ai.tick();
-  assert.equal(calls,1);assert.equal((await ai.summary()).paused,true);assert.equal((await ai.summary()).day.calls,1);
+  assert.equal(calls,1);assert.equal((await ai.summary()).paused,true);assert.equal((await ai.summary()).day.calls,1);assert.equal((await ai.summary()).day.reservedCny,0);
 });
 
 test('rollout rollback retains later edits and newer moderation decisions',async t=>{

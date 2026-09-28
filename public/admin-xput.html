@@ -10,8 +10,8 @@
   <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=xput-tray-1">
   <link rel="mask-icon" href="/safari-pinned-tab.svg?v=xput-tray-1" color="#2563eb">
   <link rel="manifest" href="/site.webmanifest?v=xput-tray-1">
-  <link rel="stylesheet" href="/admin.css?v=1.9.8">
-  <script src="/admin.js?v=1.9.8" defer></script>
+  <link rel="stylesheet" href="/admin.css?v=1.9.9">
+  <script src="/admin.js?v=1.9.9" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#archives">跳到存档管理</a>
@@ -33,7 +33,7 @@
     <section class="panel" id="archives" aria-labelledby="archivesHeading">
       <div class="section-heading"><div><h2 id="archivesHeading">存档与搜索收录</h2><p class="muted">管理网站的收录建议，Google 的实际收录结果以 Search Console 为准。</p></div></div>
       <div id="seoSummary" class="stats" aria-label="存档状态概览"></div>
-      <details id="aiBudget" class="budget" hidden><summary><span id="aiState"></span><span id="aiBudgetSummary" class="muted"></span></summary><div id="aiBudgetDetails" class="budget-grid"></div><p class="muted">这里显示请求前预留的额度，不是服务商实际账单。额度不足时自动使用原文标题。</p></details>
+      <details id="aiBudget" class="budget" hidden><summary><span id="aiState"></span><span id="aiBudgetSummary" class="muted"></span></summary><div id="aiBudgetDetails" class="budget-grid"></div><p class="muted">这里显示模型价格核验、调用次数和历史预留。无法确认免费或模型不可用时自动使用原文标题。</p></details>
       <div class="toolbar"><div class="field-inline"><label for="seoFilter">筛选存档</label><select id="seoFilter" onchange="seoPage=1;loadSeo()"><option value="all">全部存档</option><option value="review">等待检查</option><option value="index">允许收录</option><option value="noindex">暂不推荐</option><option value="unchecked">尚未评估</option><option value="failed">评估失败</option></select><span id="seoPending" class="muted"></span></div><button class="secondary" onclick="loadSeo()">刷新列表</button></div>
       <div id="seoRows" class="record-list" aria-live="polite"><p class="empty-state">连接后台后查看存档。</p></div>
       <nav class="pagination" aria-label="存档分页"><button class="secondary" id="seoPrev" onclick="seoPage--;loadSeo()" disabled>上一页</button><span id="seoPage">第 1 页</span><button class="secondary" id="seoNext" onclick="seoPage++;loadSeo()" disabled>下一页</button></nav>
@@ -54,7 +54,7 @@
       <div class="section-heading"><div><h2 id="settingsHeading">审核设置</h2><p class="muted" id="updatedAt">连接后显示最近更新时间。</p></div><span id="enabledState" class="badge neutral">尚未加载</span></div>
       <div class="settings-actions"><span class="muted">控制新提交内容的自动审核。</span><div class="actions"><button class="secondary" id="enableModeration" disabled onclick="toggleModeration(true)">开启审核</button><button class="secondary" id="disableModeration" disabled onclick="toggleModeration(false)">关闭审核</button></div></div>
     </section>
-    <footer class="page-footer">XPut · 内容管理 <span>v1.9.8</span></footer>
+    <footer class="page-footer">XPut · 内容管理 <span>v1.9.9</span></footer>
   </main>
   <dialog id="reviewPanel" aria-labelledby="reviewHeading">
     <div class="dialog-heading"><h2 id="reviewHeading">复核正文</h2><button class="secondary" onclick="document.getElementById('reviewPanel').close()">关闭</button></div>
