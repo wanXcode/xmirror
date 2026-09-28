@@ -311,7 +311,7 @@ function formatVideoBytes(bytes) {
 
 function buildVideoPlayerMarkup(video, postId) {
   return `<div class="video-shell" data-video-post-id="${encodeURIComponent(postId)}">
-    <video controls style="max-width:100%;margin:10px 0;"><source src="${video}" type="video/mp4"></video>
+    <video controls playsinline preload="metadata"><source src="${video}" type="video/mp4"></video>
     <div class="subtitle-toolbar" role="group" aria-label="字幕设置">
       <label for="subtitleSelect">CC 字幕</label>
       <select id="subtitleSelect" class="subtitle-select">
