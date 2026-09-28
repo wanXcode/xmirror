@@ -1,274 +1,67 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>XPut 内容管理</title>
-<link rel="icon" href="/favicon.ico?v=xput-tray-1" sizes="16x16 32x32 48x48">
-<link rel="icon" href="/favicon.svg?v=xput-tray-1" type="image/svg+xml" sizes="any">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=xput-tray-1">
-<link rel="mask-icon" href="/safari-pinned-tab.svg?v=xput-tray-1" color="#2563eb">
-<link rel="manifest" href="/site.webmanifest?v=xput-tray-1">
   <meta name="robots" content="noindex, follow">
-  <style>
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;background:#0f172a;color:#e2e8f0}
-    .wrap{max-width:1100px;margin:0 auto;padding:24px}
-    .card{background:#111827;border:1px solid #334155;border-radius:16px;padding:20px;margin-bottom:16px}
-    h1,h2{margin:0 0 12px}
-    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-    input,button,select,textarea{border-radius:10px;border:1px solid #475569;padding:10px 12px;font-size:14px}
-    input,textarea{background:#0b1220;color:#fff}
-    input{min-width:280px}
-    textarea{width:100%;min-height:90px;resize:vertical}
-    button{background:#2563eb;color:#fff;cursor:pointer}
-    button.secondary{background:#334155}
-    button.ghost{background:#0b1220;border:1px solid #334155}
-    .status-on{color:#22c55e;font-weight:700}.status-off{color:#f59e0b;font-weight:700}
-    .muted{color:#94a3b8;font-size:13px}
-    table{width:100%;border-collapse:collapse;font-size:13px}
-    th,td{border-top:1px solid #334155;padding:10px 8px;text-align:left;vertical-align:top}
-    th{color:#cbd5e1}
-    code{background:#0b1220;padding:2px 6px;border-radius:6px;word-break:break-all}
-    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#1e293b;margin-right:6px;margin-bottom:4px}
-    .ok{color:#22c55e}.reject{color:#f87171}
-    .url{max-width:280px;word-break:break-all}
-    .tools{display:flex;gap:8px;flex-wrap:wrap}
-  </style>
+  <link rel="icon" href="/favicon.ico?v=xput-tray-1" sizes="16x16 32x32 48x48">
+  <link rel="icon" href="/favicon.svg?v=xput-tray-1" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=xput-tray-1">
+  <link rel="mask-icon" href="/safari-pinned-tab.svg?v=xput-tray-1" color="#2563eb">
+  <link rel="manifest" href="/site.webmanifest?v=xput-tray-1">
+  <link rel="stylesheet" href="/admin.css?v=1.9.8">
+  <script src="/admin.js?v=1.9.8" defer></script>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>XPut 内容管理</h1>
-      <div class="row">
-        <input id="token" type="password" placeholder="输入 MODERATION_ADMIN_TOKEN" />
-        <button onclick="saveTokenAndReload()">连接后台</button>
-        <button class="ghost" onclick="toggleTokenVisibility()">显示 / 隐藏 token</button>
-        <button class="ghost" onclick="copyToken()">复制 token</button>
-        <button class="secondary" onclick="clearToken()">清空</button>
-        <button class="secondary" onclick="refreshAll()">刷新</button>
-      </div>
-      <p class="muted">内容审核、存档删除、投诉处理和搜索收录在此统一管理。</p>
-      <div id="flash" class="muted"></div>
-    </div>
-
-    <div class="card">
-      <h2>审核开关</h2>
-      <div class="row">
-        <div>当前状态：<span id="enabledState">-</span></div>
-        <button onclick="toggleModeration(true)">开启审核</button>
-        <button class="secondary" onclick="toggleModeration(false)">关闭审核</button>
-      </div>
-      <p id="updatedAt" class="muted"></p>
-    </div>
-
-    <div class="card">
-      <div class="row" style="justify-content:space-between">
-        <h2>最近审核结果（按文章合并）</h2>
-        <div class="tools">
-          <select id="actionFilter" onchange="loadLogs()">
-            <option value="">全部</option>
-            <option value="review">只看待复核</option>
-            <option value="reject">只看拒绝</option>
-            <option value="allow">只看通过</option>
-          </select>
-          <select id="limit" onchange="loadLogs()">
-            <option value="20">20</option>
-            <option value="50" selected>50</option>
-            <option value="100">100</option>
-          </select>
-        </div>
-      </div>
-      <table>
-        <thead>
-          <tr><th>时间</th><th>动作</th><th>阶段</th><th>作者</th><th>URL</th><th>命中 / 证据</th><th>操作</th></tr>
-        </thead>
-        <tbody id="logsBody"></tbody>
-      </table>
-    </div>
-
-    <div class="card">
-      <h2>存档与搜索收录</h2><p id="seoSummary" class="muted"></p>
-      <p class="muted">自动评估不保证 Google 收录。封禁优先于人工推荐；恢复自动后重新计算。</p>
-      <select id="seoFilter" onchange="seoPage=1;loadSeo()"><option value="all">全部存档</option><option value="unchecked">尚未评估</option><option value="failed">评估失败</option><option value="review">待复核</option><option value="index">可推荐</option><option value="noindex">不推荐</option></select>
-      <button onclick="loadSeo()">刷新收录状态</button>
-      <div id="seoRows"></div><button id="seoPrev" onclick="seoPage--;loadSeo()">上一页</button><span id="seoPage"></span><button id="seoNext" onclick="seoPage++;loadSeo()">下一页</button>
-    </div>
-    <div class="card"><h2>投诉与删除申请</h2>
-      <select id="reportFilter" onchange="reportPage=1;loadReports()"><option value="open">待处理</option><option value="closed">已处理</option></select>
-      <button onclick="loadReports()">刷新申请</button><div id="reportRows"></div>
-      <button id="reportPrev" onclick="reportPage--;loadReports()">上一页</button><span id="reportPage"></span><button id="reportNext" onclick="reportPage++;loadReports()">下一页</button>
-    </div>
-    <div class="card">
-      <h2>选中日志详情</h2>
-      <textarea id="detailBox" readonly placeholder="点上面的某一行，这里会显示完整 URL、分数、命中规则和原始记录。"></textarea>
-    </div>
-  </div>
-  <section class="wrap" id="reviewPanel" hidden>
-    <div class="card"><h2>审核正文</h2><p id="reviewReason"></p>
-    <a id="reviewLink" target="_blank" rel="noopener noreferrer">查看原文和媒体</a>
-    <pre id="reviewText" style="white-space:pre-wrap;max-height:420px;overflow:auto"></pre>
-    <textarea id="reviewNote" maxlength="500" placeholder="填写审核理由（必填）"></textarea>
-    <button onclick="decideReview('allow')">人工通过</button>
-    <button onclick="decideReview('reject')">维持拒绝</button>
-    <button onclick="decideReview('reset')">撤销人工决定</button>
-    </div>
-  </section>
-  <script>
-    const tokenInput = document.getElementById('token');
-    tokenInput.value = localStorage.getItem('xmirror_admin_token') || '';
-    let currentLogs = [];
-
-    function getToken(){ return tokenInput.value.trim(); }
-    function setFlash(msg, isError=false){ const el=document.getElementById('flash'); el.textContent=msg||''; el.style.color=isError?'#fca5a5':'#94a3b8'; }
-    function authHeaders(){ return { 'Content-Type':'application/json', 'x-admin-token': getToken() }; }
-    function saveTokenAndReload(){ localStorage.setItem('xmirror_admin_token', getToken()); refreshAll(); }
-    function clearToken(){ tokenInput.value=''; localStorage.removeItem('xmirror_admin_token'); setFlash('已清空本地 token'); }
-    function toggleTokenVisibility(){ tokenInput.type = tokenInput.type === 'password' ? 'text' : 'password'; }
-    async function copyToken(){ try { await navigator.clipboard.writeText(getToken()); setFlash('token 已复制'); } catch(e){ setFlash('复制失败：' + e.message, true); } }
-    async function api(url, options={}){
-      const res = await fetch(url, { ...options, headers: { ...(options.headers||{}), ...authHeaders() } });
-      const data = await res.json().catch(()=>({ error:'响应解析失败' }));
-      if(!res.ok) throw new Error(data.error || '请求失败');
-      return data;
-    }
-    async function loadSettings(){
-      const data = await api('/api/admin/moderation/settings');
-      const enabled = !!data.settings.enabled;
-      document.getElementById('enabledState').textContent = enabled ? '开启' : '关闭';
-      document.getElementById('enabledState').className = enabled ? 'status-on' : 'status-off';
-      document.getElementById('updatedAt').textContent = '最近更新时间：' + (data.settings.updated_at || '-');
-    }
-    async function toggleModeration(enabled){
-      try {
-        await api('/api/admin/moderation/settings', { method:'POST', body: JSON.stringify({ enabled }) });
-        setFlash('审核开关已更新');
-        await loadSettings();
-      } catch (e) { setFlash(e.message, true); }
-    }
-    function escapeText(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-    function renderMatched(matched=[]){
-      if(!matched.length) return '<span class="muted">-</span>';
-      return matched.map(item => `<span class="pill">${escapeText(item.type)}: ${escapeText(item.value || item.label || '')}${item.score?` (+${escapeText(item.score)})`:''}${item.evidence?` · ${escapeText(item.evidence)}`:''}</span>`).join('');
-    }
-    function showDetails(index){
-      const log = currentLogs[index];
-      if(!log) return;
-      document.getElementById('detailBox').value = JSON.stringify(log, null, 2);
-    }
-    async function loadLogs(){
-      try {
-        const limit = document.getElementById('limit').value;
-        const action = document.getElementById('actionFilter').value;
-        const qs = new URLSearchParams({ limit });
-        if (action) qs.set('action', action);
-        const data = await api('/api/admin/moderation/logs?' + qs.toString());
-        currentLogs = data.logs || [];
-        const rows = currentLogs.map((log, index) => `
-          <tr onclick="showDetails(${index})" style="cursor:pointer">
-            <td>${escapeText(log.ts || '-')}</td>
-            <td class="${log.action === 'reject' ? 'reject' : 'ok'}">${escapeText(({allow:'通过',reject:'拒绝',review:'待复核'})[log.action] || log.action)}<br><small>规则 ${escapeText(log.ruleVersion || '历史版本未知')}</small></td>
-            <td>${escapeText(log.stage || '-')}<br>${escapeText(log.category || '')}</td>
-            <td><code>${escapeText(log.authorHandle || log.handle || '-')}</code></td>
-            <td class="url">${escapeText(log.url || '-')}</td>
-            <td>${renderMatched(log.matched || [])}<br>${escapeText(log.evidence || log.reason || '')}</td>
-            <td><button onclick="event.stopPropagation();recheckLog(${index})">重新审核</button>
-            ${log.reviewId ? `<button onclick="event.stopPropagation();reviewLog(${index})">查看正文并处理</button>` : ''}</td>
-          </tr>
-        `).join('');
-        document.getElementById('logsBody').innerHTML = rows || '<tr><td colspan="7" class="muted">暂无日志</td></tr>';
-        document.getElementById('detailBox').value = currentLogs.length ? JSON.stringify(currentLogs[0], null, 2) : '';
-      } catch (e) { setFlash(e.message, true); }
-    }
-    async function recheckLog(index){
-      try { setFlash('正在获取原文并重新审核…'); await api('/api/admin/moderation/recheck', {method:'POST',body:JSON.stringify({url:currentLogs[index].url})}); await loadLogs(); setFlash('重新审核完成，结果已更新；不会自动创建存档。'); }
-      catch(e){setFlash(e.message,true);}
-    }
-    async function reviewLog(index){
-      try {
-        const {record}=await api('/api/admin/moderation/reviews/'+currentLogs[index].reviewId);
-        document.getElementById('reviewText').textContent=record.payload.content;
-        document.getElementById('reviewReason').textContent=record.reason || '请核对正文和来源。此决定只适用于此正文版本；未审核图片和视频。';
-        document.getElementById('reviewLink').href=record.payload.url;
-        document.getElementById('reviewNote').value='';
-        document.getElementById('reviewPanel').dataset.id=record.id;
-        document.getElementById('reviewPanel').hidden=false;
-      } catch(e){setFlash(e.message,true);}
-    }
-    async function decideReview(action){
-      const panel=document.getElementById('reviewPanel');
-      try { await api('/api/admin/moderation/reviews/'+panel.dataset.id,{method:'POST',body:JSON.stringify({action,note:document.getElementById('reviewNote').value})}); panel.hidden=true; await loadLogs(); setFlash('决定已保存。通过后需重新提交收录，不会自动公开。'); }
-      catch(e){setFlash(e.message,true);}
-    }
-    let seoPage=1, reportPage=1;
-    async function loadSeo(){
-      try {
-        const data = await api('/api/admin/seo?status=' + document.getElementById('seoFilter').value + '&page=' + seoPage);
-        document.getElementById('seoSummary').textContent = data.summary.map(s=>s.status+' '+s.count).join(' · ') + ' · 尚未评估 '+(data.pending.unchecked||0)+' · 失败 '+(data.pending.failed||0);
-        document.getElementById('seoPrev').disabled = seoPage<=1;
-        document.getElementById('seoNext').disabled = !data.hasMore;
-        document.getElementById('seoPage').textContent = ' 第 '+seoPage+' 页 ';
-        const root = document.getElementById('seoRows'); root.replaceChildren();
-        for(const post of data.posts){
-          const row = document.createElement('p');
-          const label = document.createElement('span');
-          label.textContent = `${post.id} · ${post.short_code} · ${post.seo_status} · ${post.seo_score} 分 · ${post.seo_reason} `;
-          row.appendChild(label);
-          const link=document.createElement('a');link.href='/'+post.short_code;link.target='_blank';link.rel='noopener';link.textContent=post.title;row.appendChild(link);
-          for(const [text, override, blocked] of [['自动', null, undefined], ['推荐', 'index', undefined], ['不推荐', 'noindex', undefined], ['封禁', null, true], ['解除封禁', null, false]]){
-            const button = document.createElement('button'); button.textContent = text;
-            button.onclick = async () => {
-              button.disabled = true;
-              try { await api('/api/admin/seo/' + post.id, { method:'POST', body:JSON.stringify({override, blocked}) }); await loadSeo(); }
-              catch(e){ setFlash(e.message, true); } finally { button.disabled = false; }
-            };
-            row.appendChild(button);
-          }
-          const remove=document.createElement('button');remove.textContent='删除存档';remove.onclick=()=>deleteArchive(post.id);row.appendChild(remove);
-          root.appendChild(row);
-        }
-        if(!data.posts.length) root.textContent = '暂无记录';
-      } catch(e){ setFlash(e.message, true); }
-    }
-    async function deleteArchive(id,reportId){
-      if(!confirm('删除后公开链接将返回 404，且媒体文件会移除。确定删除这条存档？'))return;
-      try {
-        await api('/api/delete',{method:'POST',body:JSON.stringify({id})});
-        if(reportId)await api('/api/admin/reports/'+reportId,{method:'POST',body:JSON.stringify({action:'close'})});
-        await Promise.all([loadSeo(),loadReports()]);setFlash('存档已删除');
-      }catch(e){setFlash(e.message,true);}
-    }
-    async function loadReports(){
-      try{
-        const data=await api('/api/admin/reports?status='+document.getElementById('reportFilter').value+'&page='+reportPage);
-        const root=document.getElementById('reportRows');root.replaceChildren();
-        document.getElementById('reportPrev').disabled=reportPage<=1;
-        document.getElementById('reportNext').disabled=!data.hasMore;
-        document.getElementById('reportPage').textContent=' 第 '+reportPage+' 页 ';
-        for(const report of data.reports){
-          const row=document.createElement('section');row.style.cssText='padding:16px 0;border-bottom:1px solid #334155;overflow-wrap:anywhere';
-          const info=document.createElement('p');info.textContent='#'+report.id+' · '+report.kind+' · '+report.created_at+' · '+(report.contact||'未留联系方式');
-          const link=document.createElement('a');link.href='/'+report.short_code;link.target='_blank';link.rel='noopener';link.textContent=report.short_code;
-          const reason=document.createElement('p');reason.textContent=report.reason;reason.style.whiteSpace='pre-wrap';
-          row.append(info,link,reason);
-          for(const [label,action] of [['禁止搜索收录并结案','block'],['已处理／无需操作，结案','close']]){
-            const b=document.createElement('button');b.textContent=label;b.onclick=async()=>{b.disabled=true;try{await api('/api/admin/reports/'+report.id,{method:'POST',body:JSON.stringify({action})});await Promise.all([loadReports(),loadSeo()]);}catch(e){setFlash(e.message,true);}finally{b.disabled=false;}};row.append(b);
-          }
-          const remove=document.createElement('button');remove.textContent='删除存档并结案';remove.onclick=()=>deleteArchive(report.post_id,report.id);row.append(remove);root.append(row);
-        }
-        if(!data.reports.length)root.textContent='暂无申请';
-      }catch(e){setFlash(e.message,true);}
-    }
-    async function refreshAll(){
-      localStorage.setItem('xmirror_admin_token', getToken());
-      try {
-        await loadSettings();
-        await loadLogs();
-        await loadSeo();
-        await loadReports();
-        setFlash('后台已连接');
-      } catch (e) { setFlash(e.message, true); }
-    }
-    refreshAll();
-  </script>
+  <a class="skip-link" href="#archives">跳到存档管理</a>
+  <main class="wrap">
+    <header class="page-header">
+      <div><a class="brand" href="/">XPut <span>／ 管理后台</span></a><h1>内容管理</h1><p class="muted">查看存档状态，处理投诉与内容审核。</p></div>
+      <div class="header-actions"><span id="connectionState" class="badge neutral">未连接</span><button class="secondary" id="refreshAllButton" onclick="refreshAll()">刷新全部</button></div>
+    </header>
+    <details class="connection panel" id="connectionPanel" open>
+      <summary>后台连接<span class="muted">管理凭证仅保存在当前浏览器</span></summary>
+      <form onsubmit="event.preventDefault();saveTokenAndReload()">
+        <label for="token">管理凭证</label>
+        <div class="connection-controls"><input id="token" type="password" autocomplete="off" placeholder="输入管理凭证"><button type="submit">连接后台</button></div>
+        <div class="sub-actions"><button type="button" class="text-button" onclick="toggleTokenVisibility()" id="showTokenButton">显示凭证</button><button type="button" class="text-button" onclick="copyToken()">复制凭证</button><button type="button" class="text-button" onclick="clearToken()">清空并断开</button></div>
+      </form>
+    </details>
+    <nav class="section-nav" aria-label="管理功能"><a href="#archives">存档与搜索</a><a href="#reports">投诉申请</a><a href="#moderation">内容审核</a><a href="#settings">审核设置</a></nav>
+    <div id="flash" class="notice" role="status" aria-live="polite" hidden></div>
+    <section class="panel" id="archives" aria-labelledby="archivesHeading">
+      <div class="section-heading"><div><h2 id="archivesHeading">存档与搜索收录</h2><p class="muted">管理网站的收录建议，Google 的实际收录结果以 Search Console 为准。</p></div></div>
+      <div id="seoSummary" class="stats" aria-label="存档状态概览"></div>
+      <details id="aiBudget" class="budget" hidden><summary><span id="aiState"></span><span id="aiBudgetSummary" class="muted"></span></summary><div id="aiBudgetDetails" class="budget-grid"></div><p class="muted">这里显示请求前预留的额度，不是服务商实际账单。额度不足时自动使用原文标题。</p></details>
+      <div class="toolbar"><div class="field-inline"><label for="seoFilter">筛选存档</label><select id="seoFilter" onchange="seoPage=1;loadSeo()"><option value="all">全部存档</option><option value="review">等待检查</option><option value="index">允许收录</option><option value="noindex">暂不推荐</option><option value="unchecked">尚未评估</option><option value="failed">评估失败</option></select><span id="seoPending" class="muted"></span></div><button class="secondary" onclick="loadSeo()">刷新列表</button></div>
+      <div id="seoRows" class="record-list" aria-live="polite"><p class="empty-state">连接后台后查看存档。</p></div>
+      <nav class="pagination" aria-label="存档分页"><button class="secondary" id="seoPrev" onclick="seoPage--;loadSeo()" disabled>上一页</button><span id="seoPage">第 1 页</span><button class="secondary" id="seoNext" onclick="seoPage++;loadSeo()" disabled>下一页</button></nav>
+    </section>
+    <section class="panel" id="reports" aria-labelledby="reportsHeading">
+      <div class="section-heading"><div><h2 id="reportsHeading">投诉与删除申请</h2><p class="muted">先核对申请与原文，再选择结案、限制收录或删除存档。</p></div><span id="reportSummary" class="badge neutral">尚未加载</span></div>
+      <div class="toolbar"><div class="field-inline"><label for="reportFilter">申请状态</label><select id="reportFilter" onchange="reportPage=1;loadReports()"><option value="open">待处理</option><option value="closed">已结案</option></select></div><button class="secondary" onclick="loadReports()">刷新申请</button></div>
+      <div id="reportRows" class="record-list" aria-live="polite"><p class="empty-state">连接后台后查看申请。</p></div>
+      <nav class="pagination" aria-label="申请分页"><button class="secondary" id="reportPrev" onclick="reportPage--;loadReports()" disabled>上一页</button><span id="reportPage">第 1 页</span><button class="secondary" id="reportNext" onclick="reportPage++;loadReports()" disabled>下一页</button></nav>
+    </section>
+    <section class="panel" id="moderation" aria-labelledby="moderationHeading">
+      <div class="section-heading"><div><h2 id="moderationHeading">最近审核结果</h2><p class="muted">同一篇内容合并展示，待复核内容可查看正文后处理。</p></div></div>
+      <div class="toolbar"><div class="field-inline"><label for="actionFilter">审核状态</label><select id="actionFilter" onchange="loadLogs()"><option value="">全部状态</option><option value="review">等待复核</option><option value="reject">拒绝发布</option><option value="allow">允许发布</option></select><label for="limit">显示条数</label><select id="limit" onchange="loadLogs()"><option value="20">20 条</option><option value="50" selected>50 条</option><option value="100">100 条</option></select></div><button class="secondary" onclick="loadLogs()">刷新审核</button></div>
+      <div id="logsBody" class="record-list" aria-live="polite"><p class="empty-state">连接后台后查看审核结果。</p></div>
+      <details id="logDetails" class="diagnostics" hidden><summary>日志技术详情</summary><label class="sr-only" for="detailBox">原始日志</label><textarea id="detailBox" readonly spellcheck="false"></textarea></details>
+    </section>
+    <section class="panel" id="settings" aria-labelledby="settingsHeading">
+      <div class="section-heading"><div><h2 id="settingsHeading">审核设置</h2><p class="muted" id="updatedAt">连接后显示最近更新时间。</p></div><span id="enabledState" class="badge neutral">尚未加载</span></div>
+      <div class="settings-actions"><span class="muted">控制新提交内容的自动审核。</span><div class="actions"><button class="secondary" id="enableModeration" disabled onclick="toggleModeration(true)">开启审核</button><button class="secondary" id="disableModeration" disabled onclick="toggleModeration(false)">关闭审核</button></div></div>
+    </section>
+    <footer class="page-footer">XPut · 内容管理 <span>v1.9.8</span></footer>
+  </main>
+  <dialog id="reviewPanel" aria-labelledby="reviewHeading">
+    <div class="dialog-heading"><h2 id="reviewHeading">复核正文</h2><button class="secondary" onclick="document.getElementById('reviewPanel').close()">关闭</button></div>
+    <p class="muted" id="reviewReason"></p><a id="reviewLink" target="_blank" rel="noopener noreferrer">查看原文和媒体 ↗</a>
+    <pre id="reviewText"></pre><label for="reviewNote">审核理由 <span class="muted">必填，最多 500 字</span></label><textarea id="reviewNote" maxlength="500" placeholder="说明判断依据"></textarea>
+    <p id="reviewError" class="reason-line error" role="alert" hidden></p>
+    <div class="actions dialog-actions"><button onclick="decideReview('allow')">允许发布</button><button class="danger" onclick="decideReview('reject')">拒绝发布</button><button class="secondary" onclick="decideReview('reset')">撤销人工决定</button></div>
+  </dialog>
 </body>
 </html>

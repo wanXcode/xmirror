@@ -59,6 +59,16 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   assert.match(searchPage, /content="noindex, follow"/);
   const authorSearch = await (await fetch(base+'/browse?q=bob_builder')).text();
   assert.match(authorSearch, /href="\/Cd3456"/);
+  const get=(sql,args=[])=>new Promise((resolve,reject)=>db.get(sql,args,(e,row)=>e?reject(e):resolve(row)));
+  const generatedPost=await get('SELECT * FROM posts WHERE id=2');
+  const generatedHash=require('../lib/seo-title').fingerprint(generatedPost);
+  await run(db,'UPDATE posts SET seo_title=?,seo_description=?,seo_title_hash=? WHERE id=2',['Needle archive guide','An archived guide.',generatedHash]);
+  for(const route of ['/Cd3456','/browse','/']) {
+    const html=await(await fetch(base+route)).text();assert.match(html,/Needle archive guide/);
+    if(route==='/Cd3456')assert.equal((html.match(/<h1\b/g)||[]).length,1);
+  }
+  const apiPosts=await(await fetch(base+'/api/posts')).json();
+  assert.equal(apiPosts.posts.find(p=>p.id===2).title,'Needle archive guide');
   const escapedSearch = await (await fetch(base+'/browse?q=%3Cscript%3E')).text();
   assert.match(escapedSearch, /value="&lt;script&gt;"/);
   assert.doesNotMatch(escapedSearch, /value="<script>"/);
@@ -78,14 +88,23 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   assert.equal((await fetch(base+'/api/admin/reports')).status,403);
   const reportList=await (await fetch(base+'/api/admin/reports',{headers:{'x-admin-token':'test-only-token'}})).json();
   assert.equal(reportList.reports[0].id,reportId);
+  assert.equal(reportList.reports[0].post_exists,true);
+  assert.ok(reportList.reports[0].title);
+  assert.equal(reportList.summary.open,1);
+  assert.equal((await fetch(base+'/api/admin/reports?page=1.5',{headers:{'x-admin-token':'test-only-token'}})).status,400);
   const closed=await fetch(base+'/api/admin/reports/'+reportId,{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':'test-only-token'},body:JSON.stringify({action:'block'})});
   assert.equal(closed.status,200);
+  const closedAgain=await fetch(base+'/api/admin/reports/'+reportId,{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':'test-only-token'},body:JSON.stringify({action:'block'})});
+  assert.equal(closedAgain.status,409,'a stale closed report cannot mutate the archive');
   assert.equal((await fetch(base+'/report')).status,200);
   const home=await (await fetch(base+'/')).text();
   assert.match(home,/href="\/help"/);assert.match(home,/og:image/);assert.match(home,/href="\/report"/);
   assert.match(await (await fetch(base+'/Ab1234')).text(),/SocialMediaPosting/);
   assert.match((await fetch(base+'/Ab1234/referer',{redirect:'manual'})).headers.get('x-robots-tag'),/noindex/);
   await run(db,'DELETE FROM posts WHERE id IN (1,2)');
+  const historicalReports=await (await fetch(base+'/api/admin/reports?status=closed',{headers:{'x-admin-token':'test-only-token'}})).json();
+  assert.equal(historicalReports.reports[0].post_exists,false);
+  assert.equal(historicalReports.reports[0].contact,'person@example.com','deleted archives do not erase report evidence');
   fs.writeFileSync(path.join(dir,'archives','post_123.html'),'stale indexable html');
   assert.equal((await fetch(base+'/Ab1234')).status,404);
   assert.equal((await fetch(base+'/archives/post_123.html')).status,404);
