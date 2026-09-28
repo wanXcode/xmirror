@@ -51,6 +51,17 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   page = await (await fetch(base+'/Ab1234')).text();assert.match(page,/content="index, follow"/);
   assert.match(await (await fetch(base+'/sitemap.xml')).text(), /\/Ab1234/);
   assert.match(await (await fetch(base+'/browse')).text(), /\/Ab1234/);
+  await run(db, 'INSERT INTO posts(id,url,short_code,content,images,author,author_handle,tweet_time,html_file,seo_status,seo_blocked) VALUES(?,?,?,?,?,?,?,?,?,?,?)', [2,'https://x.com/i/status/456','Cd3456','<h1>Needle guide</h1><p>Searchable archive</p>','[]','Bob Builder','bob_builder','2026-09-26T02:00:00Z','post_456.html','index',0]);
+  const searchPage = await (await fetch(base+'/browse?q=needle')).text();
+  assert.match(searchPage, /href="\/Cd3456"/);
+  assert.doesNotMatch(searchPage, /href="\/Ab1234"/);
+  assert.match(searchPage, /value="needle"/);
+  assert.match(searchPage, /content="noindex, follow"/);
+  const authorSearch = await (await fetch(base+'/browse?q=bob_builder')).text();
+  assert.match(authorSearch, /href="\/Cd3456"/);
+  const escapedSearch = await (await fetch(base+'/browse?q=%3Cscript%3E')).text();
+  assert.match(escapedSearch, /value="&lt;script&gt;"/);
+  assert.doesNotMatch(escapedSearch, /value="<script>"/);
   const legacy=await fetch(base+'/archives/post_123.html',{redirect:'manual'});
   assert.equal(legacy.status,301);assert.equal(legacy.headers.get('location'),'/Ab1234');
   await run(db,'INSERT INTO post_aliases(alias_code,target_post_id) VALUES(?,?)',['Cd5678',1]);
@@ -74,7 +85,7 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   assert.match(home,/href="\/help"/);assert.match(home,/og:image/);assert.match(home,/href="\/report"/);
   assert.match(await (await fetch(base+'/Ab1234')).text(),/SocialMediaPosting/);
   assert.match((await fetch(base+'/Ab1234/referer',{redirect:'manual'})).headers.get('x-robots-tag'),/noindex/);
-  await run(db,'DELETE FROM posts WHERE id=1');
+  await run(db,'DELETE FROM posts WHERE id IN (1,2)');
   fs.writeFileSync(path.join(dir,'archives','post_123.html'),'stale indexable html');
   assert.equal((await fetch(base+'/Ab1234')).status,404);
   assert.equal((await fetch(base+'/archives/post_123.html')).status,404);
