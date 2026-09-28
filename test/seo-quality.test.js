@@ -86,6 +86,7 @@ test('titles preserve source and generated H1 without changing original body or 
   for(const value of [{...output,title:'Docker guide 2027'},{...output,title:'<script>x</script>'},{...output,title:'Ultimate Docker guide'},
     {...output,keywords:['unrelated']},{...output,evidence:['Invented evidence sentence.']}]) assert.equal(title.validateGenerated(value,title.text(body)),null);
   assert.equal(title.validateGenerated({...output,title:'Docker supports network access'},'Docker does not support network access.'),null);
+  assert.equal(title.validateGenerated({title:'Docker does not support network access.',description:'Docker supports network access.',keywords:['Docker'],evidence:['Docker does not support network access.']},'Docker does not support network access.'),null);
 });
 
 test('AI generation is cached, shared across page surfaces, and never charges on enqueue or reread',async t=>{
