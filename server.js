@@ -1019,7 +1019,7 @@ ${post.related?.length ? `<section class="related-posts"><h2>同一作者的其�
 
 function buildVideoPlayerHtml(post) {
   return `<div class="video-shell" data-video-post-id="${post.id}">
-    <video controls preload="metadata" aria-label="${escapeHtml(seo.metadata(post).title)}" style="max-width:100%;margin:10px 0;"><source src="${escapeHtml(post.video)}" type="video/mp4"></video>
+    <video controls playsinline preload="metadata" aria-label="${escapeHtml(seo.metadata(post).title)}"><source src="${escapeHtml(post.video)}" type="video/mp4"></video>
     <div class="subtitle-toolbar" role="group" aria-label="字幕设置">
       <label for="subtitleSelect">CC 字幕</label>
       <select id="subtitleSelect" class="subtitle-select">
