@@ -196,14 +196,16 @@
     }
     async function decideReview(action){
       const panel=document.getElementById('reviewPanel');
-      try { await api('/api/admin/moderation/reviews/'+panel.dataset.id,{method:'POST',body:JSON.stringify({action,note:document.getElementById('reviewNote').value})}); panel.hidden=true; await loadLogs(); setFlash('决定已保存。通过后需重新提交收录，不会自动公开。'); }
+      try { const result=await api('/api/admin/moderation/reviews/'+panel.dataset.id,{method:'POST',body:JSON.stringify({action,note:document.getElementById('reviewNote').value})}); panel.hidden=true; await loadLogs(); await loadSeo(); setFlash(result.pending?'决定已保存，搜索状态待同步，后台将自动重试。':'决定已保存，已有存档的搜索状态已同步；尚未存档的内容仍需提交保存。'); }
       catch(e){setFlash(e.message,true);}
     }
     let seoPage=1, reportPage=1;
+    const seoNames={index:'允许搜索引擎收录',review:'等待检查',noindex:'暂不推荐收录'};
+    const reasonNames={repeated_content:'重复正文较多',repetitive_special_format:'特殊格式存在重复',moderation_unknown:'等待有效审核',moderation_reject:'内容审核拒绝',admin_block:'管理员封禁',duplicate:'重复存档',short_text:'正文较短',empty_text:'正文为空',incomplete_metadata:'作者或时间缺失',essential_media_pending:'媒体尚未就绪',manual_index:'人工推荐',manual_noindex:'人工撤回',insufficient_quality_signals:'有效信息不足',automatic_indexing_paused:'自动推荐已暂停',substantial_text:'正文充足',informative_text:'有一定正文',source_heading:'原文标题',preserved_media:'已保存媒体',complete_metadata:'来源信息完整',readable_structure:'有段落结构',invalid_source_or_short_code:'来源或短码无效'};
     async function loadSeo(){
       try {
         const data = await api('/api/admin/seo?status=' + document.getElementById('seoFilter').value + '&page=' + seoPage);
-        document.getElementById('seoSummary').textContent = data.summary.map(s=>s.status+' '+s.count).join(' · ') + ' · 尚未评估 '+(data.pending.unchecked||0)+' · 失败 '+(data.pending.failed||0);
+        document.getElementById('seoSummary').textContent = data.summary.map(s=>(seoNames[s.status]||s.status)+' '+s.count).join(' · ') + ' · 尚未评估 '+(data.pending.unchecked||0)+' · 失败 '+(data.pending.failed||0) + (data.ai ? ` · AI ${data.ai.enabled&&!data.ai.paused?'启用':'使用原文兜底'} · 今日已预留 ¥${data.ai.day.reservedCny.toFixed(4)} / ${data.ai.dailyLimit} · 本月 ¥${data.ai.month.reservedCny.toFixed(4)} / ${data.ai.monthlyLimit}` : '') + '（允许收录不代表 Google 已收录）';
         document.getElementById('seoPrev').disabled = seoPage<=1;
         document.getElementById('seoNext').disabled = !data.hasMore;
         document.getElementById('seoPage').textContent = ' 第 '+seoPage+' 页 ';
@@ -211,7 +213,8 @@
         for(const post of data.posts){
           const row = document.createElement('p');
           const label = document.createElement('span');
-          label.textContent = `${post.id} · ${post.short_code} · ${post.seo_status} · ${post.seo_score} 分 · ${post.seo_reason} `;
+          const reasons=JSON.parse(post.seo_reason||'[]').map(r=>reasonNames[r]||r).join('、');
+          label.textContent = `${post.id} · ${post.short_code} · 内容审核：${({allow:'允许发布',reject:'拒绝发布',review:'等待审核',unknown:'等待审核'})[post.seo_moderation]||'尚未评估'} · ${seoNames[post.seo_status]||post.seo_status} · ${reasons} · 标题：${({ai:'AI生成',original:'原文标题',extracted:'自动提取'})[post.titleSource]}${post.titleJob?.error?'（已自动兜底）':''} `;
           row.appendChild(label);
           const link=document.createElement('a');link.href='/'+post.short_code;link.target='_blank';link.rel='noopener';link.textContent=post.title;row.appendChild(link);
           for(const [text, override, blocked] of [['自动', null, undefined], ['推荐', 'index', undefined], ['不推荐', 'noindex', undefined], ['封禁', null, true], ['解除封禁', null, false]]){

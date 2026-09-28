@@ -133,8 +133,11 @@ const db = new sqlite3.Database(
 );
 
 db.configure('busyTimeout', 10000);
-const seoStore = createSeoStore(db, { dataDir: DATA_DIR, moderator: seoModerator, autoIndex: process.env.SEO_AUTO_INDEX !== 'false' });
-registerSeoRoutes(app, { store: seoStore, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
+const seoReviewService = createReviewService({ moderator: seoModerator, dataDir: DATA_DIR, logPath: MODERATION_LOG_PATH });
+const seoStore = createSeoStore(db, { dataDir: DATA_DIR, moderator: seoModerator, reviewService: seoReviewService, autoIndex: process.env.SEO_AUTO_INDEX !== 'false' });
+const seoAI = require('./lib/seo-ai').createSeoAI({ store: seoStore, dataDir: DATA_DIR, isBusy: () => activeTranslationJobs > 0 });
+seoStore.onEvaluated(post => seoAI.enqueue(post));
+registerSeoRoutes(app, { store: seoStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 registerReportRoutes(app, { store: seoStore, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 app.use(express.static(PUBLIC_DIR, {
   setHeaders(res, filePath) {
@@ -1651,6 +1654,7 @@ async function archiveXUrl(url) {
   }
 
   const result = stmt.lastID;
+  await seoStore.run('UPDATE posts SET seo_quality_version=?,seo_ai_enabled=1 WHERE id=?', [process.env.SEO_QUALITY_VERSION === '2' ? '2' : '3', result]);
   await refreshSeo(result);
   const htmlContent = generateMirrorHtml(await getPostById(result));
   fs.writeFileSync(path.join(ARCHIVES_DIR, htmlFile), htmlContent, 'utf8');
@@ -1714,6 +1718,7 @@ app.get('/api/posts', (req, res) => {
       const hasMore = (r || []).length > limit;
       const pageRows = (r || []).slice(0, limit).map(post => ({
         ...post,
+        title: seo.metadata(post).title,
         short_url: post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`
       }));
 
@@ -1767,10 +1772,10 @@ app.get('/api/admin/moderation/reviews/:id', requireAdmin, (req, res) => {
   if (!record) return res.status(404).json({ error: '没有可复核的正文，请先重新审核' });
   return res.json({ success: true, record });
 });
-app.post('/api/admin/moderation/reviews/:id', requireAdmin, (req, res) => {
+app.post('/api/admin/moderation/reviews/:id', requireAdmin, async (req, res) => {
   try {
-    const record = reviewService.decide(req.params.id, req.body?.action, req.body?.note);
-    return res.json({ success: true, action: record.action });
+    const result = await seoStore.decideReview(req.params.id, req.body?.action, req.body?.note);
+    return res.json({ success: true, ...result });
   } catch (e) { return res.status(400).json({ error: e.message }); }
 });
 
@@ -1902,6 +1907,7 @@ async function startServer() {
     await ensureShortCodeReady();
     await ensureVideoColumnsReady();
     await seoStore.migrate();
+    await seoAI.migrate();
     await migrateReports(seoStore);
     let hashBatch;
     let hashCursor = 0;
@@ -1918,6 +1924,7 @@ async function startServer() {
     const maintainSeo = () => seoStore.sweep(20).catch(e => console.error('SEO maintenance:', e.message));
     maintainSeo();
     setInterval(maintainSeo, 60000).unref();
+    setInterval(() => seoAI.tick().catch(() => console.error('SEO title worker failed')), 5000).unref();
     queuePendingVideoDownloads();
     queuePendingSubtitleJobs();
     queuePendingTranslationJobs();

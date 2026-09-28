@@ -1,0 +1,10 @@
+{
+  "version": "3",
+  "minUnits": 40,
+  "mediumTextUnits": 80,
+  "longTextUnits": 160,
+  "indexScore": 70,
+  "reviewScore": 40,
+  "maxRepeatedFraction": 0.6,
+  "minRepeatedUnits": 40
+}

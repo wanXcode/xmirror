@@ -17,7 +17,7 @@ test('CLI preview leaves pre-migration database unchanged and apply matches its 
  const env={...process.env,SQLITE_PATH:file,DATA_DIR:dir,SEO_AUTO_INDEX:'true'};
  const invoke=args=>execFileSync(process.execPath,['ops/evaluate-seo.js',...args],{cwd:root,env,encoding:'utf8'}).trim().split('\n').map(JSON.parse);
  const preview=invoke([]);assert.deepEqual(fs.readFileSync(file),before);
- assert.deepEqual(preview.slice(0,2).map(x=>x.status),['index','noindex']);
+ assert.deepEqual(preview.slice(0,2).map(x=>x.status),['review','noindex']);
  const applied=invoke(['--apply']);assert.deepEqual(applied.slice(0,2).map(x=>x.status),preview.slice(0,2).map(x=>x.status));
  const second=invoke(['--after-id=1']);assert.equal(second[0].status,'noindex');
  assert.equal(fs.existsSync(path.join(dir,'moderation.log.jsonl')),false);

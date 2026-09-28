@@ -59,6 +59,16 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   assert.match(searchPage, /content="noindex, follow"/);
   const authorSearch = await (await fetch(base+'/browse?q=bob_builder')).text();
   assert.match(authorSearch, /href="\/Cd3456"/);
+  const get=(sql,args=[])=>new Promise((resolve,reject)=>db.get(sql,args,(e,row)=>e?reject(e):resolve(row)));
+  const generatedPost=await get('SELECT * FROM posts WHERE id=2');
+  const generatedHash=require('../lib/seo-title').fingerprint(generatedPost);
+  await run(db,'UPDATE posts SET seo_title=?,seo_description=?,seo_title_hash=? WHERE id=2',['Needle archive guide','An archived guide.',generatedHash]);
+  for(const route of ['/Cd3456','/browse','/']) {
+    const html=await(await fetch(base+route)).text();assert.match(html,/Needle archive guide/);
+    if(route==='/Cd3456')assert.equal((html.match(/<h1\b/g)||[]).length,1);
+  }
+  const apiPosts=await(await fetch(base+'/api/posts')).json();
+  assert.equal(apiPosts.posts.find(p=>p.id===2).title,'Needle archive guide');
   const escapedSearch = await (await fetch(base+'/browse?q=%3Cscript%3E')).text();
   assert.match(escapedSearch, /value="&lt;script&gt;"/);
   assert.doesNotMatch(escapedSearch, /value="<script>"/);
