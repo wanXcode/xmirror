@@ -46,10 +46,10 @@ const {
 } = require('./lib/x-post');
 const { normalizePublicBaseUrl, buildPublicUrl } = require('./lib/public-url');
 const { createAdminGuard } = require('./lib/admin-auth');
-const { ArchiveError, normalizeArchiveUrl, archiveErrorResponse, readSourceResponse, archiveSuccessResponse } = require('./lib/archive-response');
+const { ArchiveError, normalizeArchiveUrl, archiveErrorResponse, archiveSuccessResponse } = require('./lib/archive-response');
 const { registerHealthRoute } = require('./lib/health');
 const { createFetcher } = require('./lib/fetchers');
-const { resolveUrl } = require('./lib/resolve');
+const { resolveUrl, isSensitiveTweet } = require('./lib/resolve');
 const {
   deleteMediaAsset,
   deleteMediaAssetBestEffort
@@ -210,7 +210,9 @@ async function ensureVideoColumnsReady() {
     ['video_filename', 'TEXT'],
     ['video_bytes', 'INTEGER DEFAULT 0'],
     ['video_total_bytes', 'INTEGER DEFAULT 0'],
-    ['video_error', 'TEXT']
+    ['video_error', 'TEXT'],
+    ['video_is_gif', 'INTEGER DEFAULT 0'],
+    ['extra_videos', 'TEXT']
   ];
   for (const [name, definition] of definitions) {
     if (!columns.some(column => column.name === name)) {
@@ -345,33 +347,6 @@ function extractTweetId(url) {
   return extractXPostId(url);
 }
 
-async function fetchFromFxTwitter(tweetId) {
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'api.fxtwitter.com',
-      path: `/status/${tweetId}`,
-      method: 'GET',
-      headers: { 'User-Agent': 'Mozilla/5.0' }
-    };
-    const req = https.request(options, (res) => {
-      let data = [];
-      res.on('error', reject);
-      res.on('aborted', () => reject(new ArchiveError('NETWORK_ERROR')));
-      res.on('data', chunk => data.push(chunk));
-      res.on('end', () => {
-        try {
-          const buffer = Buffer.concat(data);
-          const json = JSON.parse(buffer.toString('utf8'));
-          resolve(readSourceResponse(res.statusCode, json));
-        } catch (e) { reject(e); }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(15000, () => req.destroy(new ArchiveError('REQUEST_TIMEOUT')));
-    req.end();
-  });
-}
-
 async function downloadImage(url, filename) {
   return new Promise((resolve, reject) => {
     const filePath = path.join(__dirname, 'data', 'images', filename);
@@ -468,29 +443,58 @@ function downloadVideoWithProgress(url, filename, onProgress) {
   });
 }
 
+async function updateExtraVideo(postId, filename, fields) {
+  const post = await getPostById(postId);
+  let extras;
+  try { extras = JSON.parse(post?.extra_videos || '[]'); } catch { extras = []; }
+  const item = extras.find(entry => entry.filename === filename);
+  if (!item) return;
+  Object.assign(item, fields);
+  await runDbWrite('UPDATE posts SET extra_videos=? WHERE id=?', [JSON.stringify(extras), postId]);
+}
+
+async function downloadExtraVideos(postId) {
+  const post = await getPostById(postId);
+  let extras;
+  try { extras = JSON.parse(post?.extra_videos || '[]'); } catch { extras = []; }
+  for (const item of extras.filter(entry => entry.status === 'queued')) {
+    try {
+      const result = await downloadVideoWithProgress(item.source_url, item.filename, () => {});
+      await updateExtraVideo(postId, item.filename, { status: 'completed', path: result.path });
+    } catch (err) {
+      console.error(`附加视频下载失败: ${err.message}`);
+      await updateExtraVideo(postId, item.filename, { status: 'failed' });
+    }
+  }
+}
+
 async function processVideoJob(job) {
-  const { postId, url, filename } = job;
+  const { postId, url, filename, extrasOnly } = job;
   let lastReportedAt = 0;
   try {
-    await updateVideoRow(postId, { video_status: 'downloading', video_error: null });
-    const result = await downloadVideoWithProgress(url, filename, async (bytes, total) => {
-      const now = Date.now();
-      if (bytes !== total && now - lastReportedAt < 500) return;
-      lastReportedAt = now;
-      await updateVideoRow(postId, { video_bytes: bytes, video_total_bytes: total });
-    });
-    await updateVideoRow(postId, {
-      video: result.path,
-      video_status: 'completed',
-      video_bytes: result.bytes,
-      video_total_bytes: result.total || result.bytes,
-      video_error: null
-    });
-    console.log(`视频下载成功: ${result.path}`);
+    if (!extrasOnly) {
+      await updateVideoRow(postId, { video_status: 'downloading', video_error: null });
+      const result = await downloadVideoWithProgress(url, filename, async (bytes, total) => {
+        const now = Date.now();
+        if (bytes !== total && now - lastReportedAt < 500) return;
+        lastReportedAt = now;
+        await updateVideoRow(postId, { video_bytes: bytes, video_total_bytes: total });
+      });
+      await updateVideoRow(postId, {
+        video: result.path,
+        video_status: 'completed',
+        video_bytes: result.bytes,
+        video_total_bytes: result.total || result.bytes,
+        video_error: null
+      });
+      console.log(`视频下载成功: ${result.path}`);
+    }
   } catch (err) {
     console.error(`视频下载失败: ${err.message}`);
     await updateVideoRow(postId, { video_status: 'failed', video_error: err.message || '视频下载失败' });
+    return;
   }
+  await downloadExtraVideos(postId).catch(err => console.error('附加视频任务失败:', err.message));
 }
 
 function pumpVideoQueue() {
@@ -507,10 +511,10 @@ function pumpVideoQueue() {
   }
 }
 
-function queueVideoDownload({ postId, url, filename }) {
+function queueVideoDownload({ postId, url, filename, extrasOnly = false }) {
   if (!postId || !url || !filename || videoJobs.has(postId)) return false;
   videoJobs.add(postId);
-  videoQueue.push({ postId, url, filename });
+  videoQueue.push({ postId, url, filename, extrasOnly });
   pumpVideoQueue();
   return true;
 }
@@ -528,6 +532,18 @@ function queuePendingVideoDownloads() {
       }
     }
   );
+  // Primary video finished but the extra videos were interrupted by a restart.
+  db.all(
+    `SELECT id, video_source_url, video_filename FROM posts
+     WHERE video_status='completed' AND extra_videos LIKE '%"status":"queued"%'`,
+    [],
+    (err, rows) => {
+      if (err) return console.error('恢复附加视频任务失败:', err.message);
+      for (const row of rows || []) {
+        queueVideoDownload({ postId: row.id, url: row.video_source_url || 'extras', filename: row.video_filename || 'extras', extrasOnly: true });
+      }
+    }
+  );
 }
 
 async function resumeVideoDownloadIfNeeded(post) {
@@ -538,6 +554,9 @@ async function resumeVideoDownloadIfNeeded(post) {
   }
   if (['queued', 'downloading'].includes(post.video_status)) {
     queueVideoDownload({ postId: post.id, url: post.video_source_url, filename: post.video_filename });
+  } else if (post.video_status === 'completed' && /"status":"(?:queued|failed)"/.test(post.extra_videos || '')) {
+    await runDbWrite('UPDATE posts SET extra_videos=REPLACE(extra_videos, \'"status":"failed"\', \'"status":"queued"\') WHERE id=?', [post.id]);
+    queueVideoDownload({ postId: post.id, url: post.video_source_url, filename: post.video_filename, extrasOnly: true });
   }
 }
 
@@ -834,14 +853,20 @@ function queuePendingSubtitleJobs() {
   });
 }
 
+const MAX_EXTRA_VIDEOS = 4;
+
+function extraVideoFilename(tweetId, index, variantUrl) {
+  return `${tweetId}_video_${index + 1}.mp4`;
+}
+
 async function fetchXPost(url) {
   const tweetId = extractTweetId(url);
   if (!tweetId) throw new Error('无法提取推文ID');
 
-  const tweet = await fetchFromFxTwitter(tweetId);
+  const tweet = await fetchTweet(tweetId);
 
-  // X 平台官方成人内容标记检测
-  if (tweet.possibly_sensitive === true) {
+  // X 平台官方成人内容标记检测（含被引用推文）
+  if (isSensitiveTweet(tweet)) {
     throw new ModerationRejectError("该推文被 X 平台标记为成人内容，无法存档", {
       stage: "x_platform_flag",
       url,
@@ -850,7 +875,6 @@ async function fetchXPost(url) {
     });
   }
   const author = tweet.author || {};
-  const media = tweet.media || {};
 
   const allImageUrls = [];
 
@@ -858,7 +882,7 @@ async function fetchXPost(url) {
     allImageUrls.push(tweet.article.cover_media.media_info.original_img_url);
   }
 
-  (media.photos || []).forEach(p => { if (p.url) allImageUrls.push(p.url); });
+  tweet.photos.forEach(p => { if (p.url) allImageUrls.push(p.url); });
 
   if (tweet.media_entities) {
     for (const e of tweet.media_entities) {
@@ -889,17 +913,26 @@ async function fetchXPost(url) {
     }
   }
 
-  let localVideoPath = null;
+  // The first video (or GIF) is the primary one and keeps using the existing
+  // single-video columns; further ones are downloaded after it.
   let videoSourceUrl = null;
   let videoFilename = null;
   let videoStatus = 'none';
-  const videoUrl = media.videos?.[0]?.url;
-  if (videoUrl) {
-    const videoExt = videoUrl.split('.').pop().split('?')[0] || 'mp4';
-    videoFilename = `${tweetId}_video.${videoExt.replace(/[^a-z0-9]/gi, '') || 'mp4'}`;
-    videoSourceUrl = videoUrl;
+  let videoIsGif = 0;
+  const [primary, ...others] = tweet.videos;
+  if (primary) {
+    videoSourceUrl = primary.variants[0].url;
+    videoFilename = `${tweetId}_video.mp4`;
     videoStatus = 'queued';
+    videoIsGif = primary.type === 'gif' ? 1 : 0;
   }
+  const extraVideos = others.slice(0, MAX_EXTRA_VIDEOS).map((video, index) => ({
+    type: video.type,
+    source_url: video.variants[0].url,
+    filename: extraVideoFilename(tweetId, index),
+    path: null,
+    status: 'queued'
+  }));
 
   const { htmlContent } = renderTweetContent({ tweet, localImages, urlToLocalPath, escapeHtml });
 
@@ -909,14 +942,16 @@ async function fetchXPost(url) {
     author_avatar: author.avatar_url || '',
     content: htmlContent,
     images: localImages,
-    video: localVideoPath,
+    video: null,
     video_source_url: videoSourceUrl,
     video_filename: videoFilename,
     video_status: videoStatus,
+    video_is_gif: videoIsGif,
+    extra_videos: extraVideos.length ? JSON.stringify(extraVideos) : null,
     video_bytes: 0,
     video_total_bytes: 0,
     video_error: null,
-    tweet_time: normalizeXTimestamp(tweet.created_timestamp, null)
+    tweet_time: normalizeXTimestamp(tweet.created_at, null)
   };
 }
 
@@ -940,6 +975,8 @@ function generateMirrorHtml(post) {
   } else if (videoStatus === 'failed') {
     videoHtml = `<div class="video-placeholder video-placeholder-error" data-video-status="failed" data-video-post-id="${post.id}" role="status">视频下载失败，请重新提交原链接重试。</div>`;
   }
+
+  videoHtml += buildExtraVideosHtml(post);
 
   const meta = seo.metadata(post);
   const summary = meta.description;
@@ -1024,9 +1061,29 @@ ${post.related?.length ? `<section class="related-posts"><h2>同一作者的其�
   return html;
 }
 
+function gifAttributes(isGif) {
+  return isGif ? 'autoplay loop muted playsinline' : 'controls playsinline preload="metadata"';
+}
+
+function buildExtraVideosHtml(post) {
+  let extras;
+  try { extras = JSON.parse(post.extra_videos || '[]'); } catch { return ''; }
+  return extras.map(extra => {
+    if (extra.status === 'completed' && /^\/videos\/[A-Za-z0-9_.-]+$/.test(extra.path || '')) {
+      return `<div class="video-shell"><video ${gifAttributes(extra.type === 'gif')} aria-label="${escapeHtml(seo.metadata(post).title)}"><source src="${escapeHtml(extra.path)}" type="video/mp4"></video></div>`;
+    }
+    if (extra.status === 'failed') return '<div class="video-placeholder video-placeholder-error" role="status">附加视频下载失败，请重新提交原链接重试。</div>';
+    return '<div class="video-placeholder" role="status">附加视频下载中，请稍后刷新页面。</div>';
+  }).join('');
+}
+
 function buildVideoPlayerHtml(post) {
+  const isGif = Number(post.video_is_gif) === 1;
+  const video = `<video ${gifAttributes(isGif)} aria-label="${escapeHtml(seo.metadata(post).title)}"><source src="${escapeHtml(post.video)}" type="video/mp4"></video>`;
+  // GIFs have no audio track, so subtitles make no sense for them.
+  if (isGif) return `<div class="video-shell" data-video-post-id="${post.id}">${video}</div>`;
   return `<div class="video-shell" data-video-post-id="${post.id}">
-    <video controls playsinline preload="metadata" aria-label="${escapeHtml(seo.metadata(post).title)}"><source src="${escapeHtml(post.video)}" type="video/mp4"></video>
+    ${video}
     <div class="subtitle-toolbar" role="group" aria-label="字幕设置">
       <label for="subtitleSelect">CC 字幕</label>
       <select id="subtitleSelect" class="subtitle-select">
@@ -1580,11 +1637,12 @@ async function archiveXUrl(url) {
       }
       await runDbWrite(
         `UPDATE posts SET author=?,author_handle=?,author_avatar=?,content=?,images=?,video=?,
-         video_status=?,video_source_url=?,video_filename=?,video_bytes=?,video_total_bytes=?,video_error=?,tweet_time=? WHERE id=?`,
+         video_status=?,video_source_url=?,video_filename=?,video_bytes=?,video_total_bytes=?,video_error=?,tweet_time=?,
+         video_is_gif=?,extra_videos=? WHERE id=?`,
         [refreshed.author, refreshed.author_handle, refreshed.author_avatar, refreshed.content,
           JSON.stringify(refreshed.images), refreshed.video, refreshed.video_status, refreshed.video_source_url,
           refreshed.video_filename, refreshed.video_bytes, refreshed.video_total_bytes, refreshed.video_error,
-          refreshed.tweet_time, existing.id]
+          refreshed.tweet_time, refreshed.video_is_gif, refreshed.extra_videos, existing.id]
       );
       Object.assign(existing, refreshed, { images: JSON.stringify(refreshed.images) });
     }
@@ -1631,11 +1689,12 @@ async function archiveXUrl(url) {
   try {
     stmt = await runDbWrite(
       `INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,video_status,video_source_url,
-       video_filename,video_bytes,video_total_bytes,video_error,tweet_time,html_file,short_code)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       video_filename,video_bytes,video_total_bytes,video_error,tweet_time,html_file,short_code,video_is_gif,extra_videos)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [canonicalUrl, content.author, content.author_handle, content.author_avatar, content.content, JSON.stringify(content.images),
         content.video, content.video_status, content.video_source_url, content.video_filename, content.video_bytes,
-        content.video_total_bytes, content.video_error, content.tweet_time, htmlFile, shortCode]
+        content.video_total_bytes, content.video_error, content.tweet_time, htmlFile, shortCode,
+        content.video_is_gif, content.extra_videos]
     );
   } catch (insertErr) {
     if (String(insertErr.message || '').includes('UNIQUE constraint failed: posts.url')) {
@@ -1775,11 +1834,13 @@ const reviewAdminLimit = createRateLimiter({ windowMs: 60000, max: 10 });
 app.post('/api/admin/moderation/recheck', requireAdmin, reviewAdminLimit, async (req, res) => {
   try {
     const url = normalizeArchiveUrl(req.body?.url);
-    const tweet = await fetchFromFxTwitter(extractTweetId(url));
-    if (tweet.possibly_sensitive === true) return res.status(409).json({ error: '原平台敏感标记需人工检查媒体，本次未放行' });
+    const tweetId = extractTweetId(url);
+    fetchTweet.cache.delete(tweetId); // rechecks must see the current text
+    const tweet = await fetchTweet(tweetId);
+    if (isSensitiveTweet(tweet)) return res.status(409).json({ error: '原平台敏感标记需人工检查媒体，本次未放行' });
     const rendered = renderTweetContent({ tweet, escapeHtml });
     try {
-      await reviewService.assess({ url, authorHandle: tweet.author?.screen_name || '', authorName: tweet.author?.name || '', content: rendered.htmlContent }, { retry: true });
+      await reviewService.assess({ url, authorHandle: tweet.author.screen_name, authorName: tweet.author.name, content: rendered.htmlContent }, { retry: true });
     } catch (e) {
       if (!['CONTENT_MODERATION_REJECTED', 'CONTENT_MODERATION_PENDING'].includes(e.code)) throw e;
     }
@@ -1816,6 +1877,12 @@ app.post('/api/delete', requireAdmin, async (req, res) => {
     }
 
     deleteMediaAsset(DATA_DIR, post.video);
+    try {
+      for (const extra of JSON.parse(post.extra_videos || '[]')) {
+        if (extra.path) deleteMediaAsset(DATA_DIR, extra.path);
+        if (extra.filename) { try { fs.unlinkSync(`${videoPathForFilename(extra.filename)}.part`); } catch {} }
+      }
+    } catch {}
     if (post.video_filename) {
       try { fs.unlinkSync(`${videoPathForFilename(post.video_filename)}.part`); } catch {}
     }
