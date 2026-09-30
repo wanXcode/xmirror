@@ -53,3 +53,9 @@ test('new and cached archives share complete metadata and real video state', () 
   assert.equal(cached.cached, true);
   assert.equal(archiveSuccessResponse({ ...post, video_status: null, video: '/videos/1.mp4' }).video_status, 'completed');
 });
+
+test('archive title ignores the quoted post appended to the content', () => {
+  const { archiveSuccessResponse } = require('../lib/archive-response');
+  const post = { id: 1, short_code: 'abc123', content: 'my take<blockquote class="quoted-post"><p>Bob @bob</p><p>other words</p></blockquote>' };
+  assert.equal(archiveSuccessResponse(post).title, 'my take');
+});
