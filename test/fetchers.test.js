@@ -211,3 +211,61 @@ test('logs source, success flag and duration for every attempt without secrets',
   assert.ok(entries.every(e => typeof e.ms === 'number'));
   assert.equal(entries[0].error, 'upstream');
 });
+
+test('cache: successes live for an hour, repeated calls do not refetch', async () => {
+  let clock = 1000;
+  let calls = 0;
+  const fetchTweet = createFetcher({
+    ...quiet, now: () => clock,
+    fetchImpl: mockFetch({ 'api.fxtwitter.com': () => { calls++; return json(200, { code: 200, tweet: FX_TWEET }); } })
+  });
+  const first = await fetchTweet('100');
+  first.text = 'mutated by caller';
+  assert.equal((await fetchTweet('100')).text, 'hello');
+  assert.equal(calls, 1);
+  clock += 59 * 60 * 1000;
+  await fetchTweet('100');
+  assert.equal(calls, 1);
+  clock += 2 * 60 * 1000;
+  await fetchTweet('100');
+  assert.equal(calls, 2);
+});
+
+test('cache: failures are cached for 30 seconds only', async () => {
+  let clock = 0;
+  let calls = 0;
+  const fetchTweet = createFetcher({
+    ...quiet, retries: 0, now: () => clock,
+    fetchImpl: mockFetch({
+      'api.fxtwitter.com': () => { calls++; return json(404, {}); },
+      'cdn.syndication.twimg.com': () => json(404, {})
+    })
+  });
+  await assert.rejects(fetchTweet('100'), { code: 'SOURCE_UNAVAILABLE' });
+  await assert.rejects(fetchTweet('100'), { code: 'SOURCE_UNAVAILABLE' });
+  assert.equal(calls, 1);
+  clock += 31 * 1000;
+  await assert.rejects(fetchTweet('100'));
+  assert.equal(calls, 2);
+});
+
+test('cache: concurrent calls share one upstream fetch and size is bounded', async () => {
+  let calls = 0;
+  const fetchTweet = createFetcher({
+    ...quiet, cacheMaxEntries: 3,
+    fetchImpl: mockFetch({
+      'api.fxtwitter.com': async (url) => {
+        calls++;
+        await new Promise(resolve => setTimeout(resolve, 10));
+        const id = url.split('/').pop();
+        return json(200, { code: 200, tweet: { ...FX_TWEET, id } });
+      }
+    })
+  });
+  await Promise.all([fetchTweet('1'), fetchTweet('1'), fetchTweet('1')]);
+  assert.equal(calls, 1);
+  for (const id of ['2', '3', '4', '5']) await fetchTweet(id);
+  assert.equal(fetchTweet.cache.size, 3);
+  await fetchTweet('1'); // evicted, refetched
+  assert.equal(calls, 6);
+});
