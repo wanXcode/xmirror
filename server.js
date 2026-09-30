@@ -50,6 +50,8 @@ const { ArchiveError, normalizeArchiveUrl, archiveErrorResponse, archiveSuccessR
 const { registerHealthRoute } = require('./lib/health');
 const { createFetcher } = require('./lib/fetchers');
 const { resolveUrl, isSensitiveTweet } = require('./lib/resolve');
+const { clientIpMiddleware, DEFAULT_TRUST_PROXY } = require('./lib/client-ip');
+const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
 const {
   deleteMediaAsset,
   deleteMediaAssetBestEffort
@@ -80,6 +82,10 @@ const translationQueued = new Set();
 const translationRunning = new Set();
 let activeTranslationJobs = 0;
 
+// Cloudflare -> nginx -> node: trust the local proxy hop and prefer the
+// visitor address Cloudflare reports, so rate limits are per visitor.
+app.set('trust proxy', process.env.TRUST_PROXY || DEFAULT_TRUST_PROXY);
+app.use(clientIpMiddleware);
 app.use(express.json());
 registerHealthRoute(app);
 
@@ -347,15 +353,8 @@ function extractTweetId(url) {
   return extractXPostId(url);
 }
 
-async function downloadImage(url, filename) {
-  return new Promise((resolve, reject) => {
-    const filePath = path.join(__dirname, 'data', 'images', filename);
-    const file = fs.createWriteStream(filePath);
-    https.get(url, (response) => {
-      response.pipe(file);
-      file.on('finish', () => { file.close(); resolve(`/images/${filename}`); });
-    }).on('error', reject);
-  });
+function downloadImage(url, filename) {
+  return downloadImageFile(url, { dir: path.join(DATA_DIR, 'images'), filename });
 }
 
 const VIDEO_DOWNLOAD_CONCURRENCY = Math.max(1, Number(process.env.VIDEO_DOWNLOAD_CONCURRENCY) || 1);
@@ -393,6 +392,7 @@ function formatBytes(bytes) {
 
 function downloadVideoWithProgress(url, filename, onProgress) {
   return new Promise((resolve, reject) => {
+    if (!isTwimgUrl(url)) return reject(new Error('视频来源不在允许范围内'));
     const videoDir = path.join(DATA_DIR, 'videos');
     fs.mkdirSync(videoDir, { recursive: true });
     const filePath = videoPathForFilename(filename);
@@ -901,8 +901,7 @@ async function fetchXPost(url) {
   const localImages = [];
   const urlToLocalPath = new Map();
   for (let i = 0; i < uniqueUrls.length; i++) {
-    const ext = uniqueUrls[i].split('.').pop().split('?')[0] || 'jpg';
-    const filename = `${tweetId}_${i}.${ext}`;
+    const filename = `${tweetId}_${i}.${imageExtension(uniqueUrls[i])}`;
     try {
       const localPath = await downloadImage(uniqueUrls[i], filename);
       localImages.push(localPath);
@@ -1734,7 +1733,16 @@ function sendArchiveError(res, error) {
   return res.status(response.status).json(response.body);
 }
 
-app.post('/api/archive', async (req, res) => {
+// One budget per visitor shared by every endpoint that triggers an upstream fetch.
+const FETCH_RATE_LIMIT_PER_MIN = Math.max(1, Number(process.env.FETCH_RATE_LIMIT_PER_MIN) || 20);
+const fetchRateLimit = createRateLimiter({
+  windowMs: 60000,
+  max: FETCH_RATE_LIMIT_PER_MIN,
+  code: 'RATE_LIMITED',
+  message: '请求过于频繁，请稍后再试'
+});
+
+app.post('/api/archive', fetchRateLimit, async (req, res) => {
   try {
     const payload = await archiveXUrl(req.body?.url);
     return res.json(payload);
@@ -1743,7 +1751,7 @@ app.post('/api/archive', async (req, res) => {
   }
 });
 
-app.post('/api/resolve', async (req, res) => {
+app.post('/api/resolve', fetchRateLimit, async (req, res) => {
   try {
     const payload = await resolveUrl(req.body?.url, { confirmAge: req.body?.confirm_age === true }, {
       fetchTweet,
@@ -1758,7 +1766,7 @@ app.post('/api/resolve', async (req, res) => {
   }
 });
 
-app.get('/api/archive/quick', async (req, res) => {
+app.get('/api/archive/quick', fetchRateLimit, async (req, res) => {
   const rawUrl = (req.query.url || '').toString().trim();
   const format = (req.query.format || 'redirect').toString().toLowerCase();
 
