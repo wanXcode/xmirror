@@ -48,6 +48,8 @@ const { normalizePublicBaseUrl, buildPublicUrl } = require('./lib/public-url');
 const { createAdminGuard } = require('./lib/admin-auth');
 const { ArchiveError, normalizeArchiveUrl, archiveErrorResponse, readSourceResponse, archiveSuccessResponse } = require('./lib/archive-response');
 const { registerHealthRoute } = require('./lib/health');
+const { createFetcher } = require('./lib/fetchers');
+const { resolveUrl } = require('./lib/resolve');
 const {
   deleteMediaAsset,
   deleteMediaAssetBestEffort
@@ -336,6 +338,8 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_post_aliases_target
     ON post_aliases(target_post_id)`);
 });
+
+const fetchTweet = createFetcher();
 
 function extractTweetId(url) {
   return extractXPostId(url);
@@ -1674,6 +1678,21 @@ function sendArchiveError(res, error) {
 app.post('/api/archive', async (req, res) => {
   try {
     const payload = await archiveXUrl(req.body?.url);
+    return res.json(payload);
+  } catch (error) {
+    return sendArchiveError(res, error);
+  }
+});
+
+app.post('/api/resolve', async (req, res) => {
+  try {
+    const payload = await resolveUrl(req.body?.url, { confirmAge: req.body?.confirm_age === true }, {
+      fetchTweet,
+      precheck: url => { if (getModerationSettings().enabled) moderator.precheckUrl(url); },
+      assess: payload => getModerationSettings().enabled ? reviewService.assess(payload) : null,
+      escapeHtml
+    });
+    res.set('Cache-Control', 'no-store');
     return res.json(payload);
   } catch (error) {
     return sendArchiveError(res, error);
