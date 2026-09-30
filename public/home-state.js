@@ -9,7 +9,8 @@
     CONTENT_UNSUPPORTED: ['errorContentUnsupported', false],
     NETWORK_ERROR: ['errorNetwork', true],
     REQUEST_TIMEOUT: ['errorTimeout', true],
-    SERVICE_UNAVAILABLE: ['errorService', true]
+    SERVICE_UNAVAILABLE: ['errorService', true],
+    RATE_LIMITED: ['errorRateLimited', true]
   };
 
   function validSourceUrl(value) {
@@ -57,7 +58,7 @@
 
   function failureFor(code, status) {
     const fallback = status === 400 ? 'INVALID_URL' : status === 404 ? 'SOURCE_UNAVAILABLE'
-      : status === 408 || status === 504 ? 'REQUEST_TIMEOUT' : 'SERVICE_UNAVAILABLE';
+      : status === 408 || status === 504 ? 'REQUEST_TIMEOUT' : status === 429 ? 'RATE_LIMITED' : 'SERVICE_UNAVAILABLE';
     const selected = failureMessages[code] ? code : fallback;
     const [key, retryable] = failureMessages[selected];
     return { code: selected, key, retryable };
