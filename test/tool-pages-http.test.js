@@ -8,12 +8,12 @@ const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 const sqlite3 = require('sqlite3');
 
-async function startServer(t) {
+async function startServer(t, extraEnv = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xput-tool-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const listener = net.createServer(); listener.listen(0, '127.0.0.1'); await once(listener, 'listening');
   const port = listener.address().port; await new Promise(resolve => listener.close(resolve));
-  const env = { ...process.env, PORT: String(port), DATA_DIR: dir, ARCHIVES_DIR: path.join(dir, 'archives'), SQLITE_PATH: path.join(dir, 'db.sqlite'), PUBLIC_BASE_URL: 'https://xput.app', MODERATION_ADMIN_TOKEN: 'test-only-token' };
+  const env = { ...process.env, PORT: String(port), DATA_DIR: dir, ARCHIVES_DIR: path.join(dir, 'archives'), SQLITE_PATH: path.join(dir, 'db.sqlite'), PUBLIC_BASE_URL: 'https://xput.app', MODERATION_ADMIN_TOKEN: 'test-only-token', ...extraEnv };
   const child = spawn(process.execPath, ['server.js'], { cwd: path.join(__dirname, '..'), env, stdio: ['ignore', 'pipe', 'pipe'] });
   t.after(async () => { if (child.exitCode === null) { child.kill(); await once(child, 'exit'); } });
   let output = ''; child.stdout.on('data', b => output += b); child.stderr.on('data', b => output += b);
@@ -84,4 +84,38 @@ test('POST /api/saved-copy answers from the database only', { timeout: 30000 }, 
   const invalid = await post(base, '/api/saved-copy', { url: 'https://example.com/a/status/1' });
   assert.equal(invalid.status, 400);
   assert.equal((await invalid.json()).code, 'INVALID_URL');
+});
+
+test('the local download proxy rejects non-X targets, is noindex, and can be switched off for production', { timeout: 30000 }, async t => {
+  const { base } = await startServer(t);
+  const bad = await fetch(`${base}/dl?u=${encodeURIComponent('https://evil.example/a.mp4')}`);
+  assert.equal(bad.status, 400);
+  assert.equal((await bad.json()).code, 'INVALID_TARGET');
+  assert.match(bad.headers.get('x-robots-tag'), /noindex/);
+  assert.equal((await fetch(`${base}/dl`)).status, 400);
+
+  const off = await startServer(t, { ENABLE_LOCAL_DOWNLOAD_PROXY: 'false' });
+  assert.equal((await fetch(`${off.base}/dl?u=${encodeURIComponent('https://video.twimg.com/a.mp4')}`)).status, 404, 'production leaves /dl to the Worker');
+});
+
+test('the page tells the finder script where downloads go and which scripts load', { timeout: 30000 }, async t => {
+  const { base } = await startServer(t, { DOWNLOAD_PROXY_BASE: 'https://dl.example.com/get' });
+  const html = await (await fetch(base + '/')).text();
+  const config = JSON.parse(html.match(/<script type="application\/json" data-finder-config>(.*?)<\/script>/s)[1]);
+  assert.equal(config.downloadBase, 'https://dl.example.com/get');
+  assert.equal(config.shortcutHref, '/ios-shortcut');
+  assert.equal(config.endpoints.mediaInfo, '/api/media-info');
+  assert.equal(config.result.zip, 'Download {n} photos (ZIP)');
+  const order = [...html.matchAll(/<script src="(\/js\/[a-z-]+\.js)\?v=/g)].map(m => m[1]);
+  assert.deepEqual(order, ['/js/nav.js', '/js/link.js', '/js/download.js', '/js/zip.js', '/js/result-card.js', '/js/finder.js']);
+});
+
+test('POST /api/media-info validates its input and never fetches non-X hosts', { timeout: 30000 }, async t => {
+  const { base } = await startServer(t);
+  assert.equal((await post(base, '/api/media-info', {})).status, 400);
+  assert.equal((await post(base, '/api/media-info', { urls: [] })).status, 400);
+  assert.equal((await post(base, '/api/media-info', { urls: Array(11).fill('https://video.twimg.com/a.mp4') })).status, 400);
+  assert.equal((await post(base, '/api/media-info', { urls: [42] })).status, 400);
+  const answer = await (await post(base, '/api/media-info', { urls: ['https://evil.example/a.mp4', 'http://video.twimg.com/a.mp4'] })).json();
+  assert.deepEqual(answer, { success: true, sizes: { 'https://evil.example/a.mp4': null, 'http://video.twimg.com/a.mp4': null } });
 });

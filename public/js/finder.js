@@ -3,6 +3,8 @@
 // comes from the JSON config rendered by the server, so it follows the page language.
 (function (root) {
   var Link = typeof require === 'function' ? require('./link') : root.XPutLink;
+  var Download = typeof require === 'function' ? require('./download') : root.XPutDownload;
+  var Result = typeof require === 'function' ? require('./result-card') : root.XPutResultCard;
 
   var ICONS = {
     clock: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
@@ -30,6 +32,25 @@
     var text = config.input;
     var endpoints = config.endpoints;
     var mode = config.mode;
+
+    var renderer = Result.createResultRenderer(Object.assign({
+      doc: doc,
+      win: win,
+      text: config.result,
+      lang: config.lang,
+      platform: Download.detectPlatform(win.navigator),
+      nav: win.navigator,
+      fetch: fetchFn,
+      downloadBase: config.downloadBase,
+      shortcutHref: config.shortcutHref,
+      timers: timers,
+      fetchSizes: function (urls) {
+        return fetchFn(endpoints.mediaInfo, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ urls: urls }) })
+          .then(function (response) { return response.ok ? response.json() : { sizes: {} }; })
+          .then(function (data) { return data.sizes || {}; });
+      },
+      onViewSave: function (url) { return runView(url); }
+    }, options.result || {}));
 
     var form = rootEl.querySelector('form');
     var input = rootEl.querySelector('[data-input]');
@@ -250,31 +271,8 @@
       return wrap;
     }
 
-    // Phase 3 replaces this with the result cards; for now it lists the links.
     function showResult(data) {
-      var groups = [];
-      data.videos.forEach(function (video) { video.variants.forEach(function (v) { groups.push([text.result.video, v.resolution || '', v.url]); }); });
-      data.gifs.forEach(function (gif) { groups.push([text.result.gif, gif.variants[0].resolution || '', gif.variants[0].url]); });
-      data.images.forEach(function (image, index) { groups.push([text.result.image, '#' + (index + 1), image.orig_url]); });
-      var wrap = el('div', 'result-temp');
-      wrap.appendChild(el('p', 'result-temp__title', text.result.title));
-      if (!groups.length) {
-        wrap.appendChild(el('p', 'result-temp__none', text.result.none));
-      } else {
-        var list = el('ul', 'result-temp__list');
-        groups.forEach(function (group) {
-          if (!/^https:\/\//.test(group[2])) return;
-          var item = el('li');
-          var anchor = el('a', '', (group[0] + ' ' + group[1]).trim());
-          anchor.href = group[2];
-          anchor.target = '_blank';
-          anchor.rel = 'noopener noreferrer';
-          item.appendChild(anchor);
-          list.appendChild(item);
-        });
-        wrap.appendChild(list);
-      }
-      panel.replaceChildren(wrap);
+      panel.replaceChildren(renderer.render(data));
       setState('result');
     }
 
@@ -321,10 +319,12 @@
       }).catch(function () { showBusy(runDownload); }).then(function () { setBusy(null); });
     }
 
-    function runView() {
-      var parsed = validate();
-      if (!parsed) return Promise.resolve();
-      current.action = runView;
+    // `url` is passed by the result card ("View & save a copy"); the form passes nothing.
+    function runView(url) {
+      var parsed = typeof url === 'string' ? Link.parseXLink(url) : validate();
+      if (!parsed || parsed.status !== 'ok') return Promise.resolve();
+      if (typeof url === 'string') clearFeedback();
+      current.action = function () { return runView(typeof url === 'string' ? url : undefined); };
       setBusy('view');
       showSaving();
       var started = Date.now();
@@ -338,9 +338,9 @@
             var wait = Math.max(0, MIN_SAVING_MS - (Date.now() - started));
             return timers.setTimeout(function () { navigate(data.url); }, wait);
           }
-          return showFailure(response, data, runView, parsed.url);
+          return showFailure(response, data, current.action, parsed.url);
         });
-      }).catch(function () { showBusy(runView); }).then(function () { if (!leaving) setBusy(null); });
+      }).catch(function () { showBusy(current.action); }).then(function () { if (!leaving) setBusy(null); });
     }
 
     function checkSavedCopy(url) {

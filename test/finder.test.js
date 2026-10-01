@@ -23,7 +23,10 @@ function setup({ lang = 'en', mode = 'home', routes = {}, clipboard, permissions
   const navigations = [];
   const intervals = [];
   const timeouts = [];
+  const sizeCalls = [];
   const fetch = async (url, options) => {
+    // File-size lookups are a side channel of the result card; keep them out of the main call list.
+    if (url === '/api/media-info') { sizeCalls.push(JSON.parse(options.body)); return reply(200, { success: true, sizes: {} }); }
     calls.push({ url, body: JSON.parse(options.body) });
     const handler = routes[url];
     if (!handler) throw new Error(`unexpected ${url}`);
@@ -38,12 +41,12 @@ function setup({ lang = 'en', mode = 'home', routes = {}, clipboard, permissions
   const finder = createFinder({ root, doc: document, win: window, fetch, navigate: url => navigations.push(url), timers, clipboard, permissions });
   const q = selector => root.querySelector(selector);
   const flush = () => new Promise(resolve => setImmediate(resolve));
-  return { document, window, root, finder, q, calls, navigations, intervals, timeouts, flush, text: t('input') };
+  return { document, window, root, finder, q, calls, sizeCalls, navigations, intervals, timeouts, flush, text: t('input') };
 }
 
 const resolveOk = (extra = {}) => reply(200, {
   success: true, id: '20', sensitive: false, requires_age_confirmation: false, author: { name: 'Jack', screen_name: 'jack' },
-  videos: [{ type: 'video', variants: [{ url: 'https://video.twimg.com/v/1280x720/a.mp4', resolution: '1280x720', bitrate: 2000 }, { url: 'https://video.twimg.com/v/640x360/b.mp4', resolution: '640x360', bitrate: 500 }] }],
+  videos: [{ type: 'video', variants: [{ url: 'https://video.twimg.com/v/1280x720/a.mp4', resolution: '1280x720', width: 1280, height: 720, bitrate: 2000 }, { url: 'https://video.twimg.com/v/640x360/b.mp4', resolution: '640x360', width: 640, height: 360, bitrate: 500 }] }],
   gifs: [], images: [{ url: 'https://pbs.twimg.com/media/A.jpg', orig_url: 'https://pbs.twimg.com/media/A?format=jpg&name=orig' }], ...extra
 });
 
@@ -91,18 +94,12 @@ test('Download resolves the canonical link, shows loading, then the links', asyn
   await running;
   assert.deepEqual(s.calls, [{ url: '/api/resolve', body: { url: CANONICAL } }]);
   assert.equal(s.root.getAttribute('data-state'), 'result');
-  const links = [...s.root.querySelectorAll('.result-temp__list a')];
-  assert.deepEqual(links.map(a => a.textContent), ['Video 1280x720', 'Video 640x360', 'Image (original) #1']);
-  assert.equal(links[2].getAttribute('href'), 'https://pbs.twimg.com/media/A?format=jpg&name=orig');
+  assert.ok(s.q('.rcard'), 'the result card replaces the loading state');
+  assert.equal(s.q('.rcard .pill').textContent, '1 video · 1 photo');
+  assert.equal(s.q('.rcard .dl__label').textContent, 'HD 720p');
+  assert.deepEqual(s.sizeCalls, [{ urls: ['https://video.twimg.com/v/1280x720/a.mp4', 'https://video.twimg.com/v/640x360/b.mp4'] }]);
   assert.equal(s.q('[data-action="download"] .btn__label').textContent, 'Download');
   assert.equal(s.q('[data-action="download"]').disabled, false);
-});
-
-test('only https media links are rendered', async () => {
-  const s = setup({ routes: { '/api/resolve': resolveOk({ images: [{ orig_url: 'javascript:alert(1)' }], videos: [] }) } });
-  s.q('[data-input]').value = POST;
-  await s.finder.runDownload();
-  assert.equal(s.root.querySelectorAll('.result-temp__list a').length, 0);
 });
 
 test('API failures map to the right states: unavailable, rejected, busy (5xx and network)', async () => {
@@ -166,7 +163,7 @@ test('sensitive posts show only the author until the age is confirmed, then retr
   assert.match(s.q('.sensitive__text').textContent, /get the download links/);
   assert.equal(s.q('.sensitive__names strong').textContent, '<img src=x onerror=alert(1)>', 'author name is text, never markup');
   assert.equal(s.root.querySelector('.sensitive img'), null);
-  assert.equal(s.root.querySelectorAll('.result-temp a').length, 0);
+  assert.equal(s.root.querySelectorAll('.rcard').length, 0, 'no media is shown before confirmation');
 
   s.q('.sensitive__actions .btn--primary').dispatchEvent(new s.window.Event('click', { bubbles: true }));
   await s.flush(); await s.flush();

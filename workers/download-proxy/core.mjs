@@ -39,7 +39,7 @@ export function contentDisposition(filename) {
 }
 
 export function errorResponse(status, code, message, extra = {}) {
-  return { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extra }, body: JSON.stringify({ success: false, code, error: message }) };
+  return { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', ...extra }, body: JSON.stringify({ success: false, code, error: message }) };
 }
 
 // -> { ok: true, target, filename } or { ok: false, response }
