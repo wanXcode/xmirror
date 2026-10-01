@@ -78,18 +78,11 @@ test('generated archive pages load the external page script', () => {
   assert.doesNotMatch(serverSource, /function escapeTranslatedText\(value\).*replace\(\/\\n\/g/s);
 });
 
-test('home page uses versioned assets and current release marker', () => {
-  const homeSource = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
-  const version = require('../package.json').version;
-  for (const asset of ['theme.css', 'style.css', 'i18n.js', 'home-state.js', 'app.js']) {
-    assert.ok(homeSource.includes(`/${asset}?v=${version}`));
-  }
-  assert.ok(homeSource.includes(`XPut · v${version}`));
-});
-
 test('home and archive pages advertise the shared site icon', () => {
   const projectRoot = path.join(__dirname, '..');
-  const homeSource = fs.readFileSync(path.join(projectRoot, 'public', 'index.html'), 'utf8');
+  const { renderDocument } = require('../lib/views/layout');
+  const { html } = require('../lib/views/html');
+  const homeSource = String(renderDocument({ lang: 'en', baseUrl: 'https://xput.app', page: 'home', title: 't', body: html`<h1>x</h1>` }));
   const serverSource = fs.readFileSync(path.join(projectRoot, 'server.js'), 'utf8');
 
   const otherPages = ['admin-xput.html', 'help.html', 'report.html'].map(name => fs.readFileSync(path.join(projectRoot, 'public', name), 'utf8'));

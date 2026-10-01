@@ -53,6 +53,7 @@ const { resolveUrl, isSensitiveTweet } = require('./lib/resolve');
 const { clientIpMiddleware, DEFAULT_TRUST_PROXY } = require('./lib/client-ip');
 const { isReservedShortCode, loadReservedShortCodes } = require('./lib/shortcode');
 const { registerPageRoutes } = require('./lib/routes/pages');
+const { hasAgeConfirmation, setAgeConfirmation } = require('./lib/age-gate');
 const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
 const {
   deleteMediaAsset,
@@ -148,8 +149,7 @@ const seoStore = createSeoStore(db, { dataDir: DATA_DIR, moderator: seoModerator
 const seoAI = require('./lib/seo-ai').createSeoAI({ store: seoStore, dataDir: DATA_DIR, isBusy: () => activeTranslationJobs > 0 });
 seoStore.onEvaluated(post => seoAI.enqueue(post));
 // Fixed pages first: they must win over the 6-character short code route.
-// '/' stays with the current home page until its new template lands.
-registerPageRoutes(app, { baseUrl: PUBLIC_BASE_URL, skip: ['/'] });
+registerPageRoutes(app, { baseUrl: PUBLIC_BASE_URL });
 registerSeoRoutes(app, { store: seoStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 registerReportRoutes(app, { store: seoStore, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 app.use(express.static(PUBLIC_DIR, {
@@ -1734,6 +1734,13 @@ async function archiveXUrl(url) {
   return archiveSuccessResponse({ id: result, ...content, short_code: shortCode });
 }
 
+// SQLite stores "YYYY-MM-DD HH:MM:SS" in UTC; expose it as an ISO timestamp.
+function savedAtIso(value) {
+  if (!value) return null;
+  const text = String(value);
+  return text.includes('T') ? text : `${text.replace(' ', 'T')}Z`;
+}
+
 function sendArchiveError(res, error) {
   console.error('Archive request failed:', error);
   const response = archiveErrorResponse(error);
@@ -1760,7 +1767,7 @@ app.post('/api/archive', fetchRateLimit, async (req, res) => {
 
 app.post('/api/resolve', fetchRateLimit, async (req, res) => {
   try {
-    const payload = await resolveUrl(req.body?.url, { confirmAge: req.body?.confirm_age === true }, {
+    const payload = await resolveUrl(req.body?.url, { confirmAge: req.body?.confirm_age === true || hasAgeConfirmation(req) }, {
       fetchTweet,
       precheck: url => { if (getModerationSettings().enabled) moderator.precheckUrl(url); },
       assess: payload => getModerationSettings().enabled ? reviewService.assess(payload) : null,
@@ -1768,6 +1775,31 @@ app.post('/api/resolve', fetchRateLimit, async (req, res) => {
     });
     res.set('Cache-Control', 'no-store');
     return res.json(payload);
+  } catch (error) {
+    return sendArchiveError(res, error);
+  }
+});
+
+// Age confirmation lives in a session cookie; /api/resolve reads it server-side.
+app.post('/api/age-confirm', (req, res) => {
+  if (req.get('origin') && req.get('origin') !== new URL(PUBLIC_BASE_URL).origin && !/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(req.get('origin'))) return res.sendStatus(403);
+  setAgeConfirmation(res, { secure: req.secure });
+  res.set('Cache-Control', 'no-store').json({ success: true });
+});
+
+// "Check for a saved copy": database lookup only, never contacts X.
+app.post('/api/saved-copy', fetchRateLimit, async (req, res) => {
+  try {
+    const canonicalUrl = normalizeArchiveUrl(req.body?.url);
+    const tweetId = extractTweetId(canonicalUrl);
+    const rows = await dbAll(
+      'SELECT id, short_code, created_at, url FROM posts WHERE url=? OR url LIKE ? OR url LIKE ? ORDER BY id ASC',
+      [canonicalUrl, `%/status/${tweetId}%`, `%/article/${tweetId}%`]
+    );
+    const post = rows.find(row => extractTweetId(row.url) === tweetId && row.short_code);
+    res.set('Cache-Control', 'no-store');
+    if (!post) return res.json({ success: true, found: false });
+    return res.json({ success: true, found: true, url: `/${post.short_code}`, saved_at: savedAtIso(post.created_at) });
   } catch (error) {
     return sendArchiveError(res, error);
   }

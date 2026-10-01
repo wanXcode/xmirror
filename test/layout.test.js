@@ -6,11 +6,14 @@ const { createTranslator } = require('../lib/i18n');
 const { html } = require('../lib/views/html');
 
 const BASE = 'https://xput.app';
+// H1 is {plain, mark} on the tool pages and a string elsewhere.
+const h1Text = value => (typeof value === 'string' ? value : `${value.plain}${value.mark}`);
+
 function page(lang, pageKey = 'viewer', extra = {}) {
   const t = createTranslator(lang);
   const source = String(renderDocument({
     lang, baseUrl: BASE, page: pageKey, title: t(`pages.${pageKey}.title`), description: t(`pages.${pageKey}.description`),
-    body: html`<h1>${t(`pages.${pageKey}.h1`)}</h1>`, ...extra
+    body: html`<h1>${h1Text(t(`pages.${pageKey}.h1`))}</h1>`, ...extra
   }));
   return { source, document: parseHTML(source).document };
 }
@@ -26,12 +29,14 @@ test('document shell: lang, title, description, canonical and a single H1', () =
   assert.equal(document.querySelector('.skip-link').getAttribute('href'), '#main');
 });
 
-test('Chinese pages use zh-Hans, their own canonical, and omit an empty description tag', () => {
+test('Chinese pages use zh-Hans and their own canonical; an empty description renders no tag', () => {
   const { document } = page('zh', 'home');
   assert.equal(document.documentElement.getAttribute('lang'), 'zh-Hans');
   assert.equal(document.querySelector('link[rel=canonical]').getAttribute('href'), 'https://xput.app/zh/');
-  assert.equal(document.querySelector('meta[name=description]'), null);
   assert.equal(document.querySelector('h1').textContent, '推特视频下载');
+  // Compare booleans, not DOM nodes: a failing deepEqual on a node would try to print the whole tree.
+  assert.ok(document.querySelector('meta[name=description]') !== null);
+  assert.ok(page('zh', 'shortcut').document.querySelector('meta[name=description]') === null);
 });
 
 test('hreflang: en, zh-Hans and x-default (English), each page pointing at its counterpart', () => {

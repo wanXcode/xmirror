@@ -61,7 +61,7 @@ test('times out a stalled download and leaves no partial file', async () => {
   const { server, url } = await serve((_, res) => { res.setHeader('content-type', 'image/jpeg'); res.write('abc'); });
   try {
     await assert.rejects(downloadImage(url, opts(dir, { timeoutMs: 100 })), /timed out/);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    for (let i = 0; i < 40 && fs.readdirSync(dir).length; i += 1) await new Promise(resolve => setTimeout(resolve, 25));
     assert.deepEqual(fs.readdirSync(dir), []);
   } finally { server.closeAllConnections(); server.close(); }
 });
