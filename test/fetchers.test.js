@@ -269,3 +269,30 @@ test('cache: concurrent calls share one upstream fetch and size is bounded', asy
   await fetchTweet('1'); // evicted, refetched
   assert.equal(calls, 6);
 });
+
+test('media of a quoted post is normalized for both sources', () => {
+  const fx = normalizeFxtwitter({
+    ...FX_TWEET,
+    quote: {
+      id: '99', url: 'https://x.com/bob/status/99', text: 'q', author: { name: 'Bob', screen_name: 'bob' },
+      media: {
+        photos: [{ url: 'https://pbs.twimg.com/media/Q1.jpg', width: 5, height: 5 }],
+        videos: [{ type: 'video', url: 'https://video.twimg.com/q/vid/avc1/640x360/q.mp4', duration: 3, formats: [{ url: 'https://video.twimg.com/q/vid/avc1/640x360/q.mp4', container: 'mp4', bitrate: 800 }] }]
+      }
+    }
+  });
+  assert.equal(fx.quote.photos[0].orig_url, 'https://pbs.twimg.com/media/Q1?format=jpg&name=orig');
+  assert.equal(fx.quote.videos[0].variants[0].resolution, '640x360');
+  assert.deepEqual(fx.photos.map(p => p.url), ['https://pbs.twimg.com/media/AbC_d-1.jpg'], 'own media is unaffected');
+
+  const syn = normalizeSyndication({
+    ...SYN_TWEET,
+    quoted_tweet: {
+      id_str: '99', text: 'q', user: { name: 'Bob', screen_name: 'bob' },
+      mediaDetails: [{ type: 'animated_gif', media_url_https: 'https://pbs.twimg.com/t.jpg', video_info: { variants: [{ bitrate: 0, content_type: 'video/mp4', url: 'https://video.twimg.com/tweet_video/QG.mp4' }] } }]
+    }
+  });
+  assert.equal(syn.quote.videos[0].type, 'gif');
+  assert.deepEqual(syn.quote.photos, []);
+  assert.deepEqual(normalizeFxtwitter({ ...FX_TWEET, quote: { text: 'x', author: { screen_name: 'b' } } }).quote.videos, []);
+});

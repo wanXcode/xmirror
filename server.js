@@ -54,6 +54,8 @@ const { clientIpMiddleware, DEFAULT_TRUST_PROXY } = require('./lib/client-ip');
 const { isReservedShortCode, loadReservedShortCodes } = require('./lib/shortcode');
 const { registerPageRoutes } = require('./lib/routes/pages');
 const { hasAgeConfirmation, setAgeConfirmation } = require('./lib/age-gate');
+const { createDownloadProxy } = require('./lib/download-proxy');
+const { createMediaInfo } = require('./lib/media-info');
 const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
 const {
   deleteMediaAsset,
@@ -149,7 +151,16 @@ const seoStore = createSeoStore(db, { dataDir: DATA_DIR, moderator: seoModerator
 const seoAI = require('./lib/seo-ai').createSeoAI({ store: seoStore, dataDir: DATA_DIR, isBusy: () => activeTranslationJobs > 0 });
 seoStore.onEvaluated(post => seoAI.enqueue(post));
 // Fixed pages first: they must win over the 6-character short code route.
-registerPageRoutes(app, { baseUrl: PUBLIC_BASE_URL });
+registerPageRoutes(app, { baseUrl: PUBLIC_BASE_URL, downloadBase: process.env.DOWNLOAD_PROXY_BASE || '/dl' });
+
+// Development / fallback download proxy. In production the Cloudflare Worker owns /dl
+// (workers/download-proxy), so this stays off unless explicitly enabled.
+if ((process.env.ENABLE_LOCAL_DOWNLOAD_PROXY ?? String(process.env.NODE_ENV !== 'production')) === 'true') {
+  const proxyLimit = createRateLimiter({ windowMs: 60000, max: Number(process.env.DOWNLOAD_RATE_LIMIT_PER_MIN) || 60, code: 'RATE_LIMITED', message: '下载过于频繁，请稍后再试' });
+  const downloadProxy = createDownloadProxy();
+  app.get('/dl', proxyLimit, (req, res, next) => downloadProxy(req, res).catch(next));
+  app.head('/dl', (req, res, next) => downloadProxy(req, res).catch(next));
+}
 registerSeoRoutes(app, { store: seoStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 registerReportRoutes(app, { store: seoStore, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 app.use(express.static(PUBLIC_DIR, {
@@ -1778,6 +1789,17 @@ app.post('/api/resolve', fetchRateLimit, async (req, res) => {
   } catch (error) {
     return sendArchiveError(res, error);
   }
+});
+
+// File sizes for the result cards (HEAD requests to X's CDN, cached).
+const mediaInfo = createMediaInfo();
+const mediaInfoLimit = createRateLimiter({ windowMs: 60000, max: 60, code: 'RATE_LIMITED', message: '请求过于频繁，请稍后再试' });
+app.post('/api/media-info', mediaInfoLimit, async (req, res) => {
+  const urls = req.body?.urls;
+  if (!Array.isArray(urls) || urls.length === 0 || urls.length > 10 || urls.some(url => typeof url !== 'string' || url.length > 2048)) {
+    return res.status(400).json({ success: false, code: 'INVALID_REQUEST', error: '无效请求' });
+  }
+  res.set('Cache-Control', 'no-store').json({ success: true, sizes: await mediaInfo.sizes(urls) });
 });
 
 // Age confirmation lives in a session cookie; /api/resolve reads it server-side.

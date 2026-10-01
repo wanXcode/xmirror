@@ -81,3 +81,19 @@ test('invalid links are rejected before any fetch', async () => {
   await assert.rejects(resolveUrl('https://example.com/a/status/1', {}, deps(tweet())), { code: 'INVALID_URL' });
   await assert.rejects(resolveUrl(undefined, {}, deps(tweet())), { code: 'INVALID_URL' });
 });
+
+test('resolve lists the quoted post media separately from the post media', () => {
+  const quote = {
+    id: '9', url: 'https://x.com/b/status/9', author: { name: 'B', screen_name: 'b' }, text: 'q', sensitive: false,
+    photos: [{ url: 'https://pbs.twimg.com/media/Q.jpg', orig_url: 'https://pbs.twimg.com/media/Q?format=jpg&name=orig', width: 1, height: 1 }],
+    videos: [{ type: 'video', thumbnail: null, duration: 4, width: 1, height: 1, variants: [{ url: 'https://video.twimg.com/q/640x360/q.mp4', bitrate: 1, width: 640, height: 360, resolution: '640x360', content_type: 'video/mp4' }] },
+      { type: 'gif', thumbnail: null, duration: 1, width: 1, height: 1, variants: [{ url: 'https://video.twimg.com/tweet_video/g.mp4', bitrate: 0, content_type: 'video/mp4' }] }]
+  };
+  const body = buildResolveResponse(tweet({ quote }), { canonicalUrl: 'u' });
+  assert.equal(body.quote.videos.length, 1);
+  assert.equal(body.quote.gifs.length, 1);
+  assert.equal(body.quote.images[0].orig_url, 'https://pbs.twimg.com/media/Q?format=jpg&name=orig');
+  assert.equal(body.videos.length, 1, 'the post itself keeps its own media');
+  // a quote without media fields (older cached data) still resolves
+  assert.deepEqual(buildResolveResponse(tweet({ quote: { id: '1', url: null, author: {}, text: 't' } }), { canonicalUrl: 'u' }).quote.videos, []);
+});
