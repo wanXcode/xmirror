@@ -303,3 +303,30 @@ test('editing a live featured page, or a new open report, takes it out of the in
   assert.equal((await page(s, post.short_code)).document.querySelector('meta[name=robots]').getAttribute('content'), 'noindex, follow');
   assert.equal((await admin(s, `/api/admin/featured/${post.id}/publish`)).status, 409, 'review needed again');
 });
+
+// ---- OG images ----
+test('/og/{code}.png: a PNG for normal posts (cached, noindex); the brand image for sensitive, unknown or invalid', { timeout: 60000 }, async () => {
+  const s = await server();
+  const post = await seed(s, { content: 'Hello from the share preview test' });
+  const sensitive = await seed(s, { content: 'secret words', sensitive: 1 });
+  const brand = Buffer.from(await (await fetch(`${s.base}/xput-share.png`)).arrayBuffer());
+
+  const res = await fetch(`${s.base}/og/${post.short_code}.png`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'image/png');
+  assert.equal(res.headers.get('x-robots-tag'), 'noindex');
+  const png = Buffer.from(await res.arrayBuffer());
+  assert.equal(png.readUInt32BE(16), 1200);
+  assert.equal(png.readUInt32BE(20), 630);
+  assert.notDeepEqual(png, brand);
+  assert.ok(fs.readdirSync(path.join(s.dir, 'og')).some(name => name.startsWith(post.short_code)), 'cached on disk');
+  const again = Buffer.from(await (await fetch(`${s.base}/og/${post.short_code}.png`)).arrayBuffer());
+  assert.deepEqual(again, png);
+
+  for (const code of [`${sensitive.short_code}.png`, 'ZZZZZZ.png']) {
+    const other = Buffer.from(await (await fetch(`${s.base}/og/${code}`)).arrayBuffer());
+    assert.deepEqual(other, brand, code);
+  }
+  assert.equal((await fetch(`${s.base}/og/nope.png`)).status, 404);
+  assert.equal((await fetch(`${s.base}/og/${post.short_code}.jpg`)).status, 404);
+});

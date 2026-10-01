@@ -61,6 +61,7 @@ const { createViewCounter } = require('./lib/view-counter');
 const { registerResultRoutes } = require('./lib/routes/result');
 const { createFeaturedService } = require('./lib/featured');
 const { registerFeaturedAdminRoutes } = require('./lib/routes/featured-admin');
+const { registerOgRoutes } = require('./lib/routes/og');
 const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
 const {
   deleteMediaAsset,
@@ -1891,6 +1892,7 @@ const viewCounter = createViewCounter({ flush: batch => postStore.applyCounts(ba
 const featuredService = createFeaturedService({ db: { get: dbGet, all: dbAll, run: runDbWrite }, store: postStore });
 registerResultRoutes(app, { store: postStore, counter: viewCounter, baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE, featured: featuredService });
 registerFeaturedAdminRoutes(app, { service: featuredService, requireAdmin });
+registerOgRoutes(app, { store: postStore, dataDir: DATA_DIR, publicDir: path.join(__dirname, 'public') });
 
 async function refreshSeo(id) {
   try { return await seoStore.refresh(id); }
