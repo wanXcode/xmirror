@@ -45,7 +45,7 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   assert.equal((await (await action({override:null,blocked:false})).json()).status,'index');
   // The old SEO override feeds the sitemap, not the page: a saved post is noindex unless it is legacy-indexed or featured.
   page = await (await fetch(base+'/Ab1234')).text();assert.match(page,/content="noindex, follow"/);
-  assert.match(await (await fetch(base+'/sitemap.xml')).text(), /\/Ab1234/);
+  assert.doesNotMatch(await (await fetch(base+'/sitemap-copies-1.xml')).text(), /\/Ab1234/, 'a new, non-featured archive is not in the sitemap');
   assert.match(await (await fetch(base+'/browse')).text(), /\/Ab1234/);
   await run(db, 'INSERT INTO posts(id,url,short_code,content,images,author,author_handle,tweet_time,html_file,seo_status,seo_blocked) VALUES(?,?,?,?,?,?,?,?,?,?,?)', [2,'https://x.com/i/status/456','Cd3456','<h1>Needle guide</h1><p>Searchable archive</p>','[]','Bob Builder','bob_builder','2026-09-26T02:00:00Z','post_456.html','index',0]);
   const searchPage = await (await fetch(base+'/browse?q=needle')).text();
@@ -73,10 +73,10 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   await run(db,'INSERT INTO post_aliases(alias_code,target_post_id) VALUES(?,?)',['Cd5678',1]);
   assert.equal((await fetch(base+'/Cd5678',{redirect:'manual'})).status,301);
   for(const p of ['/demo/','/admin-xput.html','/api/posts']) assert.match((await fetch(base+p)).headers.get('x-robots-tag'),/noindex/);
-  const robots=await(await fetch(base+'/robots.txt')).text();assert.match(robots,/Sitemap: https:\/\/xput.app\/sitemap.xml/);assert.match(robots,/Disallow: \/api\/archive\//);assert.doesNotMatch(robots,/Disallow: \/(?:demo|admin)/);
+  const robots=await(await fetch(base+'/robots.txt')).text();assert.match(robots,/Sitemap: https:\/\/xput.app\/sitemap.xml/);assert.match(robots,/Disallow: \/api\//);assert.match(robots,/Disallow: \/dl\//);assert.doesNotMatch(robots,/Disallow: \/(?:demo|admin)/);
   await action({override:'index',blocked:true});
   assert.equal((await (await action({override:'index'})).json()).status,'noindex', 'recommend does not clear a block');
-  assert.doesNotMatch(await(await fetch(base+'/sitemap.xml')).text(),/Ab1234/);
+  assert.doesNotMatch(await(await fetch(base+'/sitemap-copies-1.xml')).text(),/Ab1234/);
   assert.match(await(await fetch(base+'/Ab1234')).text(),/noindex/);
   const reportResponse = await fetch(base+'/api/reports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:'https://xput.app/Ab1234',kind:'privacy',reason:'Please remove my private personal information.',contact:'person@example.com'})});
   assert.equal(reportResponse.status,201);

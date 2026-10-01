@@ -41,3 +41,23 @@ Defaults were implemented for everything below; each can be changed later.
 - zh report/privacy/404 copy is drafted (no zh artboards).
 - Generic 404 page reuses the saved-post "not found" layout (W_404) with Video Downloader / Twitter Viewer links; API and asset paths still get plain-text 404s.
 - Old `public/report.html` / `report.js` were replaced by the server-rendered page.
+
+## SEO and performance (stage 6)
+- `/sitemap.xml` is now a sitemap index: `/sitemap-main.xml` (fixed pages en + zh with hreflang) and `/sitemap-copies-N.xml` (live featured pages + legacy-indexed archives). The old `/sitemaps/N.xml` paths are gone. The report page is left out of the sitemap because it is noindex (the spec listed it).
+- robots.txt: `Disallow: /api/` and `/dl/`; `/og/` and media stay crawlable (OG images carry `X-Robots-Tag: noindex`).
+- Organization JSON-LD is on every page; WebApplication on home/viewer; FAQPage on home, viewer and shortcut. SocialMediaPosting is on featured pages.
+- WebP: there are no raster sample images on the site (illustrations are inline SVG, user media is stored as received), so no conversion was needed; converting saved photos would require a new image dependency.
+- Lighthouse (mobile, simulated throttling, local sandbox, Google Fonts unreachable so web fonts fall back; real numbers on production may differ slightly):
+
+| Page | Perf | A11y | Best practices | SEO | LCP | CLS |
+|---|---|---|---|---|---|---|
+| / | 96 | 100 | 96 | 100 | 2.1 s | 0 |
+| /zh/ | 98 | 100 | 96 | 100 | 2.1 s | 0 |
+| /twitter-viewer | 97 | 100 | 96 | 100 | 2.1 s | 0 |
+| /ios-shortcut | 99 | 100 | 96 | 100 | 1.8 s | 0 |
+| /privacy | 99 | 100 | 96 | 100 | 1.7 s | 0 |
+| /report | 99 | 100 | 96 | 66* | 1.7 s | 0 |
+| saved post (normal) | 97 | 100 | 96 | 66* | 2.3 s | 0 |
+| featured post | 100 | 100 | 96 | 100 | 1.5 s | 0 |
+
+\* SEO 66 is the deliberate `noindex` ("blocked from indexing"). Best-practices 96 is the console error from the blocked Google Fonts request in the sandbox. The 404 page cannot be audited (Lighthouse rejects non-200 pages).

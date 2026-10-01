@@ -168,7 +168,8 @@ if ((process.env.ENABLE_LOCAL_DOWNLOAD_PROXY ?? String(process.env.NODE_ENV !== 
   app.get('/dl', proxyLimit, (req, res, next) => downloadProxy(req, res).catch(next));
   app.head('/dl', (req, res, next) => downloadProxy(req, res).catch(next));
 }
-registerSeoRoutes(app, { store: seoStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
+const postStore = createPostStore({ get: dbGet, all: dbAll, run: runDbWrite });
+registerSeoRoutes(app, { store: seoStore, postStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 registerReportRoutes(app, { store: seoStore, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 app.use(express.static(PUBLIC_DIR, {
   setHeaders(res, filePath) {
@@ -1888,7 +1889,6 @@ app.get(/^\/([A-Za-z0-9]{6})\/referer$/, async (req, res, next) => {
 });
 
 const DOWNLOAD_BASE = process.env.DOWNLOAD_PROXY_BASE || '/dl';
-const postStore = createPostStore({ get: dbGet, all: dbAll, run: runDbWrite });
 const viewCounter = createViewCounter({ flush: batch => postStore.applyCounts(batch), intervalMs: Number(process.env.VIEW_COUNTER_FLUSH_MS) || 30000 });
 const featuredService = createFeaturedService({ db: { get: dbGet, all: dbAll, run: runDbWrite }, store: postStore });
 registerResultRoutes(app, { store: postStore, counter: viewCounter, baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE, featured: featuredService });

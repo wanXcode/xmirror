@@ -330,3 +330,18 @@ test('/og/{code}.png: a PNG for normal posts (cached, noindex); the brand image 
   assert.equal((await fetch(`${s.base}/og/nope.png`)).status, 404);
   assert.equal((await fetch(`${s.base}/og/${post.short_code}.jpg`)).status, 404);
 });
+
+test('copies sitemap lists legacy-indexed and live featured pages, but not new, blocked, sensitive or reported ones', { timeout: 60000 }, async () => {
+  const s = await server();
+  const legacy = await seed(s, { seo_status: 'index', legacy_indexed: 1 });
+  const fresh = await seed(s, { seo_status: 'index' });
+  const blocked = await seed(s, { seo_status: 'index', legacy_indexed: 1, seo_blocked: 1 });
+  const sensitive = await seed(s, { seo_status: 'index', legacy_indexed: 1, sensitive: 1 });
+  const reported = await seed(s, { seo_status: 'index', legacy_indexed: 1 });
+  await s.run("INSERT INTO content_reports(post_id, short_code, kind, reason, status) VALUES(?, ?, 'other', 'x', 'open')", [reported.id, reported.short_code]);
+  const featured = await seed(s, { view_count: 40, share_count: 3, author_followers: 5000 });
+  assert.equal((await feature(s, featured)).status, 200);
+  const xml = await (await fetch(`${s.base}/sitemap-copies-1.xml`)).text();
+  for (const post of [legacy, featured]) assert.ok(xml.includes(`/${post.short_code}<`), post.short_code);
+  for (const post of [fresh, blocked, sensitive, reported]) assert.ok(!xml.includes(`/${post.short_code}<`), post.short_code);
+});

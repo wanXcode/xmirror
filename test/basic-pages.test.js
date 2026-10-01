@@ -211,3 +211,18 @@ test('unknown paths get a friendly localized 404 page with the finder; API and a
   }
   assert.equal((await fetch(`${s.base}/archives/x.html`, { redirect: 'manual' })).status, 404);
 });
+
+test('every page carries Organization JSON-LD; sitemap index and robots.txt are served', { timeout: 60000 }, async () => {
+  const s = await server();
+  for (const route of ['/', '/zh/', '/privacy', '/report', '/nope']) {
+    const { document } = await doc(s.base, route);
+    const types = [...document.querySelectorAll('script[type="application/ld+json"]')].map(n => JSON.parse(n.textContent)['@type']);
+    assert.ok(types.includes('Organization'), route);
+  }
+  const index = await (await fetch(`${s.base}/sitemap.xml`)).text();
+  assert.deepEqual([...index.matchAll(/<loc>([^<]+)/g)].map(m => m[1]), ['https://xput.app/sitemap-main.xml', 'https://xput.app/sitemap-copies-1.xml']);
+  assert.match(await (await fetch(`${s.base}/sitemap-main.xml`)).text(), /xhtml:link/);
+  assert.equal((await fetch(`${s.base}/sitemap-copies-2.xml`)).status, 404);
+  assert.equal((await fetch(`${s.base}/sitemap-copies-x.xml`)).status, 404);
+  assert.match(await (await fetch(`${s.base}/robots.txt`)).text(), /Sitemap: https:\/\/xput.app\/sitemap.xml/);
+});
