@@ -51,6 +51,8 @@ const { registerHealthRoute } = require('./lib/health');
 const { createFetcher } = require('./lib/fetchers');
 const { resolveUrl, isSensitiveTweet } = require('./lib/resolve');
 const { clientIpMiddleware, DEFAULT_TRUST_PROXY } = require('./lib/client-ip');
+const { isReservedShortCode, loadReservedShortCodes } = require('./lib/shortcode');
+const { registerPageRoutes } = require('./lib/routes/pages');
 const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
 const {
   deleteMediaAsset,
@@ -145,6 +147,9 @@ const seoReviewService = createReviewService({ moderator: seoModerator, dataDir:
 const seoStore = createSeoStore(db, { dataDir: DATA_DIR, moderator: seoModerator, reviewService: seoReviewService, autoIndex: process.env.SEO_AUTO_INDEX !== 'false' });
 const seoAI = require('./lib/seo-ai').createSeoAI({ store: seoStore, dataDir: DATA_DIR, isBusy: () => activeTranslationJobs > 0 });
 seoStore.onEvaluated(post => seoAI.enqueue(post));
+// Fixed pages first: they must win over the 6-character short code route.
+// '/' stays with the current home page until its new template lands.
+registerPageRoutes(app, { baseUrl: PUBLIC_BASE_URL, skip: ['/'] });
 registerSeoRoutes(app, { store: seoStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 registerReportRoutes(app, { store: seoStore, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 app.use(express.static(PUBLIC_DIR, {
@@ -158,6 +163,7 @@ app.use('/images', express.static(path.join(DATA_DIR, 'images')));
 app.use('/videos', express.static(path.join(DATA_DIR, 'videos')));
 app.use('/subtitles', express.static(path.join(DATA_DIR, 'subtitles')));
 
+const RESERVED_SHORT_CODES = loadReservedShortCodes();
 const SHORT_CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
 function randomShortCode(length = 6) {
@@ -172,6 +178,7 @@ function randomShortCode(length = 6) {
 async function generateUniqueShortCode(maxRetries = 20) {
   for (let i = 0; i < maxRetries; i++) {
     const code = randomShortCode(6);
+    if (isReservedShortCode(code, RESERVED_SHORT_CODES)) continue;
     const exists = await new Promise((resolve, reject) => {
       db.get(
         `SELECT 1 FROM posts WHERE short_code=?
@@ -2006,6 +2013,13 @@ async function startServer() {
     let hashBatch;
     let hashCursor = 0;
     do { hashBatch = await seoStore.backfillHashes(100, hashCursor); hashCursor = hashBatch.lastId; } while (hashBatch.scanned === 100);
+    const reserved6 = [...RESERVED_SHORT_CODES].filter(word => /^[a-z0-9]{6}$/.test(word));
+    if (reserved6.length) {
+      const clashes = await new Promise((resolve, reject) => db.all(
+        `SELECT short_code FROM posts WHERE lower(short_code) IN (${reserved6.map(() => '?').join(',')})`, reserved6,
+        (err, rows) => err ? reject(err) : resolve(rows || [])));
+      if (clashes.length) console.warn(`保留字与已有短码冲突（会被固定页面遮挡）: ${clashes.map(row => row.short_code).join(', ')}`);
+    }
     console.log('短链字段与历史数据检查完成');
   } catch (e) {
     console.error('短链初始化失败:', e.message);
