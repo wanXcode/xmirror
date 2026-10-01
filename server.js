@@ -8,7 +8,6 @@ const https = require('https');
 const crypto = require('crypto');
 const { version: APP_VERSION } = require('./package.json');
 const seo = require('./lib/seo');
-const { prepareContent, structuredData } = require('./lib/seo-content');
 const { migrateReports, registerReportRoutes } = require('./lib/content-reports');
 const { createSeoStore } = require('./lib/seo-store');
 const { registerSeoRoutes } = require('./lib/seo-routes');
@@ -56,6 +55,10 @@ const { registerPageRoutes } = require('./lib/routes/pages');
 const { hasAgeConfirmation, setAgeConfirmation } = require('./lib/age-gate');
 const { createDownloadProxy } = require('./lib/download-proxy');
 const { createMediaInfo } = require('./lib/media-info');
+const { migrateFrontendSchema } = require('./lib/frontend-schema');
+const { createPostStore } = require('./lib/post-store');
+const { createViewCounter } = require('./lib/view-counter');
+const { registerResultRoutes } = require('./lib/routes/result');
 const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
 const {
   deleteMediaAsset,
@@ -951,6 +954,12 @@ async function fetchXPost(url) {
     status: 'queued'
   }));
 
+  // The video's cover image is kept for share previews; a failure only means no cover.
+  let videoPoster = null;
+  if (primary?.thumbnail && isTwimgUrl(primary.thumbnail)) {
+    try { videoPoster = await downloadImage(primary.thumbnail, `${tweetId}_poster.${imageExtension(primary.thumbnail)}`); } catch { /* optional */ }
+  }
+
   const { htmlContent } = renderTweetContent({ tweet, localImages, urlToLocalPath, escapeHtml });
 
   return {
@@ -968,149 +977,11 @@ async function fetchXPost(url) {
     video_bytes: 0,
     video_total_bytes: 0,
     video_error: null,
+    video_poster: videoPoster,
+    reply_count: tweet.replies,
+    author_followers: tweet.author?.followers ?? null,
     tweet_time: normalizeXTimestamp(tweet.created_at, null)
   };
-}
-
-function generateMirrorHtml(post) {
-  const prepared = prepareContent(post, DATA_DIR);
-  const content = prepared.html;
-  const videoStatus = post.video_status || (post.video ? 'completed' : (post.video_source_url ? 'queued' : 'none'));
-  const videoBytes = Number(post.video_bytes) || 0;
-  const videoTotal = Number(post.video_total_bytes) || 0;
-  const videoPercent = videoTotal > 0 ? Math.min(100, Math.round((videoBytes / videoTotal) * 100)) : 0;
-  let videoHtml = '';
-  if (videoStatus === 'completed' && /^\/videos\/[A-Za-z0-9_.-]+$/.test(post.video || '')) {
-    videoHtml = buildVideoPlayerHtml(post);
-  } else if (['queued', 'downloading'].includes(videoStatus)) {
-    const initialText = videoStatus === 'downloading' ? '视频正在下载中…' : '视频即将开始下载…';
-    videoHtml = `<div class="video-placeholder" data-video-status="${videoStatus}" data-video-post-id="${post.id}" role="status" aria-live="polite">
-      <div class="video-placeholder-title">🎞️ ${initialText}</div>
-      <div class="video-progress"><div class="video-progress-bar" style="width:${videoPercent}%"></div></div>
-      <div class="video-progress-text">${videoPercent > 0 ? `${videoPercent}% · ${formatBytes(videoBytes)}${videoTotal ? ` / ${formatBytes(videoTotal)}` : ''}` : '正在准备下载'}</div>
-    </div>`;
-  } else if (videoStatus === 'failed') {
-    videoHtml = `<div class="video-placeholder video-placeholder-error" data-video-status="failed" data-video-post-id="${post.id}" role="status">视频下载失败，请重新提交原链接重试。</div>`;
-  }
-
-  videoHtml += buildExtraVideosHtml(post);
-
-  const meta = seo.metadata(post);
-  const summary = meta.description;
-  const ogPath = seo.imagesFor(post).find(image => {
-    try { return fs.statSync(path.join(DATA_DIR, image)).size > 0; } catch { return false; }
-  });
-  const ogImage = buildPublicUrl(ogPath || '/xput-share.png', PUBLIC_BASE_URL);
-  const pageTitle = `${escapeHtml(meta.title)} | XPut`;
-  const canonicalPath = post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`;
-  const canonicalUrl = buildPublicUrl(canonicalPath, PUBLIC_BASE_URL);
-  const refererPath = post.short_code ? `/${post.short_code}/referer` : post.url;
-  const publishedAt = normalizeXTimestamp(post.tweet_time, null);
-  const savedAt = post.created_at ? (post.created_at.includes("T") ? post.created_at : post.created_at.replace(" ", "T") + "Z") : new Date().toISOString();
-  const createdAt = normalizeXTimestamp(savedAt);
-  const sourceLang = detectContentLanguage(content);
-
-  const html = `<!DOCTYPE html>
-<html lang="${escapeHtml(sourceLang)}">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${pageTitle}</title>
-<meta name="description" content="${escapeHtml(summary)}">
-
-<meta name="author" content="${escapeHtml(post.author)}">
-<meta name="robots" content="${seo.robotsFor(post)}">
-
-<link rel="canonical" href="${canonicalUrl}">
-<link rel="icon" href="/favicon.ico?v=xput-tray-1" sizes="16x16 32x32 48x48">
-<link rel="icon" href="/favicon.svg?v=xput-tray-1" type="image/svg+xml" sizes="any">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=xput-tray-1">
-<link rel="mask-icon" href="/safari-pinned-tab.svg?v=xput-tray-1" color="#2563eb">
-<link rel="manifest" href="/site.webmanifest?v=xput-tray-1">
-<meta property="og:title" content="${pageTitle}">
-<meta property="og:description" content="${escapeHtml(summary)}">
-<meta property="og:type" content="article">
-<meta property="og:image" content="${escapeHtml(ogImage)}">
-<meta property="og:url" content="${canonicalUrl}">
-<meta property="og:site_name" content="XPut">
-<meta property="og:locale" content="${({en:'en_US',zh:'zh_CN','zh-CN':'zh_CN',ja:'ja_JP',ko:'ko_KR'})[sourceLang] || 'en_US'}">
-${publishedAt ? `<meta property="article:published_time" content="${publishedAt}">` : ''}
-<meta property="article:author" content="${escapeHtml(post.author)}">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${pageTitle}">
-<meta name="twitter:description" content="${escapeHtml(summary)}">
-<meta name="twitter:image" content="${escapeHtml(ogImage)}">
-<meta name="twitter:creator" content="@${escapeHtml(post.author_handle)}">
-<script type="application/ld+json">${structuredData(post, PUBLIC_BASE_URL, sourceLang, ogPath ? ogImage : null)}</script>
-<meta name="twitter:domain" content="${new URL(PUBLIC_BASE_URL).hostname}">
-<!-- Retain the existing analytics site ID to preserve historical reporting across the domain migration. -->
-<script defer data-domain="xmirror.app" src="https://a.zhxs.me/js/script.js"></script>
-<link rel="preload" href="/xput-logo.svg" as="image" type="image/svg+xml">
-<link rel="stylesheet" href="/theme.css?v=${APP_VERSION}">
-<link rel="stylesheet" href="/article.css?v=${APP_VERSION}">
-</head>
-<body class="mirror-page">
-<nav class="article-tools" aria-label="页面设置"><button class="quiet-button" type="button" onclick="toggleTheme()" aria-label="切换主题"><span aria-hidden="true">◐</span></button><button class="quiet-button article-lang" type="button" aria-hidden="true">EN</button></nav>
-<div class="container">
-<div class="post" data-post-id="${post.id}" data-source-lang="${sourceLang}">
-<div class="article-byline">
-<img class="avatar" width="38" height="38" alt="" decoding="async" src="${escapeHtml(post.author_avatar)}" onerror="this.style.display='none'">
-<div class="author-info"><div class="author-name">${escapeHtml(post.author)}</div><div class="author-handle">@${escapeHtml(post.author_handle)}</div></div>
-</div>
-${prepared.headingHtml}
-${publishedAt ? `<p class="post-published">原帖发布于 <time datetime="${publishedAt}">${publishedAt.slice(0,10)}</time></p>` : ''}
-<div class="translate-toolbar">
-<button id="translateBtn" class="translate-btn" type="button" onclick="toggleTranslate()" aria-controls="originContent translatedContent" aria-busy="false">翻译为中文</button>
-<span id="translateStatus" class="translate-status" role="status" aria-live="polite" aria-atomic="true"></span>
-</div>
-<div id="originContent" class="content content-view active" aria-hidden="false">${content}</div>
-<div id="translatedContent" class="content content-view" aria-hidden="true"></div>
-${videoHtml}
-<nav class="archive-navigation" aria-label="存档导航"><a href="/browse">浏览公开存档</a><a href="/report?post=${post.short_code}">投诉／删除申请</a></nav>
-${post.related?.length ? `<section class="related-posts"><h2>同一作者的其他存档</h2><ul>${post.related.map(p => `<li><a href="/${p.short_code}">${seo.escape(seo.metadata(p).title)}</a></li>`).join('')}</ul></section>` : ''}
-<div class="article-end"><a class="back-home" href="/">← 返回 XPut 首页</a><span class="saved-mark"><time class="article-time" datetime="${createdAt}">${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time> 保存</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">在 X 查看原帖 ↗</a></div>
-</div></div>
-<script src="/seo-events.js?v=${APP_VERSION}" defer></script>
-<script src="/mirror-page.js?v=${APP_VERSION}-links2" defer></script>
-</body>
-</html>`;
-
-  return html;
-}
-
-function gifAttributes(isGif) {
-  return isGif ? 'autoplay loop muted playsinline' : 'controls playsinline preload="metadata"';
-}
-
-function buildExtraVideosHtml(post) {
-  let extras;
-  try { extras = JSON.parse(post.extra_videos || '[]'); } catch { return ''; }
-  return extras.map(extra => {
-    if (extra.status === 'completed' && /^\/videos\/[A-Za-z0-9_.-]+$/.test(extra.path || '')) {
-      return `<div class="video-shell"><video ${gifAttributes(extra.type === 'gif')} aria-label="${escapeHtml(seo.metadata(post).title)}"><source src="${escapeHtml(extra.path)}" type="video/mp4"></video></div>`;
-    }
-    if (extra.status === 'failed') return '<div class="video-placeholder video-placeholder-error" role="status">附加视频下载失败，请重新提交原链接重试。</div>';
-    return '<div class="video-placeholder" role="status">附加视频下载中，请稍后刷新页面。</div>';
-  }).join('');
-}
-
-function buildVideoPlayerHtml(post) {
-  const isGif = Number(post.video_is_gif) === 1;
-  const video = `<video ${gifAttributes(isGif)} aria-label="${escapeHtml(seo.metadata(post).title)}"><source src="${escapeHtml(post.video)}" type="video/mp4"></video>`;
-  // GIFs have no audio track, so subtitles make no sense for them.
-  if (isGif) return `<div class="video-shell" data-video-post-id="${post.id}">${video}</div>`;
-  return `<div class="video-shell" data-video-post-id="${post.id}">
-    ${video}
-    <div class="subtitle-toolbar" role="group" aria-label="字幕设置">
-      <label for="subtitleSelect">CC 字幕</label>
-      <select id="subtitleSelect" class="subtitle-select">
-        <option value="" selected>关闭字幕</option>
-        <option value="en">English</option>
-        <option value="zh-CN">简体中文</option>
-      </select>
-      <span id="subtitleStatus" class="subtitle-status" role="status" aria-live="polite"></span>
-    </div>
-  </div>`;
 }
 
 async function getPostById(id) {
@@ -1655,11 +1526,11 @@ async function archiveXUrl(url) {
       await runDbWrite(
         `UPDATE posts SET author=?,author_handle=?,author_avatar=?,content=?,images=?,video=?,
          video_status=?,video_source_url=?,video_filename=?,video_bytes=?,video_total_bytes=?,video_error=?,tweet_time=?,
-         video_is_gif=?,extra_videos=? WHERE id=?`,
+         video_is_gif=?,extra_videos=?,reply_count=?,author_followers=?,video_poster=? WHERE id=?`,
         [refreshed.author, refreshed.author_handle, refreshed.author_avatar, refreshed.content,
           JSON.stringify(refreshed.images), refreshed.video, refreshed.video_status, refreshed.video_source_url,
           refreshed.video_filename, refreshed.video_bytes, refreshed.video_total_bytes, refreshed.video_error,
-          refreshed.tweet_time, refreshed.video_is_gif, refreshed.extra_videos, existing.id]
+          refreshed.tweet_time, refreshed.video_is_gif, refreshed.extra_videos, refreshed.reply_count, refreshed.author_followers, refreshed.video_poster, existing.id]
       );
       Object.assign(existing, refreshed, { images: JSON.stringify(refreshed.images) });
     }
@@ -1670,9 +1541,6 @@ async function archiveXUrl(url) {
     await seoStore.invalidate(existing.id);
     await refreshSeo(existing.id);
     Object.assign(existing, await getPostById(existing.id));
-    const htmlPath = path.join(ARCHIVES_DIR, existing.html_file);
-    const htmlContent = generateMirrorHtml(existing);
-    fs.writeFileSync(htmlPath, htmlContent, 'utf8');
     await resumeVideoDownloadIfNeeded(existing);
     return archiveSuccessResponse(existing, true);
   }
@@ -1706,12 +1574,13 @@ async function archiveXUrl(url) {
   try {
     stmt = await runDbWrite(
       `INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,video_status,video_source_url,
-       video_filename,video_bytes,video_total_bytes,video_error,tweet_time,html_file,short_code,video_is_gif,extra_videos)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       video_filename,video_bytes,video_total_bytes,video_error,tweet_time,html_file,short_code,video_is_gif,extra_videos,
+       reply_count,author_followers,video_poster)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [canonicalUrl, content.author, content.author_handle, content.author_avatar, content.content, JSON.stringify(content.images),
         content.video, content.video_status, content.video_source_url, content.video_filename, content.video_bytes,
         content.video_total_bytes, content.video_error, content.tweet_time, htmlFile, shortCode,
-        content.video_is_gif, content.extra_videos]
+        content.video_is_gif, content.extra_videos, content.reply_count, content.author_followers, content.video_poster]
     );
   } catch (insertErr) {
     if (String(insertErr.message || '').includes('UNIQUE constraint failed: posts.url')) {
@@ -1721,11 +1590,8 @@ async function archiveXUrl(url) {
           existing2.short_code = await generateUniqueShortCode();
           await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing2.short_code, existing2.id]);
         }
-        const htmlPath = path.join(ARCHIVES_DIR, existing2.html_file);
         await refreshSeo(existing2.id);
         Object.assign(existing2, await getPostById(existing2.id));
-        const htmlContent = generateMirrorHtml(existing2);
-        fs.writeFileSync(htmlPath, htmlContent, 'utf8');
         await resumeVideoDownloadIfNeeded(existing2);
         return archiveSuccessResponse(existing2, true);
       }
@@ -1736,8 +1602,6 @@ async function archiveXUrl(url) {
   const result = stmt.lastID;
   await seoStore.run('UPDATE posts SET seo_quality_version=?,seo_ai_enabled=1 WHERE id=?', [process.env.SEO_QUALITY_VERSION === '2' ? '2' : '3', result]);
   await refreshSeo(result);
-  const htmlContent = generateMirrorHtml(await getPostById(result));
-  fs.writeFileSync(path.join(ARCHIVES_DIR, htmlFile), htmlContent, 'utf8');
   if (content.video_source_url) {
     queueVideoDownload({ postId: result, url: content.video_source_url, filename: content.video_filename });
   }
@@ -1936,6 +1800,12 @@ app.post('/api/delete', requireAdmin, async (req, res) => {
     const post = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE id=?',[id],(e,row)=>e?j(e):r(row)));
     if (!post) return res.status(404).json({error:'存档不存在'});
 
+    // Leave a removal notice so the old link says "this copy was removed" instead of "does not exist".
+    if (post.short_code) {
+      const reference = typeof req.body.reference === 'string' ? req.body.reference.trim().slice(0, 64) : '';
+      await runDbWrite('INSERT OR REPLACE INTO removed_posts(short_code, post_id, reference) VALUES(?,?,?)', [post.short_code, post.id, reference || null]);
+    }
+
     const htmlPath = path.join(ARCHIVES_DIR, post.html_file);
     if (fs.existsSync(htmlPath)) fs.unlinkSync(htmlPath);
 
@@ -1974,26 +1844,17 @@ app.post('/api/delete', requireAdmin, async (req, res) => {
   }
 });
 
+// Old per-file links keep working by redirecting to the short code page.
 app.get('/archives/:fileName', async (req, res, next) => {
   const { fileName } = req.params;
   if (!/^post_\d+\.html$/.test(fileName)) return next();
-
   try {
-    const post = await new Promise((resolve, reject) => {
-      db.get('SELECT * FROM posts WHERE html_file=?', [fileName], (err, row) => err ? reject(err) : resolve(row));
-    });
-
-    if (post?.short_code) {
-      return res.redirect(301, `/${post.short_code}`);
-    }
-    if (post) {
-      return res.set('Cache-Control', 'no-store').status(200).send(generateMirrorHtml(post));
-    }
+    const post = await dbGet('SELECT short_code FROM posts WHERE html_file=?', [fileName]);
+    if (post?.short_code) return res.redirect(301, `/${post.short_code}`);
   } catch (e) {
     console.error('旧链接301映射失败:', e.message);
     return res.sendStatus(503);
   }
-
   return next();
 });
 
@@ -2022,32 +1883,10 @@ app.get(/^\/([A-Za-z0-9]{6})\/referer$/, async (req, res, next) => {
   }
 });
 
-app.get(/^\/([A-Za-z0-9]{6})$/, async (req, res, next) => {
-  try {
-    const shortCode = req.params[0];
-    const post = await new Promise((resolve, reject) => {
-      db.get(
-        `SELECT * FROM posts WHERE short_code=?
-         UNION ALL
-         SELECT p.* FROM post_aliases a JOIN posts p ON p.id=a.target_post_id
-         WHERE a.alias_code=? LIMIT 1`,
-        [shortCode, shortCode],
-        (err, row) => err ? reject(err) : resolve(row)
-      );
-    });
-
-    if (!post) return next();
-
-    if (post.short_code !== shortCode) return res.redirect(301, `/${post.short_code}`);
-    res.set('Cache-Control', 'no-store');
-    post.related = await seoStore.related(post);
-    const htmlContent = generateMirrorHtml(post);
-    return res.status(200).send(htmlContent);
-  } catch (e) {
-    console.error('短链访问失败:', e.message);
-    return res.sendStatus(503);
-  }
-});
+const DOWNLOAD_BASE = process.env.DOWNLOAD_PROXY_BASE || '/dl';
+const postStore = createPostStore({ get: dbGet, all: dbAll, run: runDbWrite });
+const viewCounter = createViewCounter({ flush: batch => postStore.applyCounts(batch), intervalMs: Number(process.env.VIEW_COUNTER_FLUSH_MS) || 30000 });
+registerResultRoutes(app, { store: postStore, counter: viewCounter, baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE });
 
 async function refreshSeo(id) {
   try { return await seoStore.refresh(id); }
@@ -2062,6 +1901,7 @@ async function startServer() {
     await ensureShortCodeReady();
     await ensureVideoColumnsReady();
     await seoStore.migrate();
+    await migrateFrontendSchema({ run: runDbWrite, all: dbAll, get: dbGet });
     await seoAI.migrate();
     await migrateReports(seoStore);
     let hashBatch;
@@ -2087,6 +1927,7 @@ async function startServer() {
     maintainSeo();
     setInterval(maintainSeo, 60000).unref();
     setInterval(() => seoAI.tick().catch(() => console.error('SEO title worker failed')), 5000).unref();
+    viewCounter.start();
     queuePendingVideoDownloads();
     queuePendingSubtitleJobs();
     queuePendingTranslationJobs();

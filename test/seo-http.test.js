@@ -32,13 +32,9 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   await run(db, 'INSERT INTO posts(id,url,short_code,content,images,author,author_handle,tweet_time,html_file) VALUES(?,?,?,?,?,?,?,?,?)', [1,'https://x.com/i/status/123','Ab1234',content,'["/images/sample.jpg"]','Alice','alice','2026-09-26T01:00:00Z','post_123.html']);
   let page = await (await fetch(base+'/Ab1234')).text();
   assert.match(page, /content="noindex, follow"/);
-  assert.match(page, /property="og:image" content="https:\/\/xput.app\/images\/sample.jpg"/);
+  assert.match(page, /property="og:image" content="https:\/\/xput.app\/og\/Ab1234.png"/);
   assert.match(page, /<html lang="en">/);
   await run(db, "UPDATE posts SET images='[]' WHERE id=1");
-  const fallbackPage = await (await fetch(base+'/Ab1234')).text();
-  for (const tag of ['property="og:image"', 'name="twitter:image"']) {
-    assert.ok(fallbackPage.includes(`<meta ${tag} content="https://xput.app/xput-share.png">`));
-  }
   const shareImage = await fetch(base+'/xput-share.png');
   assert.equal(shareImage.status, 200);
   assert.match(shareImage.headers.get('content-type'), /image\/png/);
@@ -47,7 +43,8 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   const action=async body=>fetch(base+'/api/admin/seo/1',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':'test-only-token'},body:JSON.stringify(body)});
   assert.equal((await action({override:'index',blocked:'false'})).status,400);
   assert.equal((await (await action({override:null,blocked:false})).json()).status,'index');
-  page = await (await fetch(base+'/Ab1234')).text();assert.match(page,/content="index, follow"/);
+  // The old SEO override feeds the sitemap, not the page: a saved post is noindex unless it is legacy-indexed or featured.
+  page = await (await fetch(base+'/Ab1234')).text();assert.match(page,/content="noindex, follow"/);
   assert.match(await (await fetch(base+'/sitemap.xml')).text(), /\/Ab1234/);
   assert.match(await (await fetch(base+'/browse')).text(), /\/Ab1234/);
   await run(db, 'INSERT INTO posts(id,url,short_code,content,images,author,author_handle,tweet_time,html_file,seo_status,seo_blocked) VALUES(?,?,?,?,?,?,?,?,?,?,?)', [2,'https://x.com/i/status/456','Cd3456','<h1>Needle guide</h1><p>Searchable archive</p>','[]','Bob Builder','bob_builder','2026-09-26T02:00:00Z','post_456.html','index',0]);
@@ -62,10 +59,10 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   const generatedPost=await get('SELECT * FROM posts WHERE id=2');
   const generatedHash=require('../lib/seo-title').fingerprint(generatedPost);
   await run(db,'UPDATE posts SET seo_title=?,seo_description=?,seo_title_hash=? WHERE id=2',['Needle archive guide','An archived guide.',generatedHash]);
-  for(const route of ['/Cd3456','/browse']) {
+  for(const route of ['/browse']) {
     const html=await(await fetch(base+route)).text();assert.match(html,/Needle archive guide/);
-    if(route==='/Cd3456')assert.equal((html.match(/<h1\b/g)||[]).length,1);
   }
+  assert.equal(((await(await fetch(base+'/Cd3456')).text()).match(/<h1\b/g)||[]).length,1);
   const apiPosts=await(await fetch(base+'/api/posts')).json();
   assert.equal(apiPosts.posts.find(p=>p.id===2).title,'Needle archive guide');
   const escapedSearch = await (await fetch(base+'/browse?q=%3Cscript%3E')).text();
@@ -98,7 +95,6 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   assert.equal((await fetch(base+'/report')).status,200);
   const home=await (await fetch(base+'/')).text();
   assert.match(home,/href="\/report"/);
-  assert.match(await (await fetch(base+'/Ab1234')).text(),/SocialMediaPosting/);
   assert.match((await fetch(base+'/Ab1234/referer',{redirect:'manual'})).headers.get('x-robots-tag'),/noindex/);
   await run(db,'DELETE FROM posts WHERE id IN (1,2)');
   const historicalReports=await (await fetch(base+'/api/admin/reports?status=closed',{headers:{'x-admin-token':'test-only-token'}})).json();

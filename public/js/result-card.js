@@ -61,7 +61,7 @@
 
   function primaryQualityLabel(variant, text) {
     var quality = Download.qualityOf(variant);
-    return !variant.height || variant.height >= 720 ? t(text, 'hdQuality', { quality: quality }) : quality;
+    return variant.height >= 720 ? t(text, 'hdQuality', { quality: quality }) : quality;
   }
 
   // ---------------------------------------------------------------- the renderer
@@ -216,7 +216,8 @@
     }
 
     // ------------------------------------------------------------ download tasks
-    function proxy(url, name) { return Download.proxyUrl(ctx.downloadBase, url, name); }
+    // Files saved with a copy live on this server and need no proxy; everything else goes through it.
+    function proxy(url, name) { return /^\/(?!\/)/.test(url) ? url : Download.proxyUrl(ctx.downloadBase, url, name); }
 
     function downloadVideoTask(variant, name) {
       return function (progress) {
@@ -578,7 +579,15 @@
       return card;
     }
 
-    return { render: render, closeToast: closeToast, openLightbox: openLightbox };
+    // Just the media blocks, for the download drawer on the saved-post page.
+    function renderBlocks(data) {
+      var blocks = h('div', { class: 'blocks blocks--drawer' }, mediaBlocks(data, ''));
+      firstDownload = null;
+      loadSizes(collectSizeUrls(data));
+      return blocks;
+    }
+
+    return { render: render, renderBlocks: renderBlocks, closeToast: closeToast, openLightbox: openLightbox };
   }
 
   var api = { createResultRenderer: createResultRenderer, buildPill: buildPill, mediaCounts: mediaCounts, sized: sized, primaryQualityLabel: primaryQualityLabel };

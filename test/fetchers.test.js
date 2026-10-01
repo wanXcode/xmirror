@@ -296,3 +296,15 @@ test('media of a quoted post is normalized for both sources', () => {
   assert.deepEqual(syn.quote.photos, []);
   assert.deepEqual(normalizeFxtwitter({ ...FX_TWEET, quote: { text: 'x', author: { screen_name: 'b' } } }).quote.videos, []);
 });
+
+test('reply count and author followers are carried through when the source has them', () => {
+  const fx = normalizeFxtwitter({ ...FX_TWEET, replies: 12, author: { ...FX_TWEET.author, followers: 3400 } });
+  assert.equal(fx.replies, 12);
+  assert.equal(fx.author.followers, 3400);
+  assert.equal(normalizeFxtwitter(FX_TWEET).replies, null);
+  assert.equal(normalizeFxtwitter(FX_TWEET).author.followers, null);
+  const syn = normalizeSyndication({ ...SYN_TWEET, conversation_count: 7 });
+  assert.equal(syn.replies, 7);
+  assert.equal(syn.author.followers, null);
+  assert.equal(normalizeSyndication(SYN_TWEET).replies, null);
+});
