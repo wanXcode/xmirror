@@ -36,7 +36,7 @@ test('Chinese pages use zh-Hans and their own canonical; an empty description re
   assert.equal(document.querySelector('h1').textContent, '推特视频下载');
   // Compare booleans, not DOM nodes: a failing deepEqual on a node would try to print the whole tree.
   assert.ok(document.querySelector('meta[name=description]') !== null);
-  assert.ok(page('zh', 'shortcut').document.querySelector('meta[name=description]') === null);
+  assert.ok(page('zh', 'shortcut').document.querySelector('meta[name=description]') !== null);
 });
 
 test('hreflang: en, zh-Hans and x-default (English), each page pointing at its counterpart', () => {

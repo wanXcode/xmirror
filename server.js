@@ -51,7 +51,8 @@ const { createFetcher } = require('./lib/fetchers');
 const { resolveUrl, isSensitiveTweet } = require('./lib/resolve');
 const { clientIpMiddleware, DEFAULT_TRUST_PROXY } = require('./lib/client-ip');
 const { isReservedShortCode, loadReservedShortCodes } = require('./lib/shortcode');
-const { registerPageRoutes } = require('./lib/routes/pages');
+const { registerNotFound, registerPageRoutes } = require('./lib/routes/pages');
+const SITE_CONFIG = require('./config/site.json');
 const { hasAgeConfirmation, setAgeConfirmation } = require('./lib/age-gate');
 const { createDownloadProxy } = require('./lib/download-proxy');
 const { createMediaInfo } = require('./lib/media-info');
@@ -157,7 +158,7 @@ const seoStore = createSeoStore(db, { dataDir: DATA_DIR, moderator: seoModerator
 const seoAI = require('./lib/seo-ai').createSeoAI({ store: seoStore, dataDir: DATA_DIR, isBusy: () => activeTranslationJobs > 0 });
 seoStore.onEvaluated(post => seoAI.enqueue(post));
 // Fixed pages first: they must win over the 6-character short code route.
-registerPageRoutes(app, { baseUrl: PUBLIC_BASE_URL, downloadBase: process.env.DOWNLOAD_PROXY_BASE || '/dl' });
+registerPageRoutes(app, { baseUrl: PUBLIC_BASE_URL, downloadBase: process.env.DOWNLOAD_PROXY_BASE || '/dl', shortcutUrl: process.env.SHORTCUT_URL || SITE_CONFIG.shortcutUrl });
 
 // Development / fallback download proxy. In production the Cloudflare Worker owns /dl
 // (workers/download-proxy), so this stays off unless explicitly enabled.
@@ -168,7 +169,7 @@ if ((process.env.ENABLE_LOCAL_DOWNLOAD_PROXY ?? String(process.env.NODE_ENV !== 
   app.head('/dl', (req, res, next) => downloadProxy(req, res).catch(next));
 }
 registerSeoRoutes(app, { store: seoStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
-registerReportRoutes(app, { store: seoStore, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
+registerReportRoutes(app, { store: seoStore, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 app.use(express.static(PUBLIC_DIR, {
   setHeaders(res, filePath) {
     if (path.basename(filePath) === 'index.html') {
@@ -1926,6 +1927,7 @@ async function startServer() {
     process.exit(1);
   }
 
+  registerNotFound(app, { baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE });
   app.listen(PORT,'0.0.0.0',()=>{
     console.log(`XMirror运行在http://0.0.0.0:${PORT}`);
     console.log(`SQLite: ${dbPath}`);

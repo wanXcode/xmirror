@@ -8,7 +8,7 @@ const { html } = require('../lib/views/html');
 test('every page advertises the shared site icons, and the files exist', () => {
   const projectRoot = path.join(__dirname, '..');
   const generated = String(renderDocument({ lang: 'en', baseUrl: 'https://xput.app', page: 'home', title: 't', body: html`<h1>x</h1>` }));
-  const staticPages = ['admin-xput.html', 'help.html', 'report.html'].map(name => fs.readFileSync(path.join(projectRoot, 'public', name), 'utf8'));
+  const staticPages = ['admin-xput.html', 'help.html'].map(name => fs.readFileSync(path.join(projectRoot, 'public', name), 'utf8'));
   for (const markup of [generated, ...staticPages]) {
     assert.ok(markup.includes('href="/favicon.svg?v=xput-tray-1"'));
     assert.ok(markup.includes('href="/favicon.ico?v=xput-tray-1"'));

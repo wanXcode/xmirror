@@ -1,7 +1,11 @@
 {
   "name": "XPut",
   "googleSiteVerification": "z9gvsHMRhHXXXyYIIvWenrPRvQE8gxTScUYnrhBcVw0",
-  "analytics": { "domain": "xmirror.app", "src": "https://a.zhxs.me/js/script.js" },
+  "analytics": {
+    "domain": "xmirror.app",
+    "src": "https://a.zhxs.me/js/script.js"
+  },
   "iconVersion": "xput-tray-1",
-  "fonts": "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&display=swap"
+  "fonts": "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&display=swap",
+  "shortcutUrl": "https://www.icloud.com/shortcuts/e2c41e2726044bc38dc57c8fbd45c734"
 }

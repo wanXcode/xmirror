@@ -32,3 +32,12 @@ Defaults were implemented for everything below; each can be changed later.
 
 ## Cloudflare / deployment
 - Worker route, zone and rate-limit binding syntax in `workers/download-proxy/wrangler.toml` need checking against the real account.
+
+## Shortcut, report, privacy, 404 (stage 5)
+- Shortcut QR points to the iCloud link from the design spec (`config/site.json` `shortcutUrl`, overridable with `SHORTCUT_URL`). The QR is generated server-side (`qrcode` dependency).
+- The artboards leave 4 of 5 shortcut FAQ answers empty; I wrote them (en + zh).
+- Report page: "[time]" is set to "3 business days"; the form's email is required; "Reason" is sent as a `[code] label — details` prefix because `/api/reports` is unchanged (kinds: copyright / other). `/api/reports` now also accepts an X post link (looked up by canonical URL), a small additive change.
+- Privacy page: all paragraphs were drafted by me from actual behaviour (cookies `xput_lang`, `xput_age`; server logs; the "privacy-friendly analytics" wording must be confirmed against the analytics provider). "Last updated" is 2026-10-01. No contact email is given; contact is via the report page. Supply one if wanted.
+- zh report/privacy/404 copy is drafted (no zh artboards).
+- Generic 404 page reuses the saved-post "not found" layout (W_404) with Video Downloader / Twitter Viewer links; API and asset paths still get plain-text 404s.
+- Old `public/report.html` / `report.js` were replaced by the server-rendered page.
