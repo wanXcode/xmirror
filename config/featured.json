@@ -1,0 +1,9 @@
+{
+  "minInteractions": 20,
+  "minFollowers": 1000,
+  "dailyCap": 10,
+  "minKeyPoints": 3,
+  "maxKeyPoints": 5,
+  "relatedLimit": 4,
+  "limits": { "title": 120, "topic": 60, "summary": 700, "context": 1400, "keyPoint": 220 }
+}

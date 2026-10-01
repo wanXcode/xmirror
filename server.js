@@ -59,6 +59,8 @@ const { migrateFrontendSchema } = require('./lib/frontend-schema');
 const { createPostStore } = require('./lib/post-store');
 const { createViewCounter } = require('./lib/view-counter');
 const { registerResultRoutes } = require('./lib/routes/result');
+const { createFeaturedService } = require('./lib/featured');
+const { registerFeaturedAdminRoutes } = require('./lib/routes/featured-admin');
 const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
 const {
   deleteMediaAsset,
@@ -1886,7 +1888,9 @@ app.get(/^\/([A-Za-z0-9]{6})\/referer$/, async (req, res, next) => {
 const DOWNLOAD_BASE = process.env.DOWNLOAD_PROXY_BASE || '/dl';
 const postStore = createPostStore({ get: dbGet, all: dbAll, run: runDbWrite });
 const viewCounter = createViewCounter({ flush: batch => postStore.applyCounts(batch), intervalMs: Number(process.env.VIEW_COUNTER_FLUSH_MS) || 30000 });
-registerResultRoutes(app, { store: postStore, counter: viewCounter, baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE });
+const featuredService = createFeaturedService({ db: { get: dbGet, all: dbAll, run: runDbWrite }, store: postStore });
+registerResultRoutes(app, { store: postStore, counter: viewCounter, baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE, featured: featuredService });
+registerFeaturedAdminRoutes(app, { service: featuredService, requireAdmin });
 
 async function refreshSeo(id) {
   try { return await seoStore.refresh(id); }

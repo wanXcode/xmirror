@@ -236,3 +236,70 @@ test('old per-file archive links redirect to the short code', { timeout: 60000 }
   assert.equal(response.headers.get('location'), `/${post.short_code}`);
   assert.equal((await fetch(`${s.base}/archives/post_424242.html`)).status, 404);
 });
+
+// ---- featured pages ----
+const ADMIN = { 'x-admin-token': 'test-only-token', 'content-type': 'application/json' };
+const FEATURED = {
+  ai_title: 'Jack says the roadmap changes next quarter',
+  topic: 'Product roadmap',
+  summary: 'Jack announces that the product roadmap will change next quarter, with the new editor shipping first and the mobile app following later in the year.',
+  context: 'The announcement follows weeks of user feedback about the editor and comes just before the annual planning meeting of the company.',
+  key_points: ['The editor ships first', 'The mobile app follows later', 'Feedback drove the change']
+};
+const admin = (s, path, body, method = 'POST') => fetch(`${s.base}${path}`, { method, headers: ADMIN, body: body ? JSON.stringify(body) : undefined }).then(async r => ({ status: r.status, json: await r.json() }));
+
+async function feature(s, post) {
+  assert.equal((await admin(s, `/api/admin/featured/${post.id}`, FEATURED)).status, 200);
+  assert.equal((await admin(s, `/api/admin/featured/${post.id}/review`, { reviewed: true, note: 'ok' })).status, 200);
+  return admin(s, `/api/admin/featured/${post.id}/publish`);
+}
+
+test('featured admin API needs the token and validates input', { timeout: 60000 }, async () => {
+  const s = await server();
+  const post = await seed(s, { view_count: 40, share_count: 3, author_followers: 5000 });
+  assert.equal((await fetch(`${s.base}/api/admin/featured`)).status, 403);
+  assert.equal((await admin(s, '/api/admin/featured/abc', FEATURED)).status, 400);
+  assert.equal((await admin(s, `/api/admin/featured/${post.id}`, { ...FEATURED, key_points: ['a'] })).status, 400);
+  assert.equal((await admin(s, '/api/admin/featured?status=nope', null, 'GET')).status, 400);
+  assert.equal((await admin(s, `/api/admin/featured/${post.id}/publish`)).status, 404, 'no content yet');
+  const listed = await admin(s, '/api/admin/featured', null, 'GET');
+  assert.equal(listed.status, 200);
+  assert.ok(listed.json.candidates.some(item => item.post.id === post.id));
+});
+
+test('a featured page is indexable, with AI notes, JSON-LD, related pages and the original post', { timeout: 60000 }, async () => {
+  const s = await server();
+  const post = await seed(s, { content: 'We are changing the roadmap next quarter.', view_count: 40, share_count: 3, author_followers: 5000 });
+  const sibling = await seed(s, { content: 'Another note from Jack about the editor.', view_count: 40, share_count: 3, author_followers: 5000 });
+  const published = await feature(s, post);
+  assert.equal(published.status, 200, JSON.stringify(published.json));
+  // the second one lives on a later "day" only if the cap allows; the default cap is high enough
+  assert.equal((await feature(s, sibling)).status, 200);
+
+  const { response, document, text } = await page(s, post.short_code);
+  assert.equal(response.status, 200);
+  assert.equal(document.querySelector('meta[name=robots]').getAttribute('content'), 'index, follow');
+  assert.equal(document.querySelectorAll('h1').length, 1);
+  assert.match(document.querySelector('h1').textContent, /Jack says the roadmap changes next quarter/);
+  assert.match(document.title, /Jack says the roadmap changes next quarter \| XPut/);
+  assert.match(text, /We are changing the roadmap next quarter/, 'original post text is still there');
+  for (const key of FEATURED.key_points) assert.ok(text.includes(key), key);
+  assert.ok(document.querySelector('.xput-notes'), 'AI notes section');
+  assert.ok(document.querySelector('.related'), 'related list');
+  assert.ok(document.querySelector('.related').innerHTML.includes(sibling.short_code));
+  const ld = [...document.querySelectorAll('script[type="application/ld+json"]')].map(n => JSON.parse(n.textContent));
+  const posting = ld.flat().find(item => item['@type'] === 'SocialMediaPosting');
+  assert.ok(posting, 'SocialMediaPosting JSON-LD');
+  assert.equal(posting.author.name, 'Jack');
+  assert.match(posting.sharedContent?.url || posting.url, /x\.com|twitter\.com/);
+});
+
+test('editing a live featured page, or a new open report, takes it out of the index', { timeout: 60000 }, async () => {
+  const s = await server();
+  const post = await seed(s, { view_count: 40, share_count: 3, author_followers: 5000 });
+  assert.equal((await feature(s, post)).status, 200);
+  assert.equal((await page(s, post.short_code)).document.querySelector('meta[name=robots]').getAttribute('content'), 'index, follow');
+  await admin(s, `/api/admin/featured/${post.id}`, { ...FEATURED, summary: `${FEATURED.summary} Edited.` });
+  assert.equal((await page(s, post.short_code)).document.querySelector('meta[name=robots]').getAttribute('content'), 'noindex, follow');
+  assert.equal((await admin(s, `/api/admin/featured/${post.id}/publish`)).status, 409, 'review needed again');
+});
