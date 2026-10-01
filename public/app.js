@@ -35,6 +35,8 @@ function escapeText(value) {
 function updateSubmitState() {
   const button = document.getElementById('submit');
   button.disabled = submitting;
+  const resolveButton = document.getElementById('resolve');
+  if (resolveButton) resolveButton.disabled = submitting;
   button.setAttribute('aria-busy', String(submitting));
   button.textContent = i18n.t(submitting ? 'btnGenerating' : 'btnGenerate');
   document.getElementById('url').readOnly = submitting;
@@ -131,6 +133,87 @@ async function archive() {
     submitting = false;
     updateSubmitState();
     renderResult();
+  }
+}
+
+// 下载：只解析直链，不创建存档
+function isDirectMediaUrl(value) {
+  try { return new URL(value).protocol === 'https:'; } catch { return false; }
+}
+
+function renderResolved(data, url) {
+  const result = document.getElementById('result');
+  result.hidden = false;
+  result.className = 'result success';
+  result.replaceChildren();
+  if (data.requires_age_confirmation) {
+    const note = document.createElement('p');
+    note.textContent = i18n.t('resolveSensitive');
+    const confirmButton = document.createElement('button');
+    confirmButton.type = 'button';
+    confirmButton.className = 'text-button';
+    confirmButton.textContent = i18n.t('resolveConfirmAge');
+    confirmButton.addEventListener('click', () => resolveMedia(url, true));
+    result.append(note, confirmButton);
+    return;
+  }
+  const links = [];
+  for (const video of data.videos) for (const v of video.variants) links.push([i18n.t('resolveVideo'), v.resolution || `${Math.round(v.bitrate / 1000)} kbps`, v.url]);
+  for (const gif of data.gifs) for (const v of gif.variants.slice(0, 1)) links.push([i18n.t('resolveGif'), v.resolution || '', v.url]);
+  data.images.forEach((image, index) => links.push([i18n.t('resolveImage'), `#${index + 1}`, image.orig_url]));
+  if (!links.length) { result.textContent = i18n.t('resolveNoMedia'); return; }
+  const list = document.createElement('ul');
+  for (const [kind, label, href] of links.filter(item => isDirectMediaUrl(item[2]))) {
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    anchor.textContent = `${kind} ${label}`.trim();
+    const item = document.createElement('li');
+    item.appendChild(anchor);
+    list.appendChild(item);
+  }
+  result.appendChild(list);
+}
+
+async function resolveMedia(urlOverride, confirmAge = false) {
+  if (submitting) return;
+  const input = document.getElementById('url');
+  const url = (urlOverride || input.value).trim();
+  if (!home.validSourceUrl(url)) {
+    resultState = { kind: 'error', key: url ? 'errorInvalidUrl' : 'errorEmptyUrl', retryable: false };
+    input.setAttribute('aria-invalid', 'true');
+    renderResult();
+    input.focus();
+    return;
+  }
+  input.removeAttribute('aria-invalid');
+  submitting = true;
+  resultState = null;
+  updateSubmitState();
+  renderResult();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch('/api/resolve', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ url, confirm_age: confirmAge }), signal: controller.signal
+    });
+    let data;
+    try { data = await response.json(); }
+    catch (error) { if (error.name === 'AbortError') throw error; }
+    if (!response.ok || !data?.success) {
+      throw Object.assign(new Error('resolve failed'), { failure: home.failureFor(data?.code, response.status) });
+    }
+    renderResolved(data, url);
+  } catch (error) {
+    const failure = error.failure || home.failureFor(error.name === 'AbortError' ? 'REQUEST_TIMEOUT' : 'NETWORK_ERROR');
+    resultState = { kind: 'error', ...failure };
+    renderResult();
+  } finally {
+    clearTimeout(timer);
+    submitting = false;
+    updateSubmitState();
   }
 }
 
@@ -358,6 +441,7 @@ homeColorScheme.addEventListener('change', event => {
   if (!homeThemeOverride) document.documentElement.dataset.theme = event.matches ? 'dark' : 'light';
 });
 
+document.getElementById('resolve').addEventListener('click', () => resolveMedia());
 document.getElementById('archiveForm').addEventListener('submit', event => {
   event.preventDefault();
   archive();

@@ -101,3 +101,22 @@ test('non-X hosts are rejected even when their path looks like a tweet', () => {
     /无效的X链接/
   );
 });
+
+test('quoted posts are rendered escaped, with a link back to the original', () => {
+  const escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  const { renderTweetContent } = require('../lib/x-post');
+  const { htmlContent } = renderTweetContent({
+    tweet: {
+      text: 'look', quote: {
+        url: 'https://x.com/bob/status/9', text: '<script>x</script>\nline2',
+        author: { name: 'Bob', screen_name: 'bob' }
+      }
+    },
+    escapeHtml
+  });
+  assert.match(htmlContent, /<blockquote class="quoted-post">/);
+  assert.match(htmlContent, /@bob/);
+  assert.match(htmlContent, /&lt;script&gt;x&lt;\/script&gt;<br>line2/);
+  assert.doesNotMatch(htmlContent, /<script>/);
+  assert.match(htmlContent, /href="https:\/\/x\.com\/bob\/status\/9"/);
+});

@@ -106,3 +106,22 @@ test('maps provider failures without exposing upstream response bodies', () => {
   assert.equal(translationErrorResponse(new TranslationProviderError('secret', { status: 403 })).status, 502);
   assert.equal(translationErrorResponse(new TranslationProviderError('secret', { status: 500 })).status, 503);
 });
+
+test('rate limiter supports a custom message and code and blocks past the limit', () => {
+  const { createRateLimiter } = require('../lib/translation');
+  const limit = createRateLimiter({ windowMs: 60000, max: 2, code: 'RATE_LIMITED', message: 'slow down' });
+  const run = ip => {
+    const res = { headers: {}, set(k, v) { this.headers[k] = v; }, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
+    let passed = false;
+    limit({ ip }, res, () => { passed = true; });
+    return { passed, res };
+  };
+  assert.equal(run('a').passed, true);
+  assert.equal(run('a').passed, true);
+  const blocked = run('a');
+  assert.equal(blocked.passed, false);
+  assert.equal(blocked.res.code, 429);
+  assert.deepEqual(blocked.res.body, { success: false, code: 'RATE_LIMITED', error: 'slow down' });
+  assert.ok(Number(blocked.res.headers['Retry-After']) > 0);
+  assert.equal(run('b').passed, true);
+});

@@ -39,6 +39,14 @@ const i18n = {
       errorNetwork: "网络连接异常，请检查网络后重试。",
       errorTimeout: "等待超时，存档结果尚未确认。请稍后重试，已完成的存档会直接返回。",
       errorService: "服务暂时不可用，请稍后重试。",
+      errorRateLimited: "请求过于频繁，请稍后再试。",
+      btnResolve: '下载',
+      resolveVideo: '视频',
+      resolveGif: 'GIF',
+      resolveImage: '图片（原图）',
+      resolveNoMedia: '这条帖子没有可下载的图片或视频。',
+      resolveSensitive: '该内容被 X 标记为敏感内容，仅限成年人查看。',
+      resolveConfirmAge: '我已年满 18 岁，显示下载链接',
       themeToggle: "切换主题",
       pageSettings: "页面设置",
       archiveSection: "生成存档",
@@ -106,6 +114,14 @@ const i18n = {
       errorNetwork: "Connection problem. Check your network and try again.",
       errorTimeout: "The wait timed out; the archive result is not yet confirmed. Try again later to retrieve it if it completed.",
       errorService: "The service is temporarily unavailable. Please try again later.",
+      errorRateLimited: "Too many requests. Please try again shortly.",
+      btnResolve: 'Download',
+      resolveVideo: 'Video',
+      resolveGif: 'GIF',
+      resolveImage: 'Image (original)',
+      resolveNoMedia: 'This post has no downloadable images or videos.',
+      resolveSensitive: 'X marked this content as sensitive. Adults only.',
+      resolveConfirmAge: 'I am 18 or older, show download links',
       themeToggle: "Switch theme",
       pageSettings: "Page settings",
       archiveSection: "Create archive",
@@ -215,6 +231,8 @@ const i18n = {
     // 更新按钮
     const submitBtn = document.getElementById('submit');
     if (submitBtn) submitBtn.textContent = this.t('btnGenerate');
+    const resolveBtn = document.getElementById('resolve');
+    if (resolveBtn) resolveBtn.textContent = this.t('btnResolve');
     
     // 更新加载文本
     const loadingText = document.querySelector('.loading p');
