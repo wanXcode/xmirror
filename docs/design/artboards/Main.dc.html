@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>XPut homepage – desktop</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1747C9;text-decoration:none}a:hover{color:#0F2F8A}
+</style>
+</helmet>
+<div style="font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #111418; background: #F6F7F9; min-height: 100vh">
+
+<header style="background: #FFFFFF; border-bottom: 1px solid #E3E6EB">
+<div style="max-width: 1200px; margin: 0 auto; padding: 0 32px; height: 68px; display: flex; align-items: center; justify-content: space-between">
+<a href="#" style="display: flex; align-items: center; gap: 10px; color: #111418">
+<span style="width: 32px; height: 32px; border-radius: 8px; background: #111418; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px">X</span>
+<span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 20px">XPut</span>
+</a>
+<nav style="display: flex; align-items: center; gap: 28px; font-size: 15px; font-weight: 500">
+<a href="#" style="color: #111418">Video Downloader</a>
+<a href="#" style="color: #111418">Image Downloader</a>
+<a href="#" style="color: #111418">GIF Downloader</a>
+<a href="Viewer.dc.html" style="color: #111418">Twitter Viewer</a>
+<button style="height: 38px; padding: 0 14px; border: 1px solid #D5D9E0; border-radius: 8px; background: #FFFFFF; font: inherit; font-size: 14px; color: #111418; cursor: pointer">English · 中文</button>
+</nav>
+</div>
+</header>
+
+<section style="max-width: 1200px; margin: 0 auto; padding: 72px 32px 48px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 20px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 54px; line-height: 1.08; font-weight: 700; letter-spacing: -0.02em; max-width: 820px">X (Twitter) Video Downloader</h1>
+<p style="margin: 0; font-size: 19px; line-height: 1.55; color: #454C57; max-width: 640px">Download videos, GIFs and original-quality images from any X post. Save a permanent copy in case the post gets deleted.</p>
+
+<div style="width: 100%; max-width: 760px; margin-top: 16px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; justify-content: center; gap: 8px">
+<button style="height: 38px; padding: 0 18px; border-radius: 999px; border: 1px solid #111418; background: #111418; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600">Video</button>
+<button style="height: 38px; padding: 0 18px; border-radius: 999px; border: 1px solid #D5D9E0; background: #FFFFFF; color: #111418; font: inherit; font-size: 14px; font-weight: 500">Image</button>
+<button style="height: 38px; padding: 0 18px; border-radius: 999px; border: 1px solid #D5D9E0; background: #FFFFFF; color: #111418; font: inherit; font-size: 14px; font-weight: 500">GIF</button>
+</div>
+<div style="display: flex; gap: 10px; padding: 8px; background: #FFFFFF; border: 1.5px solid #C9CED6; border-radius: 14px">
+<label for="url" style="position: absolute; left: -9999px">Paste an X post link</label>
+<input id="url" type="url" placeholder="Paste an X or Twitter post link, e.g. https://x.com/user/status/…" style="flex-grow: 1; min-width: 0; height: 52px; border: 0; outline: none; padding: 0 14px; font: inherit; font-size: 16px; color: #111418; background: transparent">
+<button style="height: 52px; padding: 0 22px; border-radius: 10px; border: 1px solid #D5D9E0; background: #FFFFFF; color: #111418; font: inherit; font-size: 15px; font-weight: 500">Paste</button>
+<button style="height: 52px; padding: 0 28px; border-radius: 10px; border: 0; background: #1747C9; color: #FFFFFF; font: inherit; font-size: 16px; font-weight: 600">Download</button>
+<button style="height: 52px; padding: 0 22px; border-radius: 10px; border: 1.5px solid #1747C9; background: #FFFFFF; color: #1747C9; font: inherit; font-size: 16px; font-weight: 600">View</button>
+</div>
+<p style="margin: 0; font-size: 14px; color: #5B6370">Download saves the media to your device. View opens the post without logging in, with a link that keeps working even if it is deleted.</p>
+</div>
+</section>
+
+<section style="max-width: 1200px; margin: 0 auto; padding: 0 32px 72px">
+<div style="max-width: 760px; margin: 0 auto; background: #FFFFFF; border: 1px solid #E3E6EB; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<span style="font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5B6370">Example result</span>
+<span style="font-size: 13px; color: #5B6370">1 video found</span>
+</div>
+<div style="display: flex; gap: 20px">
+<div style="width: 220px; height: 124px; flex-shrink: 0; border-radius: 10px; background: #1B1F26; color: #9AA3AF; display: flex; align-items: center; justify-content: center; font-size: 13px">[Video thumbnail]</div>
+<div style="display: flex; flex-direction: column; gap: 8px; min-width: 0; text-align: left">
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="width: 32px; height: 32px; border-radius: 50%; background: #D5D9E0"></span>
+<span style="font-weight: 600">[Author name]</span>
+<span style="color: #5B6370">@[handle]</span>
+</div>
+<p style="margin: 0; font-size: 15px; line-height: 1.5; color: #2A3039">[First lines of the post text appear here so the user can confirm it is the right post.]</p>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border: 1px solid #E3E6EB; border-radius: 10px">
+<span style="font-weight: 600">1280 × 720 <span style="font-weight: 400; color: #5B6370">· MP4 · Best quality</span></span>
+<a href="#" style="height: 40px; padding: 0 18px; border-radius: 8px; background: #1747C9; color: #FFFFFF; display: flex; align-items: center; font-weight: 600; font-size: 14px">Download</a>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border: 1px solid #E3E6EB; border-radius: 10px">
+<span style="font-weight: 600">640 × 360 <span style="font-weight: 400; color: #5B6370">· MP4</span></span>
+<a href="#" style="height: 40px; padding: 0 18px; border-radius: 8px; border: 1px solid #C9CED6; color: #111418; display: flex; align-items: center; font-weight: 500; font-size: 14px">Download</a>
+</div>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; background: #EEF2FD; border-radius: 10px; text-align: left">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-weight: 600">Keep a permanent copy</span>
+<span style="font-size: 14px; color: #3A4250">Get a shareable page that stays online even if the original post is deleted.</span>
+</div>
+<button style="height: 44px; padding: 0 18px; flex-shrink: 0; border-radius: 8px; border: 1px solid #1747C9; background: #FFFFFF; color: #1747C9; font: inherit; font-size: 14px; font-weight: 600">Archive this post</button>
+</div>
+</div>
+</section>
+
+<section style="background: #FFFFFF; border-top: 1px solid #E3E6EB; border-bottom: 1px solid #E3E6EB">
+<div style="max-width: 1200px; margin: 0 auto; padding: 72px 32px; display: flex; flex-direction: column; gap: 40px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 34px; font-weight: 700; text-align: center">How to download X videos</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; color: #1747C9">01</span>
+<h3 style="margin: 0; font-size: 18px">Copy the post link</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.55">On X, tap Share on the post and choose Copy link.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; color: #1747C9">02</span>
+<h3 style="margin: 0; font-size: 18px">Paste it above</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.55">Paste the link into the box and press Download.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700; color: #1747C9">03</span>
+<h3 style="margin: 0; font-size: 18px">Pick a quality and save</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.55">Choose a resolution to save the MP4, or archive the post to keep a permanent copy.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section style="max-width: 1200px; margin: 0 auto; padding: 72px 32px; display: flex; flex-direction: column; gap: 40px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 34px; font-weight: 700; text-align: center">Why XPut</h2>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px">
+<div style="background: #FFFFFF; border: 1px solid #E3E6EB; border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 17px">Every quality</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.55; font-size: 15px">All available resolutions, up to the highest the post offers. Images in original size.</p>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E3E6EB; border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 17px">Survives deletion</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.55; font-size: 15px">Archive a post and its media stays viewable at your link, even after the original is gone.</p>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E3E6EB; border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 17px">Clean and safe</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.55; font-size: 15px">No pop-ups, no redirects, no fake download buttons.</p>
+</div>
+<div style="background: #FFFFFF; border: 1px solid #E3E6EB; border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 17px">One tap on iPhone</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.55; font-size: 15px">Add the XPut Shortcut and save straight from the X share menu.</p>
+</div>
+</div>
+</section>
+
+<section style="background: #FFFFFF; border-top: 1px solid #E3E6EB">
+<div style="max-width: 820px; margin: 0 auto; padding: 72px 32px; display: flex; flex-direction: column; gap: 28px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 34px; font-weight: 700; text-align: center">Frequently asked questions</h2>
+<div style="display: flex; flex-direction: column">
+<div style="padding: 20px 0; border-bottom: 1px solid #E3E6EB; display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; font-size: 17px">Is XPut free?</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.6">Yes. Downloading is free and needs no account.</p>
+</div>
+<div style="padding: 20px 0; border-bottom: 1px solid #E3E6EB; display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; font-size: 17px">How do I save an X video to my iPhone?</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.6">Open XPut in Safari, paste the link, tap Download, then save the video to Photos. Or use our Shortcut from the share menu.</p>
+</div>
+<div style="padding: 20px 0; border-bottom: 1px solid #E3E6EB; display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; font-size: 17px">Can I download from private accounts?</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.6">No. XPut only works with public posts.</p>
+</div>
+<div style="padding: 20px 0; border-bottom: 1px solid #E3E6EB; display: flex; flex-direction: column; gap: 8px">
+<h3 style="margin: 0; font-size: 17px">What is the difference between Download and Archive?</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.6">Download saves the file to your device. Archive creates a page on XPut that keeps the post and its media online, so you can share it even if the original is deleted.</p>
+</div>
+</div>
+</div>
+</section>
+
+<footer style="background: #111418; color: #C3C9D2">
+<div style="max-width: 1200px; margin: 0 auto; padding: 48px 32px; display: flex; justify-content: space-between; gap: 32px; font-size: 14px">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px; color: #FFFFFF">XPut</span>
+<span>Not affiliated with X Corp.</span>
+</div>
+<div style="display: flex; gap: 48px">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="color: #FFFFFF; font-weight: 600">Tools</span>
+<a href="#" style="color: #C3C9D2">Video Downloader</a>
+<a href="#" style="color: #C3C9D2">Image Downloader</a>
+<a href="#" style="color: #C3C9D2">GIF Downloader</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="color: #FFFFFF; font-weight: 600">Help</span>
+<a href="#" style="color: #C3C9D2">iPhone Shortcut</a>
+<a href="#" style="color: #C3C9D2">Report content</a>
+<a href="#" style="color: #C3C9D2">Privacy</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<span style="color: #FFFFFF; font-weight: 600">Language</span>
+<a href="#" style="color: #C3C9D2">English</a>
+<a href="#" style="color: #C3C9D2">中文</a>
+</div>
+</div>
+</div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
