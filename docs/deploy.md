@@ -176,7 +176,25 @@ echo "备份目录: $BK"
    - **分享图依赖**：`@resvg/resvg-js` 是预编译二进制。如果 glibc 太老，加载会失败；失败时 `/og/*.png` 自动退回品牌默认图并在日志里出现 `OG image failed`，**不会影响其他功能**。部署后按 3.4 检查，必要时作为已知遗留问题之后处理，不阻断上线。
    - `deploy.sh` 会 `npm ci --omit=dev --ignore-scripts`，resvg 的二进制来自可选依赖，不依赖安装脚本。
 4. 代码来源：必须是 GitHub `main` 上已通过 CI 的合并提交。生产机上用 `git fetch`，不从本地脏工作区部署（见 `ops/DEPLOYMENT.md` "固定发布顺序"）。
-5. 建议在合并前把 `package.json` 版本号和 `VERSION.md` 更新为新版本（现在仍是 1.9.9），便于日志和回滚时区分；不更新也不影响功能。
+5. **一次性审核现有「值得再读」（上线前必做，约 15 分钟）**：新站会把现有 `seo_status='index'` 的存档继续放进 sitemap 和「值得再读」列表，先人工过一遍，把不想公开推荐的屏蔽掉。
+   ```bash
+   cd $APP_ROOT/current
+   # 只读导出（对第 2 节的备份库或线上库都可以；旧库结构也能跑）。列：id、短码、作者、正文前 100 字、是否有媒体(1/0)
+   node ops/audit-indexable.js "$BK/db.sqlite" > /tmp/indexable.tsv      # 末尾会在 stderr 打印总数，应与 baseline-indexed.txt 一致
+   column -t -s$'\t' /tmp/indexable.tsv | less -S                        # 或下载后用表格软件打开
+   ```
+   不想用脚本时，等价的纯 SQL（正文含 HTML 标签，仅供粗看）：
+   ```bash
+   sudo sqlite3 -header -separator $'\t' "$BK/db.sqlite" "SELECT id, short_code, author||' (@'||author_handle||')' AS author, substr(replace(replace(content,char(10),' '),char(9),' '),1,100) AS text_first_100, (COALESCE(images,'[]')<>'[]' OR (video_status='completed' AND video IS NOT NULL)) AS has_media FROM posts WHERE seo_status='index' AND seo_blocked=0 AND short_code IS NOT NULL ORDER BY id;"
+   ```
+   **屏蔽某一条**（`<ID>` 用上面导出的 id；屏蔽后立即变为 noindex，并从 sitemap 和列表消失；这是现网旧版就有的接口，**部署前后都能用**）：
+   ```bash
+   curl -s -X POST "$SITE/api/admin/seo/<ID>" -H "x-admin-token: $MODERATION_ADMIN_TOKEN" -H 'content-type: application/json' -d '{"blocked":true}'
+   # 反悔：-d '{"blocked":false}'（之后按规则重新评估）
+   ```
+   不想走接口时（服务停着或接口不可用）：`sudo sqlite3 $APP_ROOT/shared/data/db.sqlite "UPDATE posts SET seo_blocked=1, seo_status='noindex' WHERE id=<ID>;"`。
+   审核完把被屏蔽的 id 记进部署记录，上线后在 6.6 核对：copies sitemap 的数量 = 导出总数 − 屏蔽数（再减去后来新增的排除项）。这是一次性审核；之后新存档按下面 3.2 的自动收录门槛处理。
+6. 建议在合并前把 `package.json` 版本号和 `VERSION.md` 更新为新版本（现在仍是 1.9.9），便于日志和回滚时区分；不更新也不影响功能。
 
 ### 3.2 设置新的环境变量
 
@@ -203,6 +221,9 @@ EOF
 | `DOWNLOAD_VIA` | **不要设置** | 生产默认 `worker`（页面用 `/dl`）。仅应急时设为 `node`（见 `docs/download-proxy-rollout.md`） |
 | `FEATURE_TRANSLATION` | **不要设置** | 生产默认关闭翻译/字幕路由。**如果现网正在使用翻译/字幕功能，上线后它们会停用**，这是预期行为 |
 | `ANALYTICS_DOMAIN` / `ANALYTICS_SRC` | 可不设 | 不设则读 `config/site.json`（域名 `xput.app`）；设为空字符串表示关闭统计 |
+| `SEO_AUTO_INDEX` | 可选 | 默认开启：新存档按评分自动收录。设为 `false` 则全部改为人工选入 |
+| `SEO_AUTO_INDEX_DAILY_CAP` | 可选 | 自动收录的每日新增上限，默认 `20`（按 UTC 日计，超出的顺延到次日；人工选入不受限）。默认值也在 `config/seo-auto-index.json` |
+| `SEO_AUTO_INDEX_BLOCK_SENSITIVE` | 可选 | 默认 `true`：X 标记 `possibly_sensitive`（含引用帖带标记）的帖子不自动收录；存档入口本身也拒绝这类帖子 |
 | `SHORTCUT_URL`、`VIEW_COUNTER_FLUSH_MS`、`FETCH_RATE_LIMIT_PER_MIN`、`DOWNLOAD_RATE_LIMIT_PER_MIN` | 可选 | 默认值即可 |
 
 隐私政策页面的"最后更新"日期是代码里的占位 `2026-10-01`（`lib/content/*.js` 的 `pages.privacy.updatedOn`），请在合并前改成实际上线日。
@@ -362,7 +383,7 @@ sudo XMIRROR_SOURCE_DIR=/tmp/xmirror-rollback XMIRROR_APP_ROOT=$APP_ROOT XMIRROR
 |---|---|---|
 | 首页 | 浏览器打开 `$SITE/`、`$SITE/zh/`；`curl -s $SITE/ \| grep -c '<h1'` | 页面正常，唯一 H1；页头是新 logo；标签页图标是蓝底白 X 橙托盘（旧图标需强制刷新）；`curl -sI $SITE/zh` 返回 301 到 `/zh/` |
 | Viewer | 打开 `$SITE/twitter-viewer`、`$SITE/zh/twitter-viewer` | 只有 "View post"，没有账号搜索/主页浏览/时间线 |
-| 「已保存的帖子」列表 | 打开 `$SITE/browse`、`$SITE/zh/browse`；`curl -s $SITE/browse \| grep -o 'name="robots" content="[^"]*"'` | 新版页头页脚和配色；列表有内容；`index, follow`；有 hreflang 一对；页脚有"Saved posts / 已保存的帖子"入口；带 `?q=` 的搜索页是 `noindex, follow`；翻页链接可用 |
+| 「值得再读」列表 | 打开 `$SITE/browse`、`$SITE/zh/browse`；`curl -s $SITE/browse \| grep -o 'name="robots" content="[^"]*"'` | 新版页头页脚和配色；列表有内容；`index, follow`；有 hreflang 一对；页脚有"Saved posts / 已保存的帖子"入口；带 `?q=` 的搜索页是 `noindex, follow`；翻页链接可用 |
 | 其他固定页 | `/ios-shortcut`（桌面显示二维码）、`/privacy`、`/report`（含 `/zh/`），随便打开一个不存在地址 | 都正常；隐私页显示联系邮箱和统计服务名；404 页友好且带输入框 |
 | 语言切换 | 每页切换中英文 | URL 在 `/xxx` 与 `/zh/xxx` 间切换 |
 | 响应头 | `curl -sI $SITE/ \| grep -i -E 'content-encoding\|cache-control'` | `content-encoding: br` 或 gzip；`cache-control: no-cache, must-revalidate` |
@@ -452,7 +473,7 @@ curl -s $SITE/robots.txt
 curl -s $SITE/sitemap.xml
 #  期望: <sitemapindex>，包含 /sitemap-main.xml 和 /sitemap-copies-1.xml
 
-curl -s $SITE/sitemap-main.xml | grep -c '<url>'          # 10（首页、Viewer、快捷指令、已保存的帖子 /browse、隐私，各中英文）；不含 /report
+curl -s $SITE/sitemap-main.xml | grep -c '<url>'          # 10（首页、Viewer、快捷指令、值得再读 /browse、隐私，各中英文）；不含 /report
 curl -s $SITE/sitemap-main.xml | grep -c 'hreflang'       # 30（每个 URL 3 个）
 curl -s $SITE/sitemap-copies-1.xml | grep -c '<url>'      # = 「值得再读」数量 + 上线的 AI 精选页（刚上线时没有）；对照基线，见下
 sudo sqlite3 $APP_ROOT/shared/data/db.sqlite "SELECT COUNT(*) FROM posts p WHERE p.seo_status='index' AND p.seo_blocked=0 AND COALESCE(p.sensitive,0)=0 AND p.short_code IS NOT NULL AND NOT EXISTS (SELECT 1 FROM content_reports r WHERE r.post_id=p.id AND r.status='open') AND NOT EXISTS (SELECT 1 FROM removed_posts x WHERE x.short_code=p.short_code);"

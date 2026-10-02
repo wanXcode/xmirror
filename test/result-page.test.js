@@ -402,7 +402,7 @@ test('copies sitemap: live featured pages plus selected archives, minus blocked,
   assert.ok(main.includes('https://xput.app/browse<') && main.includes('https://xput.app/zh/browse<'), 'the list page is in the main sitemap');
 });
 
-// ---- "Saved posts" list ----
+// ---- "Worth reading" list ----
 test('/browse and /zh/browse: new layout, indexable list of featured + selected copies, exclusions, search, pagination', { timeout: 60000 }, async () => {
   const s = await server();
   const token = 'brwz' + Math.random().toString(36).slice(2, 8);
@@ -423,7 +423,7 @@ test('/browse and /zh/browse: new layout, indexable list of featured + selected 
   // the plain list
   const list = await page(s, 'browse');
   assert.equal(list.response.status, 200);
-  assert.equal(list.document.querySelector('h1').textContent, 'Saved posts');
+  assert.equal(list.document.querySelector('h1').textContent, 'Worth reading');
   assert.equal(list.document.querySelector('meta[name=robots]').getAttribute('content'), 'index, follow');
   assert.ok(list.document.querySelector('.site-header') && list.document.querySelector('.site-footer'), 'shared header and footer');
   assert.ok(list.document.querySelector('.site-footer a[href="/browse"]'), 'footer entry');
@@ -434,8 +434,8 @@ test('/browse and /zh/browse: new layout, indexable list of featured + selected 
   const zh = await page(s, 'zh/browse');
   assert.equal(zh.response.status, 200);
   assert.equal(zh.document.querySelector('html').getAttribute('lang'), 'zh-Hans');
-  assert.equal(zh.document.querySelector('h1').textContent, '已保存的帖子');
-  assert.equal(zh.document.title, '已保存的帖子 – XPut 上公开保存的 X（推特）帖子 | XPut');
+  assert.equal(zh.document.querySelector('h1').textContent, '值得再读');
+  assert.equal(zh.document.title, '值得再读 – XPut 上公开保存的 X（推特）帖子 | XPut');
   assert.equal(zh.document.querySelector('link[rel=canonical]').getAttribute('href'), 'https://xput.app/zh/browse');
   // search: no match, escaping
   const none = await fetch(`${s.base}/browse?q=${encodeURIComponent('<script>alert(1)</script>')}`);

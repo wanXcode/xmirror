@@ -13,7 +13,7 @@
 | 类别 | 路径 | Cache-Control | 备注 |
 |---|---|---|---|
 | 固定页（HTML） | `/`、`/zh/`、`/twitter-viewer`、`/zh/twitter-viewer`、`/ios-shortcut`、`/zh/ios-shortcut`、`/privacy`、`/report`（含 `/zh/`） | `no-cache, must-revalidate` | 语言由 URL 决定，带 ETag，可 304 复验；CF 不会缓存 HTML，除非你加规则 |
-| 「已保存的帖子」列表（HTML） | `/browse`、`/zh/browse`（含 `?page=`、`?q=`） | `no-cache, must-revalidate` | 语言由 URL 决定、不依赖 cookie；内容随新存档变化，所以每次复验；搜索结果页是 `noindex` |
+| 「值得再读」列表（HTML） | `/browse`、`/zh/browse`（含 `?page=`、`?q=`） | `no-cache, must-revalidate` | 语言由 URL 决定、不依赖 cookie；内容随新存档变化，所以每次复验；搜索结果页是 `noindex` |
 | 结果页（HTML） | `/{shortCode}`（普通、精选、敏感、已下架 410、短码不存在 404） | `private, no-store` | 另有 `Vary: Cookie, Accept-Language`；**必须绕过 CF 缓存** |
 | 404 页（HTML） | 其他未匹配地址 | `private, no-store` | 同上 |
 | API | `/api/*`（含 `/api/admin/*`、`/api/resolve`、`/api/media-info`…） | `no-store` | 服务器对 `/api` 统一兜底，处理函数只能更严 |

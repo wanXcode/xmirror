@@ -6,7 +6,7 @@ Defaults were implemented for everything below; each can be changed later.
 - zh `meta description` for fixed pages is just the subtitle.
 - zh state and result copy are drafted by the developer (not in the artboards).
 - Strings not in any artboard were added by the developer: empty-input message, "no saved copy" text, rejected card, single-photo labels, OG footer in zh ("已保存的副本").
-- Breadcrumb "Saved posts" on featured pages is plain text (no page to link to).
+- Breadcrumb "Worth reading" on featured pages links to `/browse` (`/zh/browse`).
 
 ## Behaviour
 - Sensitive-post View path is implemented but unreachable: the archive still rejects sensitive posts.
@@ -75,8 +75,10 @@ When computing per-source success rates from the `[fetch]` log lines, leave out 
 ## Other qualities open by default
 Product decision after v3 review: "Other qualities" starts expanded in both the result card and the download dialog (the boards show it folded). The toggle still folds it away.
 
-## Indexing rule (revised): "Saved posts" / 值得再读
+## Indexing rule (revised): "Worth reading" / 值得再读
 - Indexable = live AI featured page, or an archive picked by the existing SEO mechanism (`seo_status='index'`, `seo_blocked=0`: automatic scoring plus manual override via `/api/admin/seo/:id`), minus sensitive, blocked, open report, removed. Everything else is `noindex, follow`. This supersedes the earlier "featured only" rule and the `legacy_indexed` snapshot (the column stays, unused).
-- The old `/browse` list is kept, renamed **Saved posts / 已保存的帖子** (the name was my proposal, consistent with the featured-page breadcrumb), restyled, and served at `/browse` (English UI) and `/zh/browse` (Chinese UI). It is in the main sitemap and linked from the footer (a small addition to the footer list in the spec).
+- The old `/browse` list is kept, named **Worth reading / 值得再读** again (title, H1, footer entry and featured breadcrumb), restyled, and served at `/browse` (English UI) and `/zh/browse` (Chinese UI). It is in the main sitemap and linked from the footer (a small addition to the footer list in the spec).
 - Archives picked by the SEO mechanism keep their SEO title/description and use the ordinary result template plus SocialMediaPosting structured data.
 - Automatic selection keeps working: a newly saved archive that scores well becomes indexable without manual action (as in v1.9.9). Set `SEO_AUTO_INDEX=false` to require manual selection.
+- Extra gates on automatic selection (all must hold): X `possibly_sensitive` (also on the quoted post) never qualifies; at most 20 automatic new inclusions per UTC day, the rest wait (`review`, reason `daily_cap_deferred`) and are retried after midnight; manual picks are exempt. Config: `config/seo-auto-index.json` (`dailyCap`, `blockSensitive`), env `SEO_AUTO_INDEX_DAILY_CAP`, `SEO_AUTO_INDEX_BLOCK_SENSITIVE`. Existing exclusions are unchanged.
+- One-time pre-launch review of the current set: `node ops/audit-indexable.js <db>` (see docs/deploy.md 3.1 step 5), block with `POST /api/admin/seo/:id {"blocked":true}`.
