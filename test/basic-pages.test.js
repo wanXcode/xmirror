@@ -226,3 +226,43 @@ test('every page carries Organization JSON-LD; sitemap index and robots.txt are 
   assert.equal((await fetch(`${s.base}/sitemap-copies-x.xml`)).status, 404);
   assert.match(await (await fetch(`${s.base}/robots.txt`)).text(), /Sitemap: https:\/\/xput.app\/sitemap.xml/);
 });
+
+test('site settings: analytics domain/script, analytics name and contact email come from config or env', () => {
+  const { renderDocument } = require('../lib/views/layout');
+  const { html } = require('../lib/views/html');
+  const { createTranslator } = require('../lib/i18n');
+  const saved = { ...process.env };
+  const render = (page, lang = 'en') => parseHTML(String(page === 'doc'
+    ? renderDocument({ lang, baseUrl: BASE_URL, page: 'home', title: 't', body: html`<h1>x</h1>` })
+    : `<html><body>${RENDERERS[page]({ t: createTranslator(lang), lang })}</body></html>`)).document;
+  const BASE_URL = 'https://xput.app';
+  try {
+    for (const key of ['ANALYTICS_DOMAIN', 'ANALYTICS_SRC', 'ANALYTICS_NAME', 'CONTACT_EMAIL']) delete process.env[key];
+    let script = render('doc').querySelector('script[data-domain]');
+    assert.equal(script.getAttribute('data-domain'), 'xput.app', 'domain is xput.app, not xmirror.app');
+    process.env.ANALYTICS_SRC = 'https://stats.example/js/s.js'; process.env.ANALYTICS_DOMAIN = 'example.test';
+    script = render('doc').querySelector('script[data-domain]');
+    assert.deepEqual([script.getAttribute('data-domain'), script.getAttribute('src')], ['example.test', 'https://stats.example/js/s.js']);
+    process.env.ANALYTICS_SRC = '';
+    assert.equal(render('doc').querySelector('script[data-domain]'), null, 'empty script URL turns analytics off');
+
+    let privacy = render('privacy'); let report = render('report');
+    assert.ok(privacy.body.textContent.includes('a privacy-friendly analytics tool'));
+    assert.equal(privacy.querySelector('a[href^="mailto:"]'), null);
+    assert.equal(report.querySelector('a[href^="mailto:"]'), null);
+    process.env.ANALYTICS_NAME = 'Plausible'; process.env.CONTACT_EMAIL = 'help@example.test';
+    privacy = render('privacy'); report = render('report', 'zh');
+    assert.ok(privacy.body.textContent.includes('We also use Plausible to count visits'));
+    assert.equal(privacy.querySelector('.legal__section#contact a[href="mailto:help@example.test"]').textContent, 'help@example.test');
+    assert.ok(privacy.querySelector('#contact').textContent.includes('copyright complaints and removal requests'));
+    assert.equal(report.querySelector('.report__intro a[href="mailto:help@example.test"]').textContent, 'help@example.test');
+    assert.ok(report.querySelector('.report__intro').textContent.includes('版权投诉和删除请求'));
+  } finally {
+    for (const key of ['ANALYTICS_DOMAIN', 'ANALYTICS_SRC', 'ANALYTICS_NAME', 'CONTACT_EMAIL']) { if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key]; }
+  }
+});
+
+test('zh meta descriptions for the home and viewer pages are the approved copy', () => {
+  assert.equal(zh.pages.home.description, '免费在线下载推特（X）高清视频，支持 MP4、图片和 GIF。无需登录、无弹窗，粘贴链接即可保存到手机或电脑。');
+  assert.equal(zh.pages.viewer.description, '免登录、匿名查看任何公开的 X（推特）帖子。原帖被删除后，保存过的链接依然可以打开。');
+});

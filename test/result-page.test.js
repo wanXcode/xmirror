@@ -191,15 +191,13 @@ test('removed copies answer 410 with the reference; unknown codes get the friend
   assert.equal(alias.headers.get('location'), `/${post.short_code}`);
 });
 
-test('legacy indexable archives stay indexable; everything else is noindex', { timeout: 60000 }, async () => {
+test('only featured pages are indexable: old archives and new ones are noindex', { timeout: 60000 }, async () => {
   const s = await server();
-  const legacy = await seed(s, { seo_status: 'index', seo_blocked: 0, legacy_indexed: 1 });
+  const old = await seed(s, { seo_status: 'index', seo_blocked: 0, legacy_indexed: 1 });
   const fresh = await seed(s, { seo_status: 'index', seo_blocked: 0 });
-  const blocked = await seed(s, { seo_status: 'index', seo_blocked: 1, legacy_indexed: 1 });
   const robots = async post => (await page(s, post.short_code)).document.querySelector('meta[name=robots]').getAttribute('content');
-  assert.equal(await robots(legacy), 'index, follow');
-  assert.equal(await robots(fresh), 'noindex, follow', 'saved after the redesign: noindex until featured');
-  assert.equal(await robots(blocked), 'noindex, follow', 'a blocked archive is never indexable');
+  assert.equal(await robots(old), 'noindex, follow', 'previously indexed archives are noindex too');
+  assert.equal(await robots(fresh), 'noindex, follow');
 });
 
 test('views and shares are counted (not for crawlers, shares once per hour per visitor)', { timeout: 60000 }, async () => {
@@ -256,7 +254,7 @@ async function feature(s, post) {
 
 test('featured admin API needs the token and validates input', { timeout: 60000 }, async () => {
   const s = await server();
-  const post = await seed(s, { view_count: 40, share_count: 3, author_followers: 5000 });
+  const post = await seed(s, { view_count: 60, share_count: 3, author_followers: 5000 });
   assert.equal((await fetch(`${s.base}/api/admin/featured`)).status, 403);
   assert.equal((await admin(s, '/api/admin/featured/abc', FEATURED)).status, 400);
   assert.equal((await admin(s, `/api/admin/featured/${post.id}`, { ...FEATURED, key_points: ['a'] })).status, 400);
@@ -269,8 +267,8 @@ test('featured admin API needs the token and validates input', { timeout: 60000 
 
 test('a featured page is indexable, with AI notes, JSON-LD, related pages and the original post', { timeout: 60000 }, async () => {
   const s = await server();
-  const post = await seed(s, { content: 'We are changing the roadmap next quarter.', view_count: 40, share_count: 3, author_followers: 5000 });
-  const sibling = await seed(s, { content: 'Another note from Jack about the editor.', view_count: 40, share_count: 3, author_followers: 5000 });
+  const post = await seed(s, { content: 'We are changing the roadmap next quarter.', view_count: 60, share_count: 3, author_followers: 5000 });
+  const sibling = await seed(s, { content: 'Another note from Jack about the editor.', view_count: 60, share_count: 3, author_followers: 5000 });
   const published = await feature(s, post);
   assert.equal(published.status, 200, JSON.stringify(published.json));
   // the second one lives on a later "day" only if the cap allows; the default cap is high enough
@@ -296,7 +294,7 @@ test('a featured page is indexable, with AI notes, JSON-LD, related pages and th
 
 test('editing a live featured page, or a new open report, takes it out of the index', { timeout: 60000 }, async () => {
   const s = await server();
-  const post = await seed(s, { view_count: 40, share_count: 3, author_followers: 5000 });
+  const post = await seed(s, { view_count: 60, share_count: 3, author_followers: 5000 });
   assert.equal((await feature(s, post)).status, 200);
   assert.equal((await page(s, post.short_code)).document.querySelector('meta[name=robots]').getAttribute('content'), 'index, follow');
   await admin(s, `/api/admin/featured/${post.id}`, { ...FEATURED, summary: `${FEATURED.summary} Edited.` });
@@ -331,17 +329,17 @@ test('/og/{code}.png: a PNG for normal posts (cached, noindex); the brand image 
   assert.equal((await fetch(`${s.base}/og/${post.short_code}.jpg`)).status, 404);
 });
 
-test('copies sitemap lists legacy-indexed and live featured pages, but not new, blocked, sensitive or reported ones', { timeout: 60000 }, async () => {
+test('copies sitemap lists only live featured pages that are still indexable', { timeout: 60000 }, async () => {
   const s = await server();
-  const legacy = await seed(s, { seo_status: 'index', legacy_indexed: 1 });
-  const fresh = await seed(s, { seo_status: 'index' });
-  const blocked = await seed(s, { seo_status: 'index', legacy_indexed: 1, seo_blocked: 1 });
-  const sensitive = await seed(s, { seo_status: 'index', legacy_indexed: 1, sensitive: 1 });
-  const reported = await seed(s, { seo_status: 'index', legacy_indexed: 1 });
+  const make = async extra => { const post = await seed(s, { view_count: 60, share_count: 3, author_followers: 5000, ...extra }); assert.equal((await feature(s, post)).status, 200); return post; };
+  const featured = await make({});
+  const blocked = await make({}); await s.run('UPDATE posts SET seo_blocked=1 WHERE id=?', [blocked.id]);
+  const sensitive = await make({}); await s.run('UPDATE posts SET sensitive=1 WHERE id=?', [sensitive.id]);
+  const reported = await make({});
   await s.run("INSERT INTO content_reports(post_id, short_code, kind, reason, status) VALUES(?, ?, 'other', 'x', 'open')", [reported.id, reported.short_code]);
-  const featured = await seed(s, { view_count: 40, share_count: 3, author_followers: 5000 });
-  assert.equal((await feature(s, featured)).status, 200);
+  const old = await seed(s, { seo_status: 'index', legacy_indexed: 1 });
+  const fresh = await seed(s, { seo_status: 'index' });
   const xml = await (await fetch(`${s.base}/sitemap-copies-1.xml`)).text();
-  for (const post of [legacy, featured]) assert.ok(xml.includes(`/${post.short_code}<`), post.short_code);
-  for (const post of [fresh, blocked, sensitive, reported]) assert.ok(!xml.includes(`/${post.short_code}<`), post.short_code);
+  assert.ok(xml.includes(`/${featured.short_code}<`));
+  for (const post of [blocked, sensitive, reported, old, fresh]) assert.ok(!xml.includes(`/${post.short_code}<`), post.short_code);
 });

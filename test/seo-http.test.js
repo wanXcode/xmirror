@@ -43,7 +43,7 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   const action=async body=>fetch(base+'/api/admin/seo/1',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':'test-only-token'},body:JSON.stringify(body)});
   assert.equal((await action({override:'index',blocked:'false'})).status,400);
   assert.equal((await (await action({override:null,blocked:false})).json()).status,'index');
-  // The old SEO override feeds the sitemap, not the page: a saved post is noindex unless it is legacy-indexed or featured.
+  // The old SEO override feeds the sitemap, not the page: a saved post is noindex unless it is featured.
   page = await (await fetch(base+'/Ab1234')).text();assert.match(page,/content="noindex, follow"/);
   assert.doesNotMatch(await (await fetch(base+'/sitemap-copies-1.xml')).text(), /\/Ab1234/, 'a new, non-featured archive is not in the sitemap');
   assert.match(await (await fetch(base+'/browse')).text(), /\/Ab1234/);

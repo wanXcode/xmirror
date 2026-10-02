@@ -1,5 +1,5 @@
 {
-  "minInteractions": 20,
+  "minInteractions": 50,
   "minFollowers": 1000,
   "dailyCap": 10,
   "minKeyPoints": 3,
