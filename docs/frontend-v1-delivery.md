@@ -57,8 +57,15 @@ LCP 1.4–1.7s，CLS 0，所有页面性能分 99–100。改动要点：拉丁�
 - 手机页头不固定（画板里页头始终可见，但固定页头会改变手机菜单/语言面板层级，按默认方案未做）。
 - 敏感帖不存档；举报接口新增了"可用 X 帖子链接查找副本"（原有行为不变）；翻译/字幕后端代码无界面入口，保留未删。
 - 精选页 AI 内容目前通过管理接口录入，无后台界面。
-- `safari-pinned-tab.svg` 仍是旧的单色 X 蒙版（设计未提供新版）。
+- 已删除 `safari-pinned-tab.svg` 及对应 `<link rel="mask-icon">`。
 
-## 8. 文档与工具
+## 8. 上线运维（待办已处理）
+
+- 下载代理容灾：`DOWNLOAD_VIA=worker|node`，应急只需改环境变量重启，见 `docs/download-proxy-rollout.md`（含上线顺序）。
+- 缓存头：见 `docs/caching.md`（结果页 `private, no-store`，`/api/*` 一律 `no-store`）。
+- 管理接口：未带或错误 token 返回 401，服务器未配置 token 返回 503；`robots.txt` 屏蔽 `/api/`、`/dl`、`/node-dl`。
+- 翻译/字幕后端路由：生产默认关闭（`FEATURE_TRANSLATION=true` 开启），代码保留。
+
+## 9. 文档与工具
 
 `docs/local-testing.md`（本地启动、手机真机、测试清单、配置优先级）、`docs/frontend-open-questions.md`（决策与待确认记录）、`docs/test-report-20261002.md`（验收报告）、`ops/seed-local.js`（样例数据）、`ops/e2e-results.js`（结果卡/下载面板浏览器验收，截图在 `docs/screenshots/v3/`）。

@@ -41,7 +41,7 @@ test('admin guard rejects a missing or incorrect header token', () => {
     const req = { get: () => supplied, query: { token: 'secret' }, body: { token: 'secret' } };
     const res = createResponse();
     guard(req, res, () => assert.fail('next should not be called'));
-    assert.equal(res.statusCode, 403);
+    assert.equal(res.statusCode, 401);
   }
 });
 
@@ -56,7 +56,7 @@ test('admin guard locks out a client after repeated wrong tokens, but not on suc
     return { passed, status: res.statusCode };
   };
   for (let i = 0; i < 5; i++) assert.equal(attempt('secret').passed, true); // successes never count
-  for (let i = 0; i < 3; i++) assert.equal(attempt('wrong').status, 403);
+  for (let i = 0; i < 3; i++) assert.equal(attempt('wrong').status, 401);
   assert.equal(attempt('wrong').status, 429);
   assert.equal(attempt('secret').status, 429); // locked even with the right token
   assert.equal(attempt('secret', '2.2.2.2').passed, true); // other clients unaffected
@@ -69,6 +69,6 @@ test('admin guard compares tokens of different lengths and types without throwin
   for (const supplied of ['s', 'secret-but-longer', '', ['secret'], 123]) {
     const res = createResponse();
     guard({ get: () => supplied }, res, () => assert.fail('must not pass'));
-    assert.equal(res.statusCode, 403);
+    assert.equal(res.statusCode, 401);
   }
 });

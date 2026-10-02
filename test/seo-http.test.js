@@ -39,7 +39,7 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   assert.equal(shareImage.status, 200);
   assert.match(shareImage.headers.get('content-type'), /image\/png/);
   await run(db, 'UPDATE posts SET images=? WHERE id=1', ['["/images/sample.jpg"]']);
-  assert.equal((await fetch(base+'/api/admin/seo')).status,403);
+  assert.equal((await fetch(base+'/api/admin/seo')).status,401);
   const action=async body=>fetch(base+'/api/admin/seo/1',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':'test-only-token'},body:JSON.stringify(body)});
   assert.equal((await action({override:'index',blocked:'false'})).status,400);
   assert.equal((await (await action({override:null,blocked:false})).json()).status,'index');
@@ -73,7 +73,7 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   await run(db,'INSERT INTO post_aliases(alias_code,target_post_id) VALUES(?,?)',['Cd5678',1]);
   assert.equal((await fetch(base+'/Cd5678',{redirect:'manual'})).status,301);
   for(const p of ['/demo/','/admin-xput.html','/api/posts']) assert.match((await fetch(base+p)).headers.get('x-robots-tag'),/noindex/);
-  const robots=await(await fetch(base+'/robots.txt')).text();assert.match(robots,/Sitemap: https:\/\/xput.app\/sitemap.xml/);assert.match(robots,/Disallow: \/api\//);assert.match(robots,/Disallow: \/dl\//);assert.doesNotMatch(robots,/Disallow: \/(?:demo|admin)/);
+  const robots=await(await fetch(base+'/robots.txt')).text();assert.match(robots,/Sitemap: https:\/\/xput.app\/sitemap.xml/);assert.match(robots,/Disallow: \/api\//);assert.match(robots,/Disallow: \/dl\n/);assert.match(robots,/Disallow: \/node-dl\n/);assert.doesNotMatch(robots,/Disallow: \/(?:demo|admin)/);
   await action({override:'index',blocked:true});
   assert.equal((await (await action({override:'index'})).json()).status,'noindex', 'recommend does not clear a block');
   assert.doesNotMatch(await(await fetch(base+'/sitemap-copies-1.xml')).text(),/Ab1234/);
@@ -81,7 +81,7 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   const reportResponse = await fetch(base+'/api/reports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:'https://xput.app/Ab1234',kind:'privacy',reason:'Please remove my private personal information.',contact:'person@example.com'})});
   assert.equal(reportResponse.status,201);
   const reportId=(await reportResponse.json()).id;
-  assert.equal((await fetch(base+'/api/admin/reports')).status,403);
+  assert.equal((await fetch(base+'/api/admin/reports')).status,401);
   const reportList=await (await fetch(base+'/api/admin/reports',{headers:{'x-admin-token':'test-only-token'}})).json();
   assert.equal(reportList.reports[0].id,reportId);
   assert.equal(reportList.reports[0].post_exists,true);

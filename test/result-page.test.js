@@ -255,7 +255,7 @@ async function feature(s, post) {
 test('featured admin API needs the token and validates input', { timeout: 60000 }, async () => {
   const s = await server();
   const post = await seed(s, { view_count: 60, share_count: 3, author_followers: 5000 });
-  assert.equal((await fetch(`${s.base}/api/admin/featured`)).status, 403);
+  assert.equal((await fetch(`${s.base}/api/admin/featured`)).status, 401);
   assert.equal((await admin(s, '/api/admin/featured/abc', FEATURED)).status, 400);
   assert.equal((await admin(s, `/api/admin/featured/${post.id}`, { ...FEATURED, key_points: ['a'] })).status, 400);
   assert.equal((await admin(s, '/api/admin/featured?status=nope', null, 'GET')).status, 400);
@@ -342,4 +342,44 @@ test('copies sitemap lists only live featured pages that are still indexable', {
   const xml = await (await fetch(`${s.base}/sitemap-copies-1.xml`)).text();
   assert.ok(xml.includes(`/${featured.short_code}<`));
   for (const post of [blocked, sensitive, reported, old, fresh]) assert.ok(!xml.includes(`/${post.short_code}<`), post.short_code);
+});
+
+// ---- cache headers (documented in docs/caching.md: keep both in step) ----
+test('cache headers by type of response', { timeout: 60000 }, async () => {
+  const s = await server();
+  const post = await seed(s, { content: 'cache header test' });
+  const sensitive = await seed(s, { content: 'secret', sensitive: 1 });
+  const removed = 'RMV001';
+  await s.run("INSERT OR REPLACE INTO removed_posts(short_code, post_id, reference) VALUES(?, NULL, 'REF')", [removed]);
+  const head = async (route, init = {}) => { const r = await fetch(`${s.base}${route}`, { redirect: 'manual', ...init }); await r.arrayBuffer(); return r.headers; };
+  const cc = async (route, init) => (await head(route, init)).get('cache-control');
+
+  // fixed pages: language is in the URL, so they can be revalidated and shared
+  for (const route of ['/', '/zh/', '/twitter-viewer', '/ios-shortcut', '/privacy', '/report']) assert.equal(await cc(route), 'no-cache, must-revalidate', route);
+  // saved-post pages depend on the visitor (language cookie, age confirmation) and a CDN ignores Vary: never cached
+  for (const route of [`/${post.short_code}`, `/${sensitive.short_code}`, `/${removed}`, '/ZZZZZZ']) {
+    const headers = await head(route);
+    assert.equal(headers.get('cache-control'), 'private, no-store', route);
+    assert.match(headers.get('vary') || '', /Cookie/);
+    assert.match(headers.get('vary') || '', /Accept-Language/);
+  }
+  assert.equal(await cc('/no/such/page'), 'private, no-store');
+  // API: never cached, including answers to bad requests
+  assert.equal(await cc('/api/resolve', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }), 'no-store');
+  assert.equal(await cc('/api/saved-copy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }), 'no-store');
+  assert.equal(await cc('/api/admin/featured'), 'no-store');
+  assert.equal(await cc('/api/nope'), 'no-store');
+  // static assets
+  const { document } = await page(s, '');
+  assert.equal(await cc(document.querySelector('link[href^="/css/xput.css"]').getAttribute('href')), 'public, max-age=31536000, immutable');
+  assert.equal(await cc('/css/xput.css'), 'public, max-age=0, must-revalidate');
+  assert.equal(await cc('/fonts/ibm-plex-sans/ibm-plex-sans-latin-400-normal.woff2'), 'public, max-age=31536000, immutable');
+  assert.equal(await cc('/favicon.ico'), 'public, max-age=0, must-revalidate');
+  assert.equal(await cc('/xput-share.png'), 'public, max-age=0, must-revalidate');
+  // share images, sitemaps
+  assert.equal(await cc(`/og/${post.short_code}.png`), 'public, max-age=86400');
+  assert.equal(await cc('/og/ZZZZZZ.png'), 'public, max-age=300');
+  for (const route of ['/sitemap.xml', '/sitemap-main.xml', '/sitemap-copies-1.xml']) assert.equal(await cc(route), 'no-cache', route);
+  // download proxy: never stored
+  assert.equal(await cc(`/node-dl?u=${encodeURIComponent('https://evil.example/a.mp4')}`), 'no-store', 'proxy errors; successful downloads are private, no-store (see download-proxy.test.js)');
 });

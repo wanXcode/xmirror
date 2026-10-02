@@ -32,7 +32,7 @@ test('sitemap index and robots.txt', () => {
   assert.deepEqual(locs(sitemapIndex(['https://xput.app/a.xml?x=1&y=2'])), ['https://xput.app/a.xml?x=1&amp;y=2']);
   const robots = robotsTxt('https://xput.app/');
   assert.ok(robots.includes('Sitemap: https://xput.app/sitemap.xml'));
-  assert.ok(robots.includes('Disallow: /api/') && robots.includes('Disallow: /dl/'));
+  assert.ok(robots.includes('Disallow: /api/') && robots.includes('Disallow: /dl\n'));
   assert.ok(!/Disallow: \/(og|images|videos|css|js)/.test(robots), 'assets and share images stay crawlable');
 });
 

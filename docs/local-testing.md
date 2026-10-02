@@ -146,7 +146,8 @@ curl -X POST -H "$T" localhost:3000/api/admin/featured/POST_ID/withdraw
 | `CONTACT_EMAIL` | 隐私页和举报页显示的联系邮箱（为空则不显示） |
 | `SHORTCUT_URL` | iPhone 快捷指令的 iCloud 链接 |
 | `FETCH_RATE_LIMIT_PER_MIN` / `DOWNLOAD_RATE_LIMIT_PER_MIN` | 解析/下载限流 |
-| `DOWNLOAD_PROXY_BASE`、`ENABLE_LOCAL_DOWNLOAD_PROXY` | 下载代理地址、是否启用本地代理 |
+| `DOWNLOAD_VIA`（`worker`/`node`）、`DOWNLOAD_PROXY_BASE` | 下载代理：生产默认 worker；`node` 为应急开关（页面改用 `/node-dl`，见 `docs/download-proxy-rollout.md`）；`ENABLE_LOCAL_DOWNLOAD_PROXY` 仍兼容 |
+| `FEATURE_TRANSLATION` | 翻译/字幕后端路由；生产默认关闭，其他环境默认开启 |
 | `MODERATION_ADMIN_TOKEN` | 管理接口口令（不要提交到代码或日志） |
 | `VIEW_COUNTER_FLUSH_MS` | 浏览/分享计数写库间隔 |
 

@@ -64,6 +64,7 @@ const { createFeaturedService } = require('./lib/featured');
 const { registerFeaturedAdminRoutes } = require('./lib/routes/featured-admin');
 const { registerOgRoutes } = require('./lib/routes/og');
 const { registerFontRoutes } = require('./lib/routes/fonts');
+const { resolveDownloadConfig } = require('./lib/download-config');
 const compression = require('compression');
 const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
 const {
@@ -101,7 +102,9 @@ let activeTranslationJobs = 0;
 app.set('trust proxy', process.env.TRUST_PROXY || DEFAULT_TRUST_PROXY);
 app.use(clientIpMiddleware);
 // gzip/brotli for text responses (HTML, CSS, JS, JSON, SVG). Downloads through /dl stream untouched.
-app.use(compression({ filter: (req, res) => !req.path.startsWith('/dl/') && compression.filter(req, res) }));
+app.use(compression({ filter: (req, res) => !/^\/(?:dl|node-dl)\/?$/.test(req.path) && compression.filter(req, res) }));
+// Nothing under /api is ever cached by browsers or the CDN; handlers may only tighten this.
+app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 app.use(express.json());
 registerHealthRoute(app);
 
@@ -162,16 +165,20 @@ const seoStore = createSeoStore(db, { dataDir: DATA_DIR, moderator: seoModerator
 const seoAI = require('./lib/seo-ai').createSeoAI({ store: seoStore, dataDir: DATA_DIR, isBusy: () => activeTranslationJobs > 0 });
 seoStore.onEvaluated(post => seoAI.enqueue(post));
 // Fixed pages first: they must win over the 6-character short code route.
-registerPageRoutes(app, { baseUrl: PUBLIC_BASE_URL, downloadBase: process.env.DOWNLOAD_PROXY_BASE || '/dl', shortcutUrl: process.env.SHORTCUT_URL || SITE_CONFIG.shortcutUrl });
+registerPageRoutes(app, { baseUrl: PUBLIC_BASE_URL, downloadBase: resolveDownloadConfig().base, shortcutUrl: process.env.SHORTCUT_URL || SITE_CONFIG.shortcutUrl });
 
-// Development / fallback download proxy. In production the Cloudflare Worker owns /dl
-// (workers/download-proxy), so this stays off unless explicitly enabled.
-if ((process.env.ENABLE_LOCAL_DOWNLOAD_PROXY ?? String(process.env.NODE_ENV !== 'production')) === 'true') {
+// Download proxy: the Cloudflare Worker serves /dl in production; DOWNLOAD_VIA=node switches the pages to the
+// Node proxy on /node-dl without any code change (see lib/download-config.js).
+const DOWNLOAD = resolveDownloadConfig();
+if (DOWNLOAD.mountPaths.length) {
   const proxyLimit = createRateLimiter({ windowMs: 60000, max: Number(process.env.DOWNLOAD_RATE_LIMIT_PER_MIN) || 60, code: 'RATE_LIMITED', message: '下载过于频繁，请稍后再试' });
   const downloadProxy = createDownloadProxy();
-  app.get('/dl', proxyLimit, (req, res, next) => downloadProxy(req, res).catch(next));
-  app.head('/dl', (req, res, next) => downloadProxy(req, res).catch(next));
+  for (const proxyPath of DOWNLOAD.mountPaths) {
+    app.get(proxyPath, proxyLimit, (req, res, next) => downloadProxy(req, res).catch(next));
+    app.head(proxyPath, (req, res, next) => downloadProxy(req, res).catch(next));
+  }
 }
+console.log(`下载代理: ${DOWNLOAD.via}（页面使用 ${DOWNLOAD.base}）`);
 const postStore = createPostStore({ get: dbGet, all: dbAll, run: runDbWrite });
 registerSeoRoutes(app, { store: seoStore, postStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 registerReportRoutes(app, { store: seoStore, baseUrl: PUBLIC_BASE_URL, requireAdmin });
@@ -724,6 +731,12 @@ async function translateWithSiliconFlow(parts, targetLang, attempt = null) {
 }
 
 const SUBTITLE_LANGUAGES = Object.freeze({ en: 'English', 'zh-CN': '简体中文' });
+// Translation and subtitles (Whisper/LLM back ends) have no UI in this release: off in production, code kept.
+// FEATURE_TRANSLATION=true turns them on; unset means on only outside production.
+const TRANSLATION_ENABLED = (process.env.FEATURE_TRANSLATION ?? String(process.env.NODE_ENV !== 'production')) === 'true';
+app.use(['/api/translate', '/api/posts/:id/subtitles'], (_req, res, next) => (TRANSLATION_ENABLED
+  ? next()
+  : res.status(404).json({ success: false, code: 'FEATURE_DISABLED', error: '该功能未启用' })));
 const subtitleQueue = [];
 const subtitleJobs = new Set();
 const activeSubtitlePosts = new Set();
@@ -871,6 +884,7 @@ function pumpSubtitleQueue() {
 }
 
 async function queueSubtitleJob(postId, lang) {
+  if (!TRANSLATION_ENABLED) return false;
   const key = `${postId}:${lang}`;
   if (subtitleJobs.has(key)) return false;
   const current = await getSubtitleTrack(postId, lang);
@@ -1185,6 +1199,7 @@ async function persistTranslationJobCounts(jobId) {
 }
 
 function enqueueTranslationJob(jobId) {
+  if (!TRANSLATION_ENABLED) return;
   const key = String(jobId);
   if (translationQueued.has(key) || translationRunning.has(key)) return;
   translationQueued.add(key);
@@ -1898,7 +1913,7 @@ app.get(/^\/([A-Za-z0-9]{6})\/referer$/, async (req, res, next) => {
   }
 });
 
-const DOWNLOAD_BASE = process.env.DOWNLOAD_PROXY_BASE || '/dl';
+const DOWNLOAD_BASE = DOWNLOAD.base;
 const viewCounter = createViewCounter({ flush: batch => postStore.applyCounts(batch), intervalMs: Number(process.env.VIEW_COUNTER_FLUSH_MS) || 30000 });
 const featuredService = createFeaturedService({ db: { get: dbGet, all: dbAll, run: runDbWrite }, store: postStore });
 registerResultRoutes(app, { store: postStore, counter: viewCounter, baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE, featured: featuredService });
@@ -1947,8 +1962,7 @@ async function startServer() {
     setInterval(() => seoAI.tick().catch(() => console.error('SEO title worker failed')), 5000).unref();
     viewCounter.start();
     queuePendingVideoDownloads();
-    queuePendingSubtitleJobs();
-    queuePendingTranslationJobs();
+    if (TRANSLATION_ENABLED) { queuePendingSubtitleJobs(); queuePendingTranslationJobs(); }
   });
 }
 

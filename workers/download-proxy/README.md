@@ -21,9 +21,9 @@ so the tests in `test/download-proxy.test.js` cover both.
 1. `cd workers/download-proxy`
 2. Edit `wrangler.toml`: set the route pattern and `zone_name` to your domain.
 3. `npx wrangler deploy` (log in once with `npx wrangler login`).
-4. In the site's environment, make sure `DOWNLOAD_PROXY_BASE` is unset (default `/dl`) and
-   `ENABLE_LOCAL_DOWNLOAD_PROXY` is `false` (it is off by default when `NODE_ENV=production`),
-   so `/dl` is served only by the Worker.
+4. In the site's environment leave `DOWNLOAD_VIA` unset or `worker` and `DOWNLOAD_PROXY_BASE` unset (default `/dl`),
+   so `/dl` is served only by the Worker. If the Worker ever fails, set `DOWNLOAD_VIA=node` and restart the site:
+   the pages then use the Node proxy on `/node-dl`, which this route does not match (see `docs/download-proxy-rollout.md`).
 
 Because the route is on the same hostname as the site, the page calls `/dl` without CORS.
 

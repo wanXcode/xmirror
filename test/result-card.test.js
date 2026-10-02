@@ -225,6 +225,27 @@ test('the in-memory limit is 150 MB: a file at the limit is buffered and saved, 
   }
 });
 
+test('files over the limit still go through the attachment proxy (whichever mode), never straight to the X CDN', async () => {
+  const url = 'https://video.twimg.com/v/1080.mp4';
+  for (const base of ['/dl', '/node-dl']) {
+    const { document, window } = parseHTML('<!doctype html><html><body><div id="host"></div></body></html>');
+    const navigations = [];
+    const renderer = createResultRenderer({
+      doc: document, win: window, text: en.result, lang: 'en', timers: fakeTimers(), platform: { ios: false, android: false, mobile: false }, nav: {}, File,
+      downloadBase: base, shortcutHref: '/ios-shortcut', fetch: async () => { throw new Error('a huge file must not be buffered'); },
+      fetchSizes: async () => ({ [url]: 400 * 1024 * 1024 }), saveBlob: () => { throw new Error('nothing to save in memory'); }, navigate: target => navigations.push(target), onViewSave: () => {}
+    });
+    const card = renderer.render(post({ videos: [video()] }));
+    document.getElementById('host').appendChild(card);
+    for (let i = 0; i < 12; i += 1) await new Promise(resolve => setImmediate(resolve));
+    card.querySelector('.block--video .dl').dispatchEvent(new window.Event('click', { bubbles: true }));
+    for (let i = 0; i < 12; i += 1) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(navigations.length, 1);
+    assert.ok(navigations[0].startsWith(`${base}?u=`), navigations[0]);
+    assert.ok(!/^https?:/.test(navigations[0]) && !navigations[0].startsWith('https://video.twimg.com'), 'never the original CDN address');
+  }
+});
+
 test('other qualities download their own file', async () => {
   const s = setup();
   const card = s.mount(post({ videos: [video()] }));
