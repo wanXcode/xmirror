@@ -83,14 +83,8 @@ button { font: inherit; color: inherit; }
 
 .brand { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); }
 .brand:hover { color: var(--ink); }
-.brand__mark {
-  --size: 32px; position: relative; display: inline-flex; align-items: center; justify-content: center;
-  width: var(--size); height: var(--size); border-radius: 10px; background: var(--primary);
-}
-.brand__dot {
-  position: absolute; right: -3px; bottom: -3px; width: 12px; height: 12px; border-radius: 50%;
-  background: var(--accent); border: 2px solid var(--bg);
-}
+.brand__mark { --size: 32px; display: inline-flex; width: var(--size); height: var(--size); flex: none; }
+.brand__mark svg { display: block; }
 .brand__name { font: 700 21px/1 var(--font-display); letter-spacing: -0.01em; }
 @media (min-width: 768px) { .brand__name { font-size: 24px; } }
 
