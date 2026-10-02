@@ -241,13 +241,15 @@ test('dialog focus is not stolen from a visitor who already moved it', async () 
   assert.ok(focus.active() === s.q('[data-sheet-close]'));
 });
 
-test('dialog Tab / Shift+Tab wrap around inside the dialog and skip hidden items', async () => {
+test('dialog Tab / Shift+Tab wrap around inside the dialog and skip hidden items (folded qualities)', async () => {
   const s = setup({ routes: { '/api/resolve': reply(200, resolvedMixed) } });
   const focus = withFocus(s);
   s.click(s.q('[data-open-drawer]'));
   await s.flush();
   const items = () => [...s.q('[data-sheet]').querySelectorAll('button, a[href]')].filter(el => !el.disabled && !el.closest('[hidden]'));
-  assert.ok(!items().some(el => el.classList.contains('variant')), 'the collapsed qualities are not tab stops');
+  assert.ok(items().some(el => el.classList.contains('variant')), 'the open qualities are tab stops');
+  s.click(s.q('[data-sheet-body] .toggle'));
+  assert.ok(!items().some(el => el.classList.contains('variant')), 'folded qualities are not tab stops');
   const last = items().at(-1);
   last.focus();
   const forward = focus.key('Tab');

@@ -312,8 +312,9 @@
     }
 
     function variantRows(variants, nameFor) {
-      var list = h('div', { class: 'variants', hidden: true });
-      var toggle = h('button', { class: 'toggle', type: 'button', 'aria-expanded': 'false' }, [h('span', { text: text.otherQualities }), h('span', { class: 'toggle__arrow', 'aria-hidden': 'true', text: '▾' })]);
+      // Open by default (product decision): the qualities are the second thing people look for; the toggle still folds them away.
+      var list = h('div', { class: 'variants' });
+      var toggle = h('button', { class: 'toggle', type: 'button', 'aria-expanded': 'true' }, [h('span', { text: text.otherQualities }), h('span', { class: 'toggle__arrow', 'aria-hidden': 'true', text: '▴' })]);
       variants.forEach(function (variant) {
         var row = h('button', { class: 'variant', type: 'button' });
         var status = h('span', { class: 'variant__status' });

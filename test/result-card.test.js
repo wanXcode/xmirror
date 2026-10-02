@@ -78,7 +78,7 @@ test('image size variants and quality labels', () => {
   assert.equal(primaryQualityLabel({ height: 1080 }, zh.result), '下载高清 1080p');
 });
 
-test('video card: header, label, preview, best-quality button and collapsed other qualities', async () => {
+test('video card: header, label, preview, best-quality button and other qualities open by default', async () => {
   const s = setup({ sizes: { 'https://video.twimg.com/v/1080.mp4': 25300000, 'https://video.twimg.com/v/720.mp4': 13200000 } });
   const card = s.mount(post({ videos: [video()] }));
   await s.flush();
@@ -91,10 +91,12 @@ test('video card: header, label, preview, best-quality button and collapsed othe
   assert.equal(card.querySelector('.dl__label').textContent, 'Download HD · 1080p');
   assert.equal(card.querySelector('.dl__size').textContent, '24.1 MB', 'size arrives from /api/media-info');
   const toggle = card.querySelector('.toggle');
-  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true', 'other qualities are open by default');
+  assert.equal(card.querySelector('.variants').hidden, false);
+  s.click(toggle);
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false', 'and can be folded away');
   assert.equal(card.querySelector('.variants').hidden, true);
   s.click(toggle);
-  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
   assert.equal(card.querySelector('.variants').hidden, false);
   const rows = [...card.querySelectorAll('.variant')];
   assert.deepEqual(rows.map(r => r.querySelector('.variant__name').textContent), ['720p · MP4', '360p · MP4']);
@@ -496,7 +498,7 @@ test('download list: one compact row per media type with the info line, thumbnai
   assert.equal(videoRow.querySelector('.row__meta').textContent, '1080p · 0:42 · 11.4 MB');
   assert.equal(videoRow.querySelector('.thumb__duration').textContent, '0:42');
   assert.equal(videoRow.querySelector('.dl__label').textContent, 'Download HD · 1080p');
-  assert.equal(videoRow.querySelector('.toggle .toggle__arrow').textContent, '▾', '"Other qualities" sits under the row');
+  assert.equal(videoRow.querySelector('.toggle .toggle__arrow').textContent, '▴', '"Other qualities" sits under the row, open');
   const gifRow = rows.querySelector('.row--gif');
   assert.equal(gifRow.querySelector('.row__info strong').textContent, 'GIF');
   assert.equal(gifRow.querySelector('.row__meta').textContent, 'Saved as MP4 · 1.2 MB');

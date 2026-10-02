@@ -71,3 +71,6 @@ Space Grotesk, IBM Plex Sans (served from `/fonts/`) and Noto Sans SC (OG images
 
 ## Source success-rate statistics
 When computing per-source success rates from the `[fetch]` log lines, leave out entries with `"definitive": true`. They are the post's own state (`reason`: `not_found`, `deleted`, `private`, `suspended`), not a source fault, so they count neither as a failure nor as a success. Only `timeout`, `network`, `upstream` (5xx/unexpected status), `rate_limit` and `incomplete` (parse failure) entries are source failures.
+
+## Other qualities open by default
+Product decision after v3 review: "Other qualities" starts expanded in both the result card and the download dialog (the boards show it folded). The toggle still folds it away.
