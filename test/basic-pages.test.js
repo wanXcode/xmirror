@@ -376,3 +376,15 @@ test('config/site.json: analytics domain is xput.app and there is no third-party
   assert.equal(site.analytics.domain, 'xput.app');
   assert.ok(!('fonts' in site));
 });
+
+test('font licenses ship with the repo and are publicly served', { timeout: 60000 }, async () => {
+  for (const name of ['ibm-plex-sans', 'space-grotesk', 'noto-sans-sc']) {
+    assert.match(fs.readFileSync(path.join(__dirname, '..', 'licenses', `OFL-${name}.txt`), 'utf8'), /SIL OPEN FONT LICENSE Version 1\.1/i, name);
+  }
+  const s = await server();
+  const response = await fetch(`${s.base}/fonts/LICENSE.txt`);
+  assert.equal(response.status, 200);
+  const text = await response.text();
+  assert.match(text, /SIL OPEN FONT LICENSE/i);
+  assert.ok(text.includes('IBM Corp') && text.includes('Space Grotesk Project'));
+});

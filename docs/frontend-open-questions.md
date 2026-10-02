@@ -65,3 +65,9 @@ Defaults were implemented for everything below; each can be changed later.
 ## Performance follow-up (after local acceptance, 2026-10-02)
 - Mobile LCP was 4.3–5.6 s on the acceptance machine against 2.1–2.5 s in my sandbox. Causes: the render-blocking Google Fonts stylesheet (two third-party origins; blocked in my sandbox, so my earlier numbers did not include it), and no gzip/brotli plus `max-age=0` on CSS/JS from Node. Fixed: fonts are self-hosted and the Latin `@font-face` rules inlined, `compression` (br/gzip) added, CSS/JS URLs carry a content hash and are `immutable`.
 - **Design change to confirm:** Noto Sans SC is no longer loaded as a web font. As unicode-range slices it was ~700 KB per Chinese page and took zh LCP to 6.8 s; Chinese text now uses the visitor's system CJK font (PingFang SC, Microsoft YaHei, Noto Sans CJK SC). Latin text keeps IBM Plex Sans and Space Grotesk. (OG images still render with Noto Sans SC on the server.)
+
+## Font licenses
+Space Grotesk, IBM Plex Sans (served from `/fonts/`) and Noto Sans SC (OG images only) are SIL OFL 1.1. The license texts are in `licenses/OFL-*.txt`, and `public/fonts/LICENSE.txt` (public at `/fonts/LICENSE.txt`) ships the notices for the two served families. The font files themselves come from the `@fontsource` npm packages at runtime; they are not copied into the repo.
+
+## Source success-rate statistics
+When computing per-source success rates from the `[fetch]` log lines, leave out entries with `"definitive": true`. They are the post's own state (`reason`: `not_found`, `deleted`, `private`, `suspended`), not a source fault, so they count neither as a failure nor as a success. Only `timeout`, `network`, `upstream` (5xx/unexpected status), `rate_limit` and `incomplete` (parse failure) entries are source failures.

@@ -1,7 +1,7 @@
 # XPut 设计修改说明 v2
 
 > 依据：关键词数据与新版产品规划（本文覆盖此前文档与画布中冲突的部分），以及上一轮交互评审意见。
-> 视觉风格不变：沿用「温度品牌风格」（奶油底 #FBF7F0、白卡片、主色 #1747C9 只用于可点击元素、暖橙 #FF8A4C 只做装饰；标题 Space Grotesk，正文 IBM Plex Sans，中文 Noto Sans SC）。
+> 视觉风格不变：沿用「温度品牌风格」（奶油底 #FBF7F0、白卡片、主色 #1747C9 只用于可点击元素、暖橙 #FF8A4C 只做装饰；标题 Space Grotesk，正文 IBM Plex Sans；中文使用系统字体（PingFang SC、Microsoft YaHei、Noto Sans CJK SC），拉丁文字使用自托管的 Space Grotesk / IBM Plex Sans；OG 图仍用 Noto Sans SC 渲染）。
 
 ---
 
