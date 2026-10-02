@@ -64,6 +64,7 @@ const { createFeaturedService } = require('./lib/featured');
 const { registerFeaturedAdminRoutes } = require('./lib/routes/featured-admin');
 const { registerOgRoutes } = require('./lib/routes/og');
 const { registerFontRoutes } = require('./lib/routes/fonts');
+const { registerBrowseRoutes } = require('./lib/routes/browse');
 const { resolveDownloadConfig } = require('./lib/download-config');
 const compression = require('compression');
 const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
@@ -180,6 +181,7 @@ if (DOWNLOAD.mountPaths.length) {
 }
 console.log(`下载代理: ${DOWNLOAD.via}（页面使用 ${DOWNLOAD.base}）`);
 const postStore = createPostStore({ get: dbGet, all: dbAll, run: runDbWrite });
+registerBrowseRoutes(app, { store: postStore, baseUrl: PUBLIC_BASE_URL });
 registerSeoRoutes(app, { store: seoStore, postStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 registerReportRoutes(app, { store: seoStore, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 registerFontRoutes(app);

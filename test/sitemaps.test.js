@@ -12,12 +12,13 @@ test('main sitemap: fixed pages in both languages with hreflang alternates; the 
   const xml = mainSitemap(BASE);
   assert.deepEqual(locs(xml), [
     'https://xput.app/', 'https://xput.app/zh/', 'https://xput.app/twitter-viewer', 'https://xput.app/zh/twitter-viewer',
-    'https://xput.app/ios-shortcut', 'https://xput.app/zh/ios-shortcut', 'https://xput.app/privacy', 'https://xput.app/zh/privacy'
+    'https://xput.app/ios-shortcut', 'https://xput.app/zh/ios-shortcut', 'https://xput.app/browse', 'https://xput.app/zh/browse',
+    'https://xput.app/privacy', 'https://xput.app/zh/privacy'
   ]);
   assert.ok(!xml.includes('/report'));
   assert.ok(xml.includes('hreflang="x-default" href="https://xput.app/"'));
   assert.ok(xml.includes('hreflang="zh-Hans" href="https://xput.app/zh/twitter-viewer"'));
-  assert.equal((xml.match(/<xhtml:link/g) || []).length, 8 * 3);
+  assert.equal((xml.match(/<xhtml:link/g) || []).length, 10 * 3);
 });
 
 test('copies sitemap: one url per copy with a date, escaped, never the home page', () => {

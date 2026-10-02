@@ -43,9 +43,9 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   const action=async body=>fetch(base+'/api/admin/seo/1',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':'test-only-token'},body:JSON.stringify(body)});
   assert.equal((await action({override:'index',blocked:'false'})).status,400);
   assert.equal((await (await action({override:null,blocked:false})).json()).status,'index');
-  // The old SEO override feeds the sitemap, not the page: a saved post is noindex unless it is featured.
-  page = await (await fetch(base+'/Ab1234')).text();assert.match(page,/content="noindex, follow"/);
-  assert.doesNotMatch(await (await fetch(base+'/sitemap-copies-1.xml')).text(), /\/Ab1234/, 'a new, non-featured archive is not in the sitemap');
+  // An archive picked by the SEO mechanism stays indexable (the old "worth re-reading" set): robots, sitemap, list, structured data.
+  page = await (await fetch(base+'/Ab1234')).text();assert.match(page,/content="index, follow"/);assert.match(page,/"@type":"SocialMediaPosting"/);
+  assert.match(await (await fetch(base+'/sitemap-copies-1.xml')).text(), /\/Ab1234/, 'a selected archive is in the copies sitemap');
   assert.match(await (await fetch(base+'/browse')).text(), /\/Ab1234/);
   await run(db, 'INSERT INTO posts(id,url,short_code,content,images,author,author_handle,tweet_time,html_file,seo_status,seo_blocked) VALUES(?,?,?,?,?,?,?,?,?,?,?)', [2,'https://x.com/i/status/456','Cd3456','<h1>Needle guide</h1><p>Searchable archive</p>','[]','Bob Builder','bob_builder','2026-09-26T02:00:00Z','post_456.html','index',0]);
   const searchPage = await (await fetch(base+'/browse?q=needle')).text();

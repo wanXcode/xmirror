@@ -82,7 +82,7 @@ test('footer carries all links from the spec and the disclaimer', () => {
   const { document } = page('en', 'home');
   const links = [...document.querySelectorAll('.site-footer__links a')].map(a => [a.textContent, a.getAttribute('href')]);
   assert.deepEqual(links, [
-    ['Video Downloader', '/'], ['Twitter Viewer', '/twitter-viewer'], ['iPhone Shortcut', '/ios-shortcut'],
+    ['Video Downloader', '/'], ['Twitter Viewer', '/twitter-viewer'], ['iPhone Shortcut', '/ios-shortcut'], ['Saved posts', '/browse'],
     ['English', '/'], ['中文', '/zh/'], ['Privacy', '/privacy'], ['Report content', '/report']
   ]);
   assert.match(document.querySelector('.site-footer').textContent, /Not affiliated with X Corp\./);

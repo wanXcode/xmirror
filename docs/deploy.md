@@ -49,7 +49,7 @@ export SITE=https://xput.app
 | `author_followers` | `INTEGER`（空） | 作者粉丝数，仅新存档写入 |
 | `video_poster` | `TEXT`（空） | 视频封面，仅新存档写入 |
 | `sensitive` | `INTEGER NOT NULL DEFAULT 0` | 敏感标记 |
-| `legacy_indexed` | `INTEGER NOT NULL DEFAULT 0` | 历史已收录标记（新版已不再用它决定是否收录，保留记录） |
+| `legacy_indexed` | `INTEGER NOT NULL DEFAULT 0` | 迁移时对已收录存档的快照标记，**新版不使用**（收录以实时的 `seo_status` 为准，见 6.2），仅保留记录 |
 
 **新增 3 张表**（`CREATE TABLE IF NOT EXISTS`）
 
@@ -85,7 +85,9 @@ export SITE=https://xput.app
 
 **回滚后与新版行为差异（需知悉，不是数据损坏）**
 
-- 新版期间保存的帖子，在旧版的 SEO 规则下可能重新变为"可收录"（新版统一 noindex，旧版按自己的评分）。
+- **「值得再读」的选入机制新旧版本一致**（都以 `seo_status='index'` 且 `seo_blocked=0` 为准），所以老存档和新保存、被自动评分或手动选入的存档，回滚前后的收录状态不变。
+- 新版多出来的两类规则回滚后失效：① 上线的 AI 精选页如果自己的 `seo_status` 不是 `index`，旧版会把它当作普通页面（noindex）；② 新版把"敏感、有未处理举报、墓碑"的已选入存档排除出收录，旧版没有这些排除，回滚后这几类页面会按旧规则重新可收录。
+- `/browse`：回滚后恢复旧版的中文页面（`/zh/browse` 不存在，返回 404）；新版的 `/browse` 是英文界面。
 - 新版下架时写入的 `removed_posts` 墓碑旧版不认：旧版对这些短码返回 404，而不是 410；这是旧版原有的行为。
 - 旧版没有的列不再更新（浏览/分享计数停止累加）。
 
@@ -135,6 +137,8 @@ sudo $PM2 jlist > /dev/null && sudo $PM2 describe xmirror | sudo tee "$BK/pm2-de
 sudo sqlite3 $APP_ROOT/shared/data/db.sqlite ".timeout 5000" ".backup '$BK/db.sqlite'"
 sudo sqlite3 "$BK/db.sqlite" "PRAGMA integrity_check;"                      # 期望输出 ok
 sudo sqlite3 "$BK/db.sqlite" "SELECT COUNT(*) FROM posts;"                  # 记下数量，部署后对照
+# 「值得再读」基线（部署后收录数量应与此一致，扣除敏感/有未处理举报/墓碑后）
+sudo sqlite3 "$BK/db.sqlite" "SELECT COUNT(*) FROM posts WHERE seo_status='index' AND seo_blocked=0;" | sudo tee "$BK/baseline-indexed.txt"
 
 # 3) 数据文件和静态页（在线拷贝；不含缓存）
 sudo rsync -a --exclude 'db.sqlite*' --exclude 'og/' $APP_ROOT/shared/data/ "$BK/data/"
@@ -358,6 +362,7 @@ sudo XMIRROR_SOURCE_DIR=/tmp/xmirror-rollback XMIRROR_APP_ROOT=$APP_ROOT XMIRROR
 |---|---|---|
 | 首页 | 浏览器打开 `$SITE/`、`$SITE/zh/`；`curl -s $SITE/ \| grep -c '<h1'` | 页面正常，唯一 H1；页头是新 logo；标签页图标是蓝底白 X 橙托盘（旧图标需强制刷新）；`curl -sI $SITE/zh` 返回 301 到 `/zh/` |
 | Viewer | 打开 `$SITE/twitter-viewer`、`$SITE/zh/twitter-viewer` | 只有 "View post"，没有账号搜索/主页浏览/时间线 |
+| 「已保存的帖子」列表 | 打开 `$SITE/browse`、`$SITE/zh/browse`；`curl -s $SITE/browse \| grep -o 'name="robots" content="[^"]*"'` | 新版页头页脚和配色；列表有内容；`index, follow`；有 hreflang 一对；页脚有"Saved posts / 已保存的帖子"入口；带 `?q=` 的搜索页是 `noindex, follow`；翻页链接可用 |
 | 其他固定页 | `/ios-shortcut`（桌面显示二维码）、`/privacy`、`/report`（含 `/zh/`），随便打开一个不存在地址 | 都正常；隐私页显示联系邮箱和统计服务名；404 页友好且带输入框 |
 | 语言切换 | 每页切换中英文 | URL 在 `/xxx` 与 `/zh/xxx` 间切换 |
 | 响应头 | `curl -sI $SITE/ \| grep -i -E 'content-encoding\|cache-control'` | `content-encoding: br` 或 gzip；`cache-control: no-cache, must-revalidate` |
@@ -373,7 +378,12 @@ sudo sqlite3 $APP_ROOT/shared/data/db.sqlite \
    SELECT short_code FROM posts ORDER BY id DESC LIMIT 3;
    SELECT short_code FROM posts WHERE video IS NOT NULL AND video<>'' LIMIT 2;
    SELECT short_code FROM posts WHERE images IS NOT NULL AND images NOT IN ('','[]') LIMIT 2;
-   SELECT alias_code FROM post_aliases LIMIT 2;"
+   SELECT alias_code FROM post_aliases LIMIT 2;
+   -- 已选入「值得再读」的存档（应保持可收录），各取几个
+   SELECT short_code FROM posts WHERE seo_status='index' AND seo_blocked=0 ORDER BY id LIMIT 3;
+   SELECT short_code FROM posts WHERE seo_status='index' AND seo_blocked=0 ORDER BY id DESC LIMIT 3;
+   -- 未选入的存档（应为 noindex）
+   SELECT short_code FROM posts WHERE seo_status<>'index' LIMIT 3;"
 ```
 
 对每个短码：
@@ -389,7 +399,8 @@ for c in <上面查到的短码...>; do printf "%s " $c; curl -s -o /dev/null -w
 | 旧静态地址 `/archives/post_xxx.html`（取一个 `html_file`） | `301` 到对应短码 |
 | 不存在的 6 位短码（如 `ZZZZZZ`） | `404`，页面是 "This link doesn't exist" + 输入框 |
 | 被下架的副本（若有） | 本次迁移前被删除的行不在库里，显示 404；以后通过管理接口下架的显示 410 |
-| 页面是否会被误收录 | `curl -s $SITE/<旧短码> \| grep -o 'name="robots" content="[^"]*"'` → `noindex, follow`（旧存档也一样） |
+| **已选入「值得再读」的存档**（上面第 5 组） | `curl -s $SITE/<短码> \| grep -o 'name="robots" content="[^"]*"'` → **`index, follow`**；`curl -s $SITE/<短码> \| grep -c '"@type":"SocialMediaPosting"'` → `1`；`<title>` 沿用原有 SEO 标题；用普通结果页模板（没有 AI 摘要区块） |
+| 未选入的存档（第 6 组）、被屏蔽/敏感/有未处理举报的存档 | 同上命令 → `noindex, follow`，无 SocialMediaPosting |
 | 结果页不被 CF 缓存 | `curl -sI $SITE/<旧短码> \| grep -i -E 'cache-control\|cf-cache-status'` → `private, no-store`，`cf-cache-status: DYNAMIC` |
 
 ### 6.3 下载
@@ -414,7 +425,7 @@ for c in <上面查到的短码...>; do printf "%s " $c; curl -s -o /dev/null -w
 | 重复保存 | 对同一条推文再 View | 返回同一个短码（显示 "已保存过" 后跳转） |
 | 结果页功能 | 复制/分享链接、"Download media" 弹窗、"Open on X" | 弹窗内按钮可下载；Tab 焦点在弹窗内循环，Esc 关闭后回到按钮 |
 | 浏览计数 | 刷新几次后等 30 秒再查 `view_count` | 数值增加（批量写入，约 30 秒） |
-| 不被收录 | 该页 robots | `noindex, follow` |
+| 收录状态 | 该页 robots | 刚保存时是 `noindex, follow`（尚未评分）；SEO 评分任务（每分钟轮询）达标后会自动变为 `index, follow`，与旧版一致；这是预期行为 |
 | 分享图 | `curl -s -o /tmp/og.png -w "%{http_code} %{content_type} %{size_download}\n" $SITE/og/<新短码>.png` | `200 image/png`，约 30–60KB；`file /tmp/og.png` 显示 1200 x 630。若很小且等于 `xput-share.png`，查看日志是否有 `OG image failed` |
 
 ### 6.5 年龄确认
@@ -441,9 +452,12 @@ curl -s $SITE/robots.txt
 curl -s $SITE/sitemap.xml
 #  期望: <sitemapindex>，包含 /sitemap-main.xml 和 /sitemap-copies-1.xml
 
-curl -s $SITE/sitemap-main.xml | grep -c '<url>'          # 8（首页、Viewer、快捷指令、隐私，各中英文）；不含 /report
-curl -s $SITE/sitemap-main.xml | grep -c 'hreflang'       # 24（每个 URL 3 个）
-curl -s $SITE/sitemap-copies-1.xml                        # 刚上线时是空的 <urlset>（没有精选页）——这是预期
+curl -s $SITE/sitemap-main.xml | grep -c '<url>'          # 10（首页、Viewer、快捷指令、已保存的帖子 /browse、隐私，各中英文）；不含 /report
+curl -s $SITE/sitemap-main.xml | grep -c 'hreflang'       # 30（每个 URL 3 个）
+curl -s $SITE/sitemap-copies-1.xml | grep -c '<url>'      # = 「值得再读」数量 + 上线的 AI 精选页（刚上线时没有）；对照基线，见下
+sudo sqlite3 $APP_ROOT/shared/data/db.sqlite "SELECT COUNT(*) FROM posts p WHERE p.seo_status='index' AND p.seo_blocked=0 AND COALESCE(p.sensitive,0)=0 AND p.short_code IS NOT NULL AND NOT EXISTS (SELECT 1 FROM content_reports r WHERE r.post_id=p.id AND r.status='open') AND NOT EXISTS (SELECT 1 FROM removed_posts x WHERE x.short_code=p.short_code);"
+#  上面两个数字应相等（上线初期没有 AI 精选页）；与 baseline-indexed.txt 相比只会因排除项变少，不会大幅下降
+curl -s $SITE/sitemap-copies-1.xml | grep -c "$(sudo sqlite3 $APP_ROOT/shared/data/db.sqlite "SELECT short_code FROM posts WHERE seo_status='index' AND seo_blocked=0 LIMIT 1;")"   # 1：抽查一个已选入的存档在 sitemap 里
 curl -s $SITE/sitemap-copies-2.xml -o /dev/null -w '%{http_code}\n'   # 404
 ```
 

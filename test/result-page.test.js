@@ -191,13 +191,61 @@ test('removed copies answer 410 with the reference; unknown codes get the friend
   assert.equal(alias.headers.get('location'), `/${post.short_code}`);
 });
 
-test('only featured pages are indexable: old archives and new ones are noindex', { timeout: 60000 }, async () => {
+const robotsOf = async (s, post) => (await page(s, post.short_code)).document.querySelector('meta[name=robots]').getAttribute('content');
+const ldTypes = document => [...document.querySelectorAll('script[type="application/ld+json"]')].map(n => JSON.parse(n.textContent)['@type']);
+
+test('indexable = AI featured (live) or selected by the SEO mechanism (seo_status index); everything else is noindex', { timeout: 60000 }, async () => {
+  const seo = require('../lib/seo');
   const s = await server();
-  const old = await seed(s, { seo_status: 'index', seo_blocked: 0, legacy_indexed: 1 });
-  const fresh = await seed(s, { seo_status: 'index', seo_blocked: 0 });
-  const robots = async post => (await page(s, post.short_code)).document.querySelector('meta[name=robots]').getAttribute('content');
-  assert.equal(await robots(old), 'noindex, follow', 'previously indexed archives are noindex too');
-  assert.equal(await robots(fresh), 'noindex, follow');
+  const old = await seed(s, { seo_status: 'index', legacy_indexed: 1, content: 'An old archive that was already in the list' });
+  const fresh = await seed(s, { seo_status: 'index', content: 'A newly saved archive that scored well' });
+  const review = await seed(s, { seo_status: 'review' });
+  const noindex = await seed(s, { seo_status: 'noindex' });
+  for (const post of [old, fresh]) {
+    const { document, response } = await page(s, post.short_code);
+    assert.equal(response.status, 200);
+    assert.equal(document.querySelector('meta[name=robots]').getAttribute('content'), 'index, follow', post.short_code);
+    assert.equal(document.title, `${seo.metadata(post).title} | XPut`, 'keeps its SEO title');
+    assert.equal(document.querySelector('meta[name=description]').getAttribute('content'), seo.metadata(post).description);
+    assert.ok(ldTypes(document).includes('SocialMediaPosting'), 'structured data');
+    assert.equal(document.querySelector('.xput-notes'), null, 'ordinary template, not the AI featured one');
+    const ld = JSON.parse([...document.querySelectorAll('script[type="application/ld+json"]')].map(n => n.textContent).find(t => t.includes('SocialMediaPosting')));
+    assert.equal(ld.url, `https://xput.app/${post.short_code}`);
+    assert.equal(ld.isBasedOn, post.url);
+    assert.equal(ld.author.name, 'Jack');
+  }
+  for (const post of [review, noindex]) {
+    const { document } = await page(s, post.short_code);
+    assert.equal(await robotsOf(s, post), 'noindex, follow');
+    assert.ok(!ldTypes(document).includes('SocialMediaPosting'));
+  }
+});
+
+test('selected archives lose indexing when blocked, reported, sensitive or removed', { timeout: 60000 }, async () => {
+  const s = await server();
+  const ok = await seed(s, { seo_status: 'index' });
+  const blocked = await seed(s, { seo_status: 'index', seo_blocked: 1 });
+  const reported = await seed(s, { seo_status: 'index' });
+  const sensitive = await seed(s, { seo_status: 'index', sensitive: 1 });
+  const removed = await seed(s, { seo_status: 'index' });
+  await s.run("INSERT INTO content_reports(post_id, short_code, kind, reason, status) VALUES(?, ?, 'other', 'x', 'open')", [reported.id, reported.short_code]);
+  await s.run("INSERT OR REPLACE INTO removed_posts(short_code, post_id, reference) VALUES(?, ?, 'REF')", [removed.short_code, removed.id]);
+  assert.equal(await robotsOf(s, ok), 'index, follow');
+  for (const post of [blocked, reported, sensitive]) assert.equal(await robotsOf(s, post), 'noindex, follow', post.short_code);
+  // (normally a taken-down copy has no row at all and answers 410; a row that still has a tombstone must not be indexable either)
+  assert.equal(await robotsOf(s, removed), 'noindex, follow');
+  await s.run("UPDATE content_reports SET status='closed' WHERE post_id=?", [reported.id]);
+  assert.equal(await robotsOf(s, reported), 'index, follow', 'a closed report no longer blocks indexing');
+});
+
+test('an AI featured page that is also selected uses the featured template', { timeout: 60000 }, async () => {
+  const s = await server();
+  const post = await seed(s, { seo_status: 'index', view_count: 60, share_count: 3, author_followers: 5000 });
+  assert.equal((await feature(s, post)).status, 200);
+  const { document } = await page(s, post.short_code);
+  assert.ok(document.querySelector('.xput-notes'));
+  assert.equal(document.querySelectorAll('script[type="application/ld+json"]').length >= 1, true);
+  assert.equal(document.querySelector('meta[name=robots]').getAttribute('content'), 'index, follow');
 });
 
 test('views and shares are counted (not for crawlers, shares once per hour per visitor)', { timeout: 60000 }, async () => {
@@ -329,19 +377,95 @@ test('/og/{code}.png: a PNG for normal posts (cached, noindex); the brand image 
   assert.equal((await fetch(`${s.base}/og/${post.short_code}.jpg`)).status, 404);
 });
 
-test('copies sitemap lists only live featured pages that are still indexable', { timeout: 60000 }, async () => {
+test('copies sitemap: live featured pages plus selected archives, minus blocked, sensitive, reported, removed', { timeout: 60000 }, async () => {
   const s = await server();
   const make = async extra => { const post = await seed(s, { view_count: 60, share_count: 3, author_followers: 5000, ...extra }); assert.equal((await feature(s, post)).status, 200); return post; };
   const featured = await make({});
-  const blocked = await make({}); await s.run('UPDATE posts SET seo_blocked=1 WHERE id=?', [blocked.id]);
-  const sensitive = await make({}); await s.run('UPDATE posts SET sensitive=1 WHERE id=?', [sensitive.id]);
-  const reported = await make({});
+  const selectedOld = await seed(s, { seo_status: 'index', legacy_indexed: 1 });
+  const selectedNew = await seed(s, { seo_status: 'index' });
+  const featuredBlocked = await make({}); await s.run('UPDATE posts SET seo_blocked=1 WHERE id=?', [featuredBlocked.id]);
+  const featuredSensitive = await make({}); await s.run('UPDATE posts SET sensitive=1 WHERE id=?', [featuredSensitive.id]);
+  const featuredReported = await make({});
+  await s.run("INSERT INTO content_reports(post_id, short_code, kind, reason, status) VALUES(?, ?, 'other', 'x', 'open')", [featuredReported.id, featuredReported.short_code]);
+  const blocked = await seed(s, { seo_status: 'index', seo_blocked: 1 });
+  const sensitive = await seed(s, { seo_status: 'index', sensitive: 1 });
+  const reported = await seed(s, { seo_status: 'index' });
   await s.run("INSERT INTO content_reports(post_id, short_code, kind, reason, status) VALUES(?, ?, 'other', 'x', 'open')", [reported.id, reported.short_code]);
-  const old = await seed(s, { seo_status: 'index', legacy_indexed: 1 });
-  const fresh = await seed(s, { seo_status: 'index' });
+  const removed = await seed(s, { seo_status: 'index' });
+  await s.run("INSERT OR REPLACE INTO removed_posts(short_code, post_id, reference) VALUES(?, ?, 'REF')", [removed.short_code, removed.id]);
+  const review = await seed(s, { seo_status: 'review' });
   const xml = await (await fetch(`${s.base}/sitemap-copies-1.xml`)).text();
-  assert.ok(xml.includes(`/${featured.short_code}<`));
-  for (const post of [blocked, sensitive, reported, old, fresh]) assert.ok(!xml.includes(`/${post.short_code}<`), post.short_code);
+  for (const post of [featured, selectedOld, selectedNew]) assert.ok(xml.includes(`/${post.short_code}<`), post.short_code);
+  for (const post of [featuredBlocked, featuredSensitive, featuredReported, blocked, sensitive, reported, removed, review]) assert.ok(!xml.includes(`/${post.short_code}<`), post.short_code);
+  assert.equal((xml.match(new RegExp(`/${featured.short_code}<`, 'g')) || []).length, 1, 'no duplicates');
+  const main = await (await fetch(`${s.base}/sitemap-main.xml`)).text();
+  assert.ok(main.includes('https://xput.app/browse<') && main.includes('https://xput.app/zh/browse<'), 'the list page is in the main sitemap');
+});
+
+// ---- "Saved posts" list ----
+test('/browse and /zh/browse: new layout, indexable list of featured + selected copies, exclusions, search, pagination', { timeout: 60000 }, async () => {
+  const s = await server();
+  const token = 'brwz' + Math.random().toString(36).slice(2, 8);
+  const selected = await seed(s, { seo_status: 'index', content: `Selected ${token} one`, author: 'List Author', author_handle: 'list_author' });
+  const featuredPost = await seed(s, { view_count: 60, share_count: 3, author_followers: 5000, content: `Featured ${token} two` });
+  assert.equal((await feature(s, featuredPost)).status, 200);
+  const hidden = [await seed(s, { seo_status: 'review', content: `Hidden ${token} review` }), await seed(s, { seo_status: 'index', seo_blocked: 1, content: `Blocked ${token}` }),
+    await seed(s, { seo_status: 'index', sensitive: 1, content: `Sensitive ${token}` })];
+  const en = await page(s, '').then(() => fetch(`${s.base}/browse?q=${token}`).then(async r => ({ r, document: parseHTML(await r.text()).document })));
+  assert.equal(en.r.status, 200);
+  const hrefs = [...en.document.querySelectorAll('.saved-item__link')].map(a => a.getAttribute('href'));
+  assert.deepEqual(hrefs.sort(), [`/${selected.short_code}`, `/${featuredPost.short_code}`].sort());
+  assert.ok(![...hrefs].some(h => hidden.some(p => h === `/${p.short_code}`)));
+  assert.equal(en.document.querySelector('meta[name=robots]').getAttribute('content'), 'noindex, follow', 'search results are noindex');
+  assert.equal(en.document.querySelector('link[rel=canonical]').getAttribute('href'), 'https://xput.app/browse');
+  assert.equal(en.document.querySelector('input[name=q]').getAttribute('value'), token);
+  assert.ok(en.document.querySelector('.saved-item__meta').textContent.includes('@'));
+  // the plain list
+  const list = await page(s, 'browse');
+  assert.equal(list.response.status, 200);
+  assert.equal(list.document.querySelector('h1').textContent, 'Saved posts');
+  assert.equal(list.document.querySelector('meta[name=robots]').getAttribute('content'), 'index, follow');
+  assert.ok(list.document.querySelector('.site-header') && list.document.querySelector('.site-footer'), 'shared header and footer');
+  assert.ok(list.document.querySelector('.site-footer a[href="/browse"]'), 'footer entry');
+  const alternates = [...list.document.querySelectorAll('link[rel=alternate]')].map(l => `${l.getAttribute('hreflang')} ${l.getAttribute('href')}`);
+  assert.ok(alternates.includes('en https://xput.app/browse') && alternates.includes('zh-Hans https://xput.app/zh/browse') && alternates.includes('x-default https://xput.app/browse'));
+  assert.equal(list.document.querySelector('link[rel=canonical]').getAttribute('href'), 'https://xput.app/browse');
+  // Chinese
+  const zh = await page(s, 'zh/browse');
+  assert.equal(zh.response.status, 200);
+  assert.equal(zh.document.querySelector('html').getAttribute('lang'), 'zh-Hans');
+  assert.equal(zh.document.querySelector('h1').textContent, '已保存的帖子');
+  assert.equal(zh.document.title, '已保存的帖子 – XPut 上公开保存的 X（推特）帖子 | XPut');
+  assert.equal(zh.document.querySelector('link[rel=canonical]').getAttribute('href'), 'https://xput.app/zh/browse');
+  // search: no match, escaping
+  const none = await fetch(`${s.base}/browse?q=${encodeURIComponent('<script>alert(1)</script>')}`);
+  const noneText = await none.text();
+  assert.ok(!noneText.includes('<script>alert(1)</script>') && noneText.includes('&lt;script&gt;'));
+  assert.equal(parseHTML(noneText).document.querySelector('meta[name=robots]').getAttribute('content'), 'noindex, follow');
+  // bad input
+  assert.equal((await fetch(`${s.base}/browse?page=0`)).status, 404);
+  assert.equal((await fetch(`${s.base}/browse?page=abc`)).status, 404);
+  assert.equal((await fetch(`${s.base}/browse?page=99999`)).status, 404);
+  assert.equal((await fetch(`${s.base}/browse?q=${'x'.repeat(101)}`)).status, 400);
+  assert.equal((await fetch(`${s.base}/browse?q=a&q=b`)).status, 400);
+});
+
+test('/browse paginates 20 per page and keeps the search term in the links', { timeout: 60000 }, async () => {
+  const s = await server();
+  const token = 'pgz' + Math.random().toString(36).slice(2, 8);
+  for (let i = 0; i < 22; i += 1) await seed(s, { seo_status: 'index', content: `Pagination ${token} item ${i}` });
+  const first = parseHTML(await (await fetch(`${s.base}/browse?q=${token}`)).text()).document;
+  assert.equal(first.querySelectorAll('.saved-item').length, 20);
+  assert.equal(first.querySelector('.pager a[rel=next]').getAttribute('href'), `/browse?q=${token}&page=2`);
+  assert.equal(first.querySelector('.pager a[rel=prev]'), null);
+  const second = parseHTML(await (await fetch(`${s.base}/browse?q=${token}&page=2`)).text()).document;
+  assert.equal(second.querySelectorAll('.saved-item').length, 2);
+  assert.equal(second.querySelector('.pager a[rel=prev]').getAttribute('href'), `/browse?q=${token}`);
+  assert.equal(second.querySelector('.pager a[rel=next]'), null);
+  assert.equal((await fetch(`${s.base}/browse?q=${token}&page=3`)).status, 404);
+  const zh = parseHTML(await (await fetch(`${s.base}/zh/browse?q=${token}`)).text()).document;
+  assert.equal(zh.querySelector('.pager a[rel=next]').getAttribute('href'), `/zh/browse?q=${token}&page=2`);
+  assert.equal(zh.querySelector('.pager__page').textContent, '第 1 页');
 });
 
 // ---- cache headers (documented in docs/caching.md: keep both in step) ----
@@ -355,7 +479,7 @@ test('cache headers by type of response', { timeout: 60000 }, async () => {
   const cc = async (route, init) => (await head(route, init)).get('cache-control');
 
   // fixed pages: language is in the URL, so they can be revalidated and shared
-  for (const route of ['/', '/zh/', '/twitter-viewer', '/ios-shortcut', '/privacy', '/report']) assert.equal(await cc(route), 'no-cache, must-revalidate', route);
+  for (const route of ['/', '/zh/', '/twitter-viewer', '/ios-shortcut', '/privacy', '/report', '/browse', '/zh/browse']) assert.equal(await cc(route), 'no-cache, must-revalidate', route);
   // saved-post pages depend on the visitor (language cookie, age confirmation) and a CDN ignores Vary: never cached
   for (const route of [`/${post.short_code}`, `/${sensitive.short_code}`, `/${removed}`, '/ZZZZZZ']) {
     const headers = await head(route);

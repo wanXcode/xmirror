@@ -74,3 +74,9 @@ When computing per-source success rates from the `[fetch]` log lines, leave out 
 
 ## Other qualities open by default
 Product decision after v3 review: "Other qualities" starts expanded in both the result card and the download dialog (the boards show it folded). The toggle still folds it away.
+
+## Indexing rule (revised): "Saved posts" / 值得再读
+- Indexable = live AI featured page, or an archive picked by the existing SEO mechanism (`seo_status='index'`, `seo_blocked=0`: automatic scoring plus manual override via `/api/admin/seo/:id`), minus sensitive, blocked, open report, removed. Everything else is `noindex, follow`. This supersedes the earlier "featured only" rule and the `legacy_indexed` snapshot (the column stays, unused).
+- The old `/browse` list is kept, renamed **Saved posts / 已保存的帖子** (the name was my proposal, consistent with the featured-page breadcrumb), restyled, and served at `/browse` (English UI) and `/zh/browse` (Chinese UI). It is in the main sitemap and linked from the footer (a small addition to the footer list in the spec).
+- Archives picked by the SEO mechanism keep their SEO title/description and use the ordinary result template plus SocialMediaPosting structured data.
+- Automatic selection keeps working: a newly saved archive that scores well becomes indexable without manual action (as in v1.9.9). Set `SEO_AUTO_INDEX=false` to require manual selection.
