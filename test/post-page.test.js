@@ -98,7 +98,7 @@ test('download drawer: opens, loads the original media from /api/resolve and sho
   assert.ok(s.document.documentElement.classList.contains('has-overlay'));
   await s.flush();
   assert.deepEqual(s.calls.filter(c => c.url === '/api/resolve'), [{ url: '/api/resolve', body: { url: 'https://x.com/i/status/20' } }]);
-  assert.equal(s.q('[data-sheet-body] .dl__label').textContent, 'HD 720p');
+  assert.equal(s.q('[data-sheet-body] .dl__label').textContent, 'Download HD · 720p');
   assert.equal(s.q('[data-sheet-body] .note'), null, 'no fallback note when X answered');
   s.click(s.q('[data-sheet-close]'));
   assert.equal(s.q('[data-sheet]').hidden, true);
@@ -114,8 +114,8 @@ test('download drawer falls back to the files saved with the copy when X cannot 
     s.click(s.q('[data-open-drawer]'));
     await s.flush();
     assert.match(s.q('[data-sheet-body] .note').textContent, /original post is not reachable/);
-    assert.equal(s.q('[data-sheet-body] .block--video .dl__label').textContent, 'MP4', 'a saved file has no known resolution');
-    assert.ok(s.q('[data-sheet-body] .block--photos'));
+    assert.equal(s.q('[data-sheet-body] .row--video .dl__label').textContent, 'Download · MP4', 'a saved file has no known resolution');
+    assert.ok(s.q('[data-sheet-body] .row--photos'));
   }
   const gated = setup({ routes: { '/api/resolve': reply(200, { success: true, requires_age_confirmation: true, videos: [], gifs: [], images: [] }) } });
   gated.click(gated.q('[data-open-drawer]'));
@@ -129,7 +129,7 @@ test('saved files download straight from this server, not through the proxy', as
   s.document.defaultView.File = File;
   s.click(s.q('[data-open-drawer]'));
   await s.flush();
-  s.click(s.q('[data-sheet-body] .block--video .dl'));
+  s.click(s.q('[data-sheet-body] .row--video .dl'));
   await s.flush();
   assert.ok(s.calls.some(c => c.url === '/videos/v.mp4'), 'requests the saved file directly');
   assert.ok(!s.calls.some(c => String(c.url).startsWith('/dl')), 'never through /dl');
@@ -188,4 +188,100 @@ test('Chinese interface strings reach the page script', async () => {
   await s.flush();
   assert.equal(s.q('[data-share]').textContent, '链接已复制');
   assert.equal(s.q('[data-sheet] h2').textContent, '下载媒体');
+});
+
+// ---- the download dialog: focus, trap, count ----
+function withFocus(s) {
+  // linkedom does not track focus; give it a minimal model.
+  let active = null;
+  s.window.HTMLElement.prototype.focus = function () { active = this; };
+  Object.defineProperty(s.document, 'activeElement', { get: () => active || s.document.body, configurable: true });
+  const key = (name, extra = {}) => {
+    const event = new s.window.Event('keydown', { bubbles: true, cancelable: true }); event.key = name; Object.assign(event, extra);
+    s.document.dispatchEvent(event); return event;
+  };
+  return { key, active: () => active };
+}
+
+const resolvedMixed = { success: true, id: '20', url: 'https://x.com/i/status/20', requires_age_confirmation: false, author: { name: 'Jack' },
+  videos: [{ type: 'video', thumbnail: null, duration: 5, width: 1280, height: 720, variants: [{ url: 'https://video.twimg.com/v/720.mp4', bitrate: 1, width: 1280, height: 720, resolution: '1280x720' }, { url: 'https://video.twimg.com/v/360.mp4', bitrate: 1, width: 640, height: 360, resolution: '640x360' }] }],
+  gifs: [{ type: 'gif', thumbnail: null, duration: 3, width: 480, height: 270, variants: [{ url: 'https://video.twimg.com/tweet_video/g.mp4', bitrate: 0, width: 480, height: 270, resolution: '480x270' }] }],
+  images: [1, 2].map(n => ({ url: `https://pbs.twimg.com/media/P${n}.jpg`, orig_url: `https://pbs.twimg.com/media/P${n}?format=jpg&name=orig` })) };
+const resolvedVideo = { ...resolvedMixed, gifs: [], images: [] };
+const resolvedPhotos = { ...resolvedMixed, videos: [], gifs: [] };
+
+test('dialog title shows the item count only for mixed or multi-video posts', async () => {
+  for (const [data, expected] of [[resolvedMixed, 'Download media · 4 items'], [resolvedVideo, 'Download media'], [resolvedPhotos, 'Download media']]) {
+    const s = setup({ routes: { '/api/resolve': reply(200, data) } });
+    s.click(s.q('[data-open-drawer]'));
+    await s.flush();
+    assert.equal(s.q('#sheet-title').textContent.replace(/\s+/g, ' ').trim(), expected);
+  }
+  const two = setup({ routes: { '/api/resolve': reply(200, { ...resolvedVideo, videos: [resolvedVideo.videos[0], resolvedVideo.videos[0]] }) } });
+  two.click(two.q('[data-open-drawer]'));
+  await two.flush();
+  assert.match(two.q('#sheet-title').textContent, /· 2 items/);
+});
+
+test('dialog focus: the dialog first, then the first download button once the list is there', async () => {
+  const s = setup({ routes: { '/api/resolve': reply(200, resolvedVideo) } });
+  const focus = withFocus(s);
+  s.click(s.q('[data-open-drawer]'));
+  assert.ok(focus.active() === s.q('[data-sheet]'), 'inside the dialog straight away, so Tab cannot reach the page behind');
+  await s.flush();
+  assert.ok(focus.active() === s.q('[data-sheet-body] .row--video > .dl'));
+});
+
+test('dialog focus is not stolen from a visitor who already moved it', async () => {
+  const s = setup({ routes: { '/api/resolve': reply(200, resolvedVideo) } });
+  const focus = withFocus(s);
+  s.click(s.q('[data-open-drawer]'));
+  s.q('[data-sheet-close]').focus();
+  await s.flush();
+  assert.ok(focus.active() === s.q('[data-sheet-close]'));
+});
+
+test('dialog Tab / Shift+Tab wrap around inside the dialog and skip hidden items', async () => {
+  const s = setup({ routes: { '/api/resolve': reply(200, resolvedMixed) } });
+  const focus = withFocus(s);
+  s.click(s.q('[data-open-drawer]'));
+  await s.flush();
+  const items = () => [...s.q('[data-sheet]').querySelectorAll('button, a[href]')].filter(el => !el.disabled && !el.closest('[hidden]'));
+  assert.ok(!items().some(el => el.classList.contains('variant')), 'the collapsed qualities are not tab stops');
+  const last = items().at(-1);
+  last.focus();
+  const forward = focus.key('Tab');
+  assert.equal(forward.defaultPrevented, true);
+  assert.ok(focus.active() === items()[0], 'Tab from the last control goes to the first');
+  const backward = focus.key('Tab', { shiftKey: true });
+  assert.equal(backward.defaultPrevented, true);
+  assert.ok(focus.active() === last, 'Shift+Tab from the first goes to the last');
+  items()[1].focus();
+  assert.equal(focus.key('Tab').defaultPrevented, false, 'normal Tab movement inside the dialog is left alone');
+  // focus that somehow sits outside is pulled back in
+  s.q('[data-open-drawer]').focus();
+  focus.key('Tab');
+  assert.equal(s.q('[data-sheet]').contains(focus.active()), true);
+  // the keys do nothing while the dialog is closed
+  s.click(s.q('[data-sheet-close]'));
+  assert.equal(focus.key('Tab').defaultPrevented, false);
+});
+
+test('dialog closes with Esc, the overlay or the close button, and focus returns to "Download media"', async () => {
+  for (const close of [
+    s => withKey(s, 'Escape'),
+    s => s.click(s.q('[data-sheet-overlay]')),
+    s => s.click(s.q('[data-sheet-close]'))
+  ]) {
+    const s = setup({ routes: { '/api/resolve': reply(200, resolvedVideo) } });
+    const focus = withFocus(s);
+    s.__key = focus.key;
+    s.q('[data-open-drawer]').focus();
+    s.click(s.q('[data-open-drawer]'));
+    await s.flush();
+    close(s);
+    assert.equal(s.q('[data-sheet]').hidden, true);
+    assert.ok(focus.active() === s.q('[data-open-drawer]'));
+  }
+  function withKey(s, name) { s.__key(name); }
 });

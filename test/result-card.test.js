@@ -72,10 +72,10 @@ test('pill text follows the design: single type, counted when mixed, quoted when
 test('image size variants and quality labels', () => {
   assert.equal(sized('https://pbs.twimg.com/media/P?format=jpg&name=orig', 'medium'), 'https://pbs.twimg.com/media/P?format=jpg&name=medium');
   assert.equal(sized('https://example.com/a.jpg', 'large'), 'https://example.com/a.jpg');
-  assert.equal(primaryQualityLabel({ height: 1080 }, en.result), 'HD 1080p');
-  assert.equal(primaryQualityLabel({ height: 720 }, en.result), 'HD 720p');
-  assert.equal(primaryQualityLabel({ height: 480 }, en.result), '480p');
-  assert.equal(primaryQualityLabel({ height: 1080 }, zh.result), '高清 1080p');
+  assert.equal(primaryQualityLabel({ height: 1080 }, en.result), 'Download HD · 1080p');
+  assert.equal(primaryQualityLabel({ height: 720 }, en.result), 'Download HD · 720p');
+  assert.equal(primaryQualityLabel({ height: 480 }, en.result), 'Download · 480p');
+  assert.equal(primaryQualityLabel({ height: 1080 }, zh.result), '下载高清 1080p');
 });
 
 test('video card: header, label, preview, best-quality button and collapsed other qualities', async () => {
@@ -86,9 +86,9 @@ test('video card: header, label, preview, best-quality button and collapsed othe
   assert.equal(card.querySelector('.card__names span').textContent, '@jack');
   assert.equal(card.querySelector('.pill').textContent, 'Video');
   assert.equal(card.querySelector('.rcard__text').textContent, 'hello world');
-  assert.equal(card.querySelector('.block__label').textContent, 'Video · 1080p · 0:42');
+  assert.equal(card.querySelector('.block__label').textContent, 'Video · 1080p · 24.1 MB', 'info line: type, quality and size (the duration lives on the thumbnail)');
   assert.equal(card.querySelector('.preview__duration').textContent, '0:42');
-  assert.equal(card.querySelector('.dl__label').textContent, 'HD 1080p');
+  assert.equal(card.querySelector('.dl__label').textContent, 'Download HD · 1080p');
   assert.equal(card.querySelector('.dl__size').textContent, '24.1 MB', 'size arrives from /api/media-info');
   const toggle = card.querySelector('.toggle');
   assert.equal(toggle.getAttribute('aria-expanded'), 'false');
@@ -142,7 +142,7 @@ test('download: progress, saved state with the file, restore after three seconds
   assert.equal(card.querySelector('.dl__label').textContent, 'Saved');
   s.timers.fireLast(3000);
   assert.ok(!button.classList.contains('is-saved'));
-  assert.equal(card.querySelector('.dl__label').textContent, 'HD 1080p');
+  assert.equal(card.querySelector('.dl__label').textContent, 'Download HD · 1080p');
   assert.equal(button.disabled, false);
 });
 
@@ -190,7 +190,7 @@ test('too many downloads: countdown from Retry-After, then the button works agai
   s.timers.intervals.at(-1)();
   assert.equal(card.querySelector('.dl__label').textContent, 'Try again in 0:02');
   s.timers.intervals.at(-1)(); s.timers.intervals.at(-1)();
-  assert.equal(card.querySelector('.dl__label').textContent, 'HD 720p');
+  assert.equal(card.querySelector('.dl__label').textContent, 'Download HD · 720p');
   assert.equal(button.disabled, false);
   assert.equal(s.timers.intervals.at(-1), null, 'the countdown stops');
 });
@@ -238,7 +238,7 @@ test('GIF card: looping muted preview, MP4 download and the explanation', async 
   const card = s.mount(post({ gifs: [gif] }));
   await s.flush();
   assert.equal(card.querySelector('.pill').textContent, 'GIF');
-  assert.equal(card.querySelector('.block__label').textContent, 'GIF · 0:06');
+  assert.equal(card.querySelector('.block__label').textContent, 'GIF · 1.2 MB');
   const player = card.querySelector('.preview__video');
   assert.ok(player.hasAttribute('loop') && player.hasAttribute('muted') && player.hasAttribute('autoplay'));
   assert.equal(card.querySelector('.preview__tag').textContent, 'GIF · loops');
@@ -371,7 +371,7 @@ test('a single photo has no navigation arrows in full screen', () => {
 test('mixed media: separate blocks in order, counted pill, and photo labels', () => {
   const card = setup().mount(post({ videos: [video()], images: [photo(1), photo(2)] }));
   assert.equal(card.querySelector('.pill').textContent, '1 video · 2 photos');
-  assert.deepEqual([...card.querySelectorAll('.block__label')].map(l => l.textContent), ['Video · 1080p · 0:42', '2 photos · original size']);
+  assert.deepEqual([...card.querySelectorAll('.block__label')].map(l => l.textContent), ['Video · 1080p', '2 photos · original size']);
 });
 
 test('quoted media sits in its own labelled box, with its own downloads', async () => {
@@ -465,7 +465,7 @@ test('Android tip, auto-dismiss, and no tip at all on a computer', async () => {
 test('Chinese result card uses Chinese labels', () => {
   const card = setup({ lang: 'zh' }).mount(post({ videos: [video()], images: [photo(1), photo(2)] }));
   assert.equal(card.querySelector('.pill').textContent, '1 个视频 · 2 张图片');
-  assert.equal(card.querySelector('.dl__label').textContent, '高清 1080p');
+  assert.equal(card.querySelector('.dl__label').textContent, '下载高清 1080p');
   assert.equal(card.querySelector('.rcard__foot .link-button').textContent, '查看并保存副本');
 });
 
@@ -481,4 +481,83 @@ test('everything from the post is shown as text; non-https images are never load
   assert.equal(card.querySelector('script'), null);
   assert.equal(card.querySelector('.card__avatar').tagName, 'SPAN', 'a javascript: avatar falls back to the blank circle');
   assert.equal(card.querySelector('.preview__poster'), null, 'an http thumbnail is dropped');
+});
+
+// ---- the download list used by the saved-post dialog: same controls, compact rows ----
+const mountRows = (s, data) => { const rows = s.renderer.renderBlocks(data); s.host.appendChild(rows); return rows; };
+
+test('download list: one compact row per media type with the info line, thumbnail badges and no per-button size', async () => {
+  const s = setup({ sizes: { 'https://video.twimg.com/v/1080.mp4': 11.4 * 1048576, 'https://video.twimg.com/tweet_video/g.mp4': 1.2 * 1048576 } });
+  const rows = mountRows(s, post({ videos: [video()], gifs: [gif], images: [photo(1), photo(2)] }));
+  await s.flush();
+  assert.deepEqual([...rows.querySelectorAll('.row')].map(r => r.className.split(' ')[1]), ['row--video', 'row--gif', 'row--photos']);
+  const videoRow = rows.querySelector('.row--video');
+  assert.equal(videoRow.querySelector('.row__info strong').textContent, 'Video');
+  assert.equal(videoRow.querySelector('.row__meta').textContent, '1080p · 0:42 · 11.4 MB');
+  assert.equal(videoRow.querySelector('.thumb__duration').textContent, '0:42');
+  assert.equal(videoRow.querySelector('.dl__label').textContent, 'Download HD · 1080p');
+  assert.equal(videoRow.querySelector('.toggle .toggle__arrow').textContent, '▾', '"Other qualities" sits under the row');
+  const gifRow = rows.querySelector('.row--gif');
+  assert.equal(gifRow.querySelector('.row__info strong').textContent, 'GIF');
+  assert.equal(gifRow.querySelector('.row__meta').textContent, 'Saved as MP4 · 1.2 MB');
+  assert.equal(gifRow.querySelector('.thumb__tag').textContent, 'GIF');
+  assert.equal(gifRow.querySelector('.dl__label').textContent, 'Download GIF');
+});
+
+test('download list: photo thumbnails are ticks; the count and the button follow them (computer: ZIP, phone: Photos)', async () => {
+  for (const [ua, label, one] of [['Mozilla/5.0 (Windows NT 10.0)', 'Download {n} (ZIP)', 'Download photo'], ['Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)', 'Save {n} to Photos', 'Save photo to Photos']]) {
+    const s = setup({ ua });
+    const rows = mountRows(s, post({ images: [1, 2, 3, 4].map(photo) }));
+    const row = rows.querySelector('.row--photos');
+    assert.equal(row.querySelector('.row__head strong').textContent, '4 photos');
+    assert.equal(row.querySelector('.row__note').textContent, ' · original size');
+    assert.equal(row.querySelector('.row__count').textContent, '4 selected');
+    assert.equal(row.querySelector('.dl__label').textContent, label.replace('{n}', '4'));
+    s.click(row.querySelectorAll('.thumb')[1]);        // tapping the thumbnail toggles it
+    s.click(row.querySelectorAll('.photo__check')[3]); // so does the tick itself
+    assert.equal(row.querySelector('.row__count').textContent, '2 selected');
+    assert.equal(row.querySelector('.dl__label').textContent, label.replace('{n}', '2'));
+    assert.deepEqual([...row.querySelectorAll('.photo__check')].map(c => c.getAttribute('aria-checked')), ['true', 'false', 'true', 'false']);
+    s.click(row.querySelectorAll('.photo__check')[2]);
+    assert.equal(row.querySelector('.dl__label').textContent, one);
+    s.click(row.querySelectorAll('.photo__check')[0]);
+    assert.equal(row.querySelector('.dl__label').textContent, 'Select photos to download');
+    assert.equal(row.querySelector('.dl').disabled, true);
+  }
+});
+
+test('download list reuses the card code: states, saving and the after-download tip are the same', async () => {
+  const s = setup({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)' });
+  const rows = mountRows(s, post({ videos: [video()] }));
+  const button = rows.querySelector('.row--video > .dl');
+  s.click(button);
+  assert.ok(button.classList.contains('is-busy'));
+  await s.flush();
+  assert.ok(button.classList.contains('is-saved'));
+  assert.equal(button.querySelector('.dl__label').textContent, 'Saved');
+  assert.deepEqual(s.saved.map(item => item.name), ['xput_20_1080p.mp4']);
+  assert.ok(s.document.querySelector('.toast'), 'the "Saved to Files" tip appears here too');
+  s.timers.fireLast(3000);
+  assert.equal(button.querySelector('.dl__label').textContent, 'Download HD · 1080p');
+});
+
+test('result card: info line and shape variables for the thumbnail (portrait stays narrow)', () => {
+  const s = setup();
+  const card = s.mount(post({ videos: [video([1080, 720], { width: 720, height: 1280 })] }));
+  const preview = card.querySelector('.preview');
+  assert.match(preview.getAttribute('style'), /--ratio:720 \/ 1280;--rnum:0\.5625/);
+  assert.equal(card.querySelector('.block__label').textContent, 'Video · 1080p');
+  assert.equal(card.querySelector('.block--video').children[0], card.querySelector('.block__label'), 'info line first, then the thumbnail, then the button');
+  assert.equal(card.querySelector('.block--video').children[2], card.querySelector('.dl'));
+  assert.equal(card.querySelector('.dl').nextElementSibling, card.querySelector('.toggle'), '"Other qualities" directly under the button');
+  assert.equal(card.querySelector('.preview__duration').textContent, '0:42');
+  assert.equal(card.querySelectorAll('.preview__duration').length, 1, 'the duration is only on the thumbnail');
+});
+
+test('primary button wording: HD from 720p up, plain below; Chinese too', () => {
+  assert.equal(primaryQualityLabel({ height: 1080 }, en.result), 'Download HD · 1080p');
+  assert.equal(primaryQualityLabel({ height: 720 }, en.result), 'Download HD · 720p');
+  assert.equal(primaryQualityLabel({ height: 360 }, en.result), 'Download · 360p');
+  assert.equal(primaryQualityLabel({ height: 1080 }, zh.result), '下载高清 1080p');
+  assert.equal(primaryQualityLabel({ height: 360 }, zh.result), '下载 360p');
 });

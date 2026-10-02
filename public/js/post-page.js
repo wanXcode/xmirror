@@ -74,10 +74,33 @@
     var loaded = false;
 
     function mediaCount(data) { return (data.videos || []).length + (data.gifs || []).length + (data.images || []).length; }
+    // "· 4 items" when the post mixes media types or has several videos/GIFs; a lone video or a photo set needs no count.
+    function showCount(data) {
+      var el = sheet && sheet.querySelector('[data-sheet-count]');
+      if (!el) return;
+      var videos = (data.videos || []).length + (data.gifs || []).length;
+      var kinds = (data.videos || []).length > 0 ? 1 : 0;
+      kinds += (data.gifs || []).length > 0 ? 1 : 0;
+      kinds += (data.images || []).length > 0 ? 1 : 0;
+      el.textContent = kinds > 1 || videos > 1 ? ' ' + Link.fillTemplate(cfg.text.drawerItems, { n: mediaCount(data) }) : '';
+    }
+    function focusFirstDownload() {
+      var first = body.querySelector('.dl:not(:disabled), .variant, .photo__check');
+      var target = body.querySelector('.dl:not(:disabled)') || first;
+      if (target && target.focus) target.focus();
+      return !!target;
+    }
+    // Focus moves to the first download button once the list is on screen, unless the visitor already moved it.
+    function settleFocus() {
+      var active = doc.activeElement;
+      if (!active || active === sheet || active === doc.body) focusFirstDownload();
+    }
     function showLocal(withNote) {
       var nodes = [];
       if (withNote) { var note = doc.createElement('p'); note.className = 'note'; note.textContent = cfg.text.drawerLocalNote; nodes.push(note); }
-      nodes.push(renderer.renderBlocks(Object.assign({ id: cfg.code }, cfg.local)));
+      var local = Object.assign({ id: cfg.code }, cfg.local);
+      showCount(local);
+      nodes.push(renderer.renderBlocks(local));
       body.replaceChildren.apply(body, nodes);
     }
     function loadDrawer() {
@@ -86,18 +109,20 @@
       body.textContent = cfg.text.drawerLoading;
       return postJson(cfg.endpoints.resolve, { url: cfg.url }).then(function (response) {
         return response.json().catch(function () { return null; }).then(function (data) {
-          if (response.ok && data && data.success && !data.requires_age_confirmation && mediaCount(data)) body.replaceChildren(renderer.renderBlocks(data));
+          if (response.ok && data && data.success && !data.requires_age_confirmation && mediaCount(data)) { showCount(data); body.replaceChildren(renderer.renderBlocks(data)); }
           else showLocal(true);
         });
-      }).catch(function () { showLocal(true); });
+      }).catch(function () { showLocal(true); }).then(settleFocus);
     }
+    var closeButton = doc.querySelector('[data-sheet-close]');
     function openSheet() {
       if (!sheet) return;
       sheet.hidden = false; overlay.hidden = false;
       doc.documentElement.classList.add('has-overlay');
+      // Until the list is there, focus sits on the dialog itself so it is already inside the focus trap.
+      if (sheet.focus) sheet.focus();
       loadDrawer();
-      var close = sheet.querySelector('[data-sheet-close]');
-      if (close && close.focus) close.focus();
+      if (loaded) settleFocus();
     }
     function closeSheet() {
       if (!sheet || sheet.hidden) return;
@@ -105,11 +130,30 @@
       doc.documentElement.classList.remove('has-overlay');
       if (opener && opener.focus) opener.focus();
     }
+    // Tab and Shift+Tab stay inside the dialog.
+    function focusable() {
+      return [].slice.call(sheet.querySelectorAll('button, a[href], input, [tabindex]:not([tabindex="-1"])')).filter(function (el) {
+        return !el.disabled && !el.closest('[hidden]');
+      });
+    }
+    function trapTab(event) {
+      var items = focusable();
+      if (!items.length) { event.preventDefault(); return; }
+      var first = items[0];
+      var last = items[items.length - 1];
+      var active = doc.activeElement;
+      var outside = !sheet.contains(active) || active === sheet;
+      if (event.shiftKey && (active === first || outside)) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (active === last || outside)) { event.preventDefault(); first.focus(); }
+    }
     if (opener) opener.addEventListener('click', openSheet);
     if (overlay) overlay.addEventListener('click', closeSheet);
-    var closeButton = doc.querySelector('[data-sheet-close]');
     if (closeButton) closeButton.addEventListener('click', closeSheet);
-    doc.addEventListener('keydown', function (event) { if (event.key === 'Escape' && sheet && !sheet.hidden) closeSheet(); });
+    doc.addEventListener('keydown', function (event) {
+      if (!sheet || sheet.hidden) return;
+      if (event.key === 'Escape') closeSheet();
+      else if (event.key === 'Tab') trapTab(event);
+    });
 
     // ---- gallery -> full screen ----
     doc.querySelectorAll('[data-lightbox]').forEach(function (node) {

@@ -59,9 +59,10 @@
     return parts.join(' · ');
   }
 
+  // "Download HD · 1080p" for 720p and up, "Download · 360p" below.
   function primaryQualityLabel(variant, text) {
     var quality = Download.qualityOf(variant);
-    return variant.height >= 720 ? t(text, 'hdQuality', { quality: quality }) : quality;
+    return t(text, variant.height >= 720 ? 'downloadHd' : 'downloadQuality', { quality: quality });
   }
 
   // ---------------------------------------------------------------- the renderer
@@ -278,14 +279,12 @@
       };
     }
 
-    // ------------------------------------------------------------ blocks
-    function blockLabel(iconName, label) {
-      return h('div', { class: 'block__label' }, [icon(iconName, 16), h('span', { text: label })]);
-    }
-
+    // ------------------------------------------------------------ previews
     function previewBox(opts) {
-      var ratio = opts.width && opts.height ? opts.width + ' / ' + opts.height : '16 / 9';
-      var box = h('div', { class: 'preview', style: '--ratio:' + ratio });
+      var w = Number(opts.width), hgt = Number(opts.height);
+      var known = w > 0 && hgt > 0;
+      // --ratio sizes the box; --rnum (the same ratio as a number) lets CSS cap its height and still keep the shape.
+      var box = h('div', { class: 'preview', style: '--ratio:' + (known ? w + ' / ' + hgt : '16 / 9') + ';--rnum:' + (known ? (w / hgt).toFixed(4) : '1.7778') });
       if (opts.thumbnail && isHttps(opts.thumbnail)) box.appendChild(h('img', { class: 'preview__poster', src: opts.thumbnail, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }));
       return box;
     }
@@ -298,134 +297,228 @@
       return video;
     }
 
-    function videoBlock(data, video, index, prefix) {
-      var best = video.variants[0];
-      var duration = Download.formatDuration(video.duration);
-      var label = duration
-        ? t(text, 'labelVideo', { quality: Download.qualityOf(best), duration: duration })
-        : t(text, 'labelVideoNoDuration', { quality: Download.qualityOf(best) });
-      var box = previewBox({ thumbnail: video.thumbnail, width: video.width, height: video.height });
-      var play = h('button', { class: 'preview__play', type: 'button', 'aria-label': text.play, on: { click: function () { mountVideo(box, Download.pickPreviewVariant(video.variants).url, video.thumbnail, false); } } }, [icon('play', 24)]);
-      box.appendChild(play);
-      if (duration) box.appendChild(h('span', { class: 'preview__duration', text: duration }));
+    // ------------------------------------------------------------ shared download controls
+    // The result card and the saved-post download list are two layouts of the same controls: the
+    // button state machine, sizes, quality variants, photo selection and the after-download tip are
+    // built here once.
+    function primaryLabel(variant) { return primaryQualityLabel(variant, text); }
 
-      var nameFor = function (variant) { return Download.fileName(['xput', data.id, prefix, video.variants.length > 1 || index ? Download.qualityOf(variant) : ''], 'mp4'); };
-      var main = h('button', { class: 'dl', type: 'button' });
-      var mainIcon = h('span', { class: 'dl__icon' }, [icon('download', 18)]);
-      var mainLabel = h('span', { class: 'dl__label' });
-      var mainSize = h('span', { class: 'dl__size' });
-      main.appendChild(h('span', { class: 'dl__left' }, [mainIcon, mainLabel]));
-      main.appendChild(mainSize);
-      var mainControl = wireDownload({
-        button: main, statusEl: mainLabel, sizeEl: mainSize, iconEl: mainIcon,
-        idleText: function () { return primaryQualityLabel(best, text); },
-        task: downloadVideoTask(best, nameFor(best)), onSaved: afterDownload
-      });
-      onSize(best.url, function (bytes) { mainSize.textContent = Download.formatBytes(bytes); });
-
-      var block = h('section', { class: 'block block--video' }, [blockLabel('video', label), box, main]);
-
-      var others = video.variants.slice(1);
-      if (others.length) {
-        var list = h('div', { class: 'variants', hidden: true });
-        var toggle = h('button', { class: 'toggle', type: 'button', 'aria-expanded': 'false' }, [h('span', { text: text.otherQualities }), h('span', { class: 'toggle__arrow', 'aria-hidden': 'true', text: '▾' })]);
-        others.forEach(function (variant) {
-          var row = h('button', { class: 'variant', type: 'button' });
-          var name = h('span', { class: 'variant__name', text: t(text, 'qualityMp4', { quality: Download.qualityOf(variant) }) });
-          var status = h('span', { class: 'variant__status' });
-          row.appendChild(name); row.appendChild(status);
-          var control = wireDownload({
-            button: row, statusEl: status,
-            idleText: function () { return sizes[variant.url] ? t(text, 'variantDownloadSize', { size: Download.formatBytes(sizes[variant.url]) }) : text.variantDownload; },
-            task: downloadVideoTask(variant, nameFor(variant)), onSaved: afterDownload
-          });
-          onSize(variant.url, function () { control.refresh(); });
-          list.appendChild(row);
-        });
-        toggle.addEventListener('click', function () {
-          var open = toggle.getAttribute('aria-expanded') !== 'true';
-          toggle.setAttribute('aria-expanded', String(open));
-          toggle.querySelector('.toggle__arrow').textContent = open ? '▴' : '▾';
-          list.hidden = !open;
-        });
-        block.appendChild(toggle);
-        block.appendChild(list);
-      }
-      block.__mainControl = mainControl;
-      return block;
+    function buttonParts() {
+      var icon_ = h('span', { class: 'dl__icon' }, [icon('download', 18)]);
+      var label = h('span', { class: 'dl__label' });
+      var size = h('span', { class: 'dl__size' });
+      var button = h('button', { class: 'dl', type: 'button' }, [h('span', { class: 'dl__left' }, [icon_, label]), size]);
+      return { button: button, icon: icon_, label: label, size: size };
     }
 
-    function gifBlock(data, gif, index, prefix) {
+    function variantRows(variants, nameFor) {
+      var list = h('div', { class: 'variants', hidden: true });
+      var toggle = h('button', { class: 'toggle', type: 'button', 'aria-expanded': 'false' }, [h('span', { text: text.otherQualities }), h('span', { class: 'toggle__arrow', 'aria-hidden': 'true', text: '▾' })]);
+      variants.forEach(function (variant) {
+        var row = h('button', { class: 'variant', type: 'button' });
+        var status = h('span', { class: 'variant__status' });
+        row.appendChild(h('span', { class: 'variant__name', text: t(text, 'qualityMp4', { quality: Download.qualityOf(variant) }) }));
+        row.appendChild(status);
+        var control = wireDownload({
+          button: row, statusEl: status,
+          idleText: function () { return sizes[variant.url] ? t(text, 'variantDownloadSize', { size: Download.formatBytes(sizes[variant.url]) }) : text.variantDownload; },
+          task: downloadVideoTask(variant, nameFor(variant)), onSaved: afterDownload
+        });
+        onSize(variant.url, function () { control.refresh(); });
+        list.appendChild(row);
+      });
+      toggle.addEventListener('click', function () {
+        var open = toggle.getAttribute('aria-expanded') !== 'true';
+        toggle.setAttribute('aria-expanded', String(open));
+        toggle.querySelector('.toggle__arrow').textContent = open ? '▴' : '▾';
+        list.hidden = !open;
+      });
+      return { toggle: toggle, list: list };
+    }
+
+    function videoControls(data, video, index, prefix) {
+      var best = video.variants[0];
+      var nameFor = function (variant) { return Download.fileName(['xput', data.id, prefix, video.variants.length > 1 || index ? Download.qualityOf(variant) : ''], 'mp4'); };
+      var parts = buttonParts();
+      var control = wireDownload({
+        button: parts.button, statusEl: parts.label, sizeEl: parts.size, iconEl: parts.icon,
+        idleText: function () { return primaryLabel(best); },
+        task: downloadVideoTask(best, nameFor(best)), onSaved: afterDownload
+      });
+      onSize(best.url, function (bytes) { parts.size.textContent = Download.formatBytes(bytes); });
+      var others = video.variants.length > 1 ? variantRows(video.variants.slice(1), nameFor) : null;
+      return { best: best, button: parts.button, control: control, others: others, duration: Download.formatDuration(video.duration) };
+    }
+
+    function gifControls(data, gif, index, prefix, label) {
       var variant = gif.variants[0];
-      var duration = Download.formatDuration(gif.duration);
-      var box = previewBox({ thumbnail: gif.thumbnail, width: gif.width, height: gif.height });
-      mountVideo(box, variant.url, gif.thumbnail, true);
-      box.appendChild(h('span', { class: 'preview__tag', text: text.gifLoops }));
-      var main = h('button', { class: 'dl', type: 'button' });
-      var mainIcon = h('span', { class: 'dl__icon' }, [icon('download', 18)]);
-      var mainLabel = h('span', { class: 'dl__label' });
-      var mainSize = h('span', { class: 'dl__size' });
-      main.appendChild(h('span', { class: 'dl__left' }, [mainIcon, mainLabel]));
-      main.appendChild(mainSize);
+      var parts = buttonParts();
       wireDownload({
-        button: main, statusEl: mainLabel, sizeEl: mainSize, iconEl: mainIcon,
-        idleText: function () { return text.gifButton; },
+        button: parts.button, statusEl: parts.label, sizeEl: parts.size, iconEl: parts.icon,
+        idleText: function () { return label; },
         task: downloadVideoTask(variant, Download.fileName(['xput', data.id, prefix, index ? 'gif' + (index + 1) : 'gif'], 'mp4')), onSaved: afterDownload
       });
-      onSize(variant.url, function (bytes) { mainSize.textContent = Download.formatBytes(bytes); });
-      return h('section', { class: 'block block--gif' }, [
-        blockLabel('gif', duration ? t(text, 'labelGif', { duration: duration }) : text.labelGifNoDuration),
-        box, main, h('p', { class: 'block__note', text: text.gifNote })
-      ]);
+      onSize(variant.url, function (bytes) { parts.size.textContent = Download.formatBytes(bytes); });
+      return { variant: variant, button: parts.button, duration: Download.formatDuration(gif.duration) };
     }
 
     function numbered(images) {
       return images.map(function (image, index) { return Object.assign({}, image, { n: index + 1 }); });
     }
 
-    function photosBlock(data, list) {
+    // Which photos are ticked, and the task that saves them.
+    function photoSelection(data, list) {
       var images = numbered(list);
-      var selected = images.map(function () { return true; });
+      var state = { images: images, selected: images.map(function () { return true; }) };
+      state.chosen = function () { return images.filter(function (image, i) { return state.selected[i]; }); };
+      state.task = function (progress) { return downloadPhotosTask(data, state.chosen(), images.length)(progress); };
+      return state;
+    }
+
+    // A round tick on a thumbnail; `onChange` runs after the selection flips.
+    function photoCheck(state, index, onChange, as) {
+      var check = h(as || 'button', { class: 'photo__check is-on', type: as ? null : 'button', role: 'checkbox', 'aria-checked': 'true', 'aria-label': t(text, 'selectPhoto', { n: index + 1 }) }, [icon('check', 14)]);
+      check.addEventListener('click', function (event) {
+        if (event && event.stopPropagation) event.stopPropagation();
+        state.selected[index] = !state.selected[index];
+        check.classList.toggle('is-on', state.selected[index]);
+        check.setAttribute('aria-checked', String(state.selected[index]));
+        onChange();
+      });
+      return check;
+    }
+
+    // ------------------------------------------------------------ blocks (result card layout)
+    function blockLabel(label) {
+      var span = h('span', { text: label });
+      var node = h('div', { class: 'block__label' }, [span]);
+      node.__set = function (value) { span.textContent = value; };
+      return node;
+    }
+
+    function durationTag(duration) { return duration ? h('span', { class: 'preview__duration', text: duration }) : null; }
+
+    function videoBlock(data, video, index, prefix) {
+      var c = videoControls(data, video, index, prefix);
+      var quality = Download.qualityOf(c.best);
+      var info = blockLabel(t(text, 'infoVideoNoSize', { quality: quality }));
+      onSize(c.best.url, function (bytes) { info.__set(t(text, 'infoVideo', { quality: quality, size: Download.formatBytes(bytes) })); });
+      var box = previewBox({ thumbnail: video.thumbnail, width: video.width, height: video.height });
+      box.appendChild(h('button', { class: 'preview__play', type: 'button', 'aria-label': text.play, on: { click: function () { mountVideo(box, Download.pickPreviewVariant(video.variants).url, video.thumbnail, false); } } }, [icon('play', 24)]));
+      if (c.duration) box.appendChild(durationTag(c.duration));
+      var block = h('section', { class: 'block block--video' }, [info, box, c.button]);
+      if (c.others) { block.appendChild(c.others.toggle); block.appendChild(c.others.list); }
+      block.__mainControl = c.control;
+      return block;
+    }
+
+    function gifBlock(data, gif, index, prefix) {
+      var c = gifControls(data, gif, index, prefix, text.gifButton);
+      var info = blockLabel(text.infoGifNoSize);
+      onSize(c.variant.url, function (bytes) { info.__set(t(text, 'infoGif', { size: Download.formatBytes(bytes) })); });
+      var box = previewBox({ thumbnail: gif.thumbnail, width: gif.width, height: gif.height });
+      mountVideo(box, c.variant.url, gif.thumbnail, true);
+      box.appendChild(h('span', { class: 'preview__tag', text: text.gifLoops }));
+      return h('section', { class: 'block block--gif' }, [info, box, c.button, h('p', { class: 'block__note', text: text.gifNote })]);
+    }
+
+    function photosBlock(data, list) {
+      var state = photoSelection(data, list);
+      var images = state.images;
       var grid = h('div', { class: 'photos photos--' + Math.min(images.length, 4) });
       var label = images.length === 1 ? text.labelPhoto : t(text, 'labelPhotos', { n: images.length });
-      var mainIcon = h('span', { class: 'dl__icon' }, [icon('download', 18)]);
-      var mainLabel = h('span', { class: 'dl__label' });
-      var main = h('button', { class: 'dl', type: 'button' }, [h('span', { class: 'dl__left' }, [mainIcon, mainLabel]), h('span', { class: 'dl__size', text: text.originalSize })]);
+      var parts = buttonParts();
+      parts.size.textContent = text.originalSize;
+      var main = parts.button;
       var control;
-
-      function chosen() { return images.filter(function (image, i) { return selected[i]; }); }
       function idleText() {
-        var n = chosen().length;
+        var n = state.chosen().length;
         if (!n) return text.selectSome;
         if (platform.mobile) return n === 1 ? text.saveOneToPhotos : t(text, 'saveToPhotos', { n: n });
         return n === 1 ? text.zipOne : t(text, 'zip', { n: n });
       }
-
       images.forEach(function (image, index) {
-        var check = h('button', { class: 'photo__check is-on', type: 'button', role: 'checkbox', 'aria-checked': 'true', 'aria-label': t(text, 'selectPhoto', { n: index + 1 }) }, [icon('check', 14)]);
-        check.addEventListener('click', function () {
-          selected[index] = !selected[index];
-          check.classList.toggle('is-on', selected[index]);
-          check.setAttribute('aria-checked', String(selected[index]));
-          main.disabled = chosen().length === 0;
-          control.refresh();
-        });
+        var check = photoCheck(state, index, function () { main.disabled = state.chosen().length === 0; control.refresh(); });
         var open = h('button', { class: 'photo__open', type: 'button', 'aria-label': t(text, 'openPhoto', { n: index + 1 }), on: { click: function () { openLightbox(data, images, index); } } }, [
           h('img', { src: sized(image.orig_url, 'medium'), alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' })
         ]);
         grid.appendChild(h('div', { class: 'photo' }, [open, check]));
       });
-
-      control = wireDownload({
-        button: main, statusEl: mainLabel, iconEl: mainIcon,
-        idleText: idleText,
-        task: function (progress) { return downloadPhotosTask(data, chosen(), images.length)(progress); },
-        onSaved: afterDownload
-      });
-      return h('section', { class: 'block block--photos' }, [
-        blockLabel('image', label), grid, h('p', { class: 'block__note', text: text.photosHint }), main
-      ]);
+      control = wireDownload({ button: main, statusEl: parts.label, iconEl: parts.icon, idleText: idleText, task: state.task, onSaved: afterDownload });
+      return h('section', { class: 'block block--photos' }, [blockLabel(label), grid, h('p', { class: 'block__note', text: text.photosHint }), main]);
     }
+
+    // ------------------------------------------------------------ rows (saved-post download list)
+    function thumb(thumbnail, extras) {
+      var box = h('div', { class: 'thumb' });
+      if (thumbnail && (isHttps(thumbnail) || /^\/(?!\/)/.test(thumbnail))) box.appendChild(h('img', { src: thumbnail, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }));
+      [].concat(extras || []).forEach(function (extra) { if (extra) box.appendChild(extra); });
+      return box;
+    }
+
+    function rowInfo(title, parts) {
+      var meta = h('span', { class: 'row__meta' });
+      var node = h('div', { class: 'row__info' }, [h('strong', { text: title }), meta]);
+      node.__set = function (list) { meta.textContent = list.filter(Boolean).join(' · '); };
+      node.__set(parts);
+      return node;
+    }
+
+    function videoRow(data, video, index, prefix) {
+      var c = videoControls(data, video, index, prefix);
+      var quality = Download.qualityOf(c.best);
+      var info = rowInfo(text.rowVideo, [quality, c.duration]);
+      onSize(c.best.url, function (bytes) { info.__set([quality, c.duration, Download.formatBytes(bytes)]); });
+      var row = h('section', { class: 'row row--video' }, [
+        thumb(video.thumbnail, c.duration ? h('span', { class: 'thumb__duration', text: c.duration }) : null), info, c.button
+      ]);
+      if (c.others) { row.appendChild(c.others.toggle); row.appendChild(c.others.list); }
+      return row;
+    }
+
+    function gifRow(data, gif, index, prefix) {
+      var c = gifControls(data, gif, index, prefix, text.gifButtonShort);
+      var info = rowInfo(text.rowGif, [text.rowGifSaved]);
+      onSize(c.variant.url, function (bytes) { info.__set([text.rowGifSaved, Download.formatBytes(bytes)]); });
+      return h('section', { class: 'row row--gif' }, [thumb(gif.thumbnail, h('span', { class: 'thumb__tag', text: 'GIF' })), info, c.button]);
+    }
+
+    function photosRow(data, list) {
+      var state = photoSelection(data, list);
+      var images = state.images;
+      var count = h('span', { class: 'row__count' });
+      var parts = buttonParts();
+      var control;
+      function idleText() {
+        var n = state.chosen().length;
+        if (!n) return text.selectSome;
+        if (platform.mobile) return n === 1 ? text.saveOneToPhotos : t(text, 'saveToPhotosShort', { n: n });
+        return n === 1 ? text.zipOne : t(text, 'zipShort', { n: n });
+      }
+      function refresh() {
+        var n = state.chosen().length;
+        count.textContent = t(text, 'selectedCount', { n: n });
+        parts.button.disabled = n === 0;
+        if (control) control.refresh();
+      }
+      var thumbs = h('div', { class: 'row__thumbs' }, images.map(function (image, index) {
+        var tile = thumb(sized(image.orig_url, 'medium'));
+        tile.classList.add('thumb--photo');
+        var check = photoCheck(state, index, refresh, 'button');
+        tile.appendChild(check);
+        // The whole thumbnail is a big tap target for the same tick.
+        tile.addEventListener('click', function (event) { if (event.target !== check && !check.contains(event.target)) check.click(); });
+        return tile;
+      }));
+      control = wireDownload({ button: parts.button, statusEl: parts.label, iconEl: parts.icon, idleText: idleText, task: state.task, onSaved: afterDownload });
+      var head = h('div', { class: 'row__head' }, [
+        h('span', {}, [h('strong', { text: images.length === 1 ? text.rowPhoto : t(text, 'rowPhotos', { n: images.length }) }), h('span', { class: 'row__note', text: ' · ' + text.rowPhotosNote })]),
+        count
+      ]);
+      refresh();
+      return h('section', { class: 'row row--photos' }, [head, thumbs, parts.button]);
+    }
+
 
     // ------------------------------------------------------------ full-screen photos
     function openLightbox(data, images, start) {
@@ -581,7 +674,11 @@
 
     // Just the media blocks, for the download drawer on the saved-post page.
     function renderBlocks(data) {
-      var blocks = h('div', { class: 'blocks blocks--drawer' }, mediaBlocks(data, ''));
+      var rows = [];
+      (data.videos || []).forEach(function (video, i) { rows.push(videoRow(data, video, i, '')); });
+      (data.gifs || []).forEach(function (gif, i) { rows.push(gifRow(data, gif, i, '')); });
+      if ((data.images || []).length) rows.push(photosRow(data, data.images));
+      var blocks = h('div', { class: 'rows' }, rows);
       firstDownload = null;
       loadSizes(collectSizeUrls(data));
       return blocks;

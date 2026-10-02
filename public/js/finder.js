@@ -274,6 +274,28 @@
     function showResult(data) {
       panel.replaceChildren(renderer.render(data));
       setState('result');
+      revealResult();
+    }
+
+    // Phones: bring the link box up under the (scrolled-off) header's space and the card with its main
+    // download button into the first screen. Desktops show it all already, so nothing moves there.
+    function revealResult() {
+      var phone = options.isPhone ? options.isPhone() : !!(win.matchMedia && win.matchMedia('(max-width: 767px)').matches);
+      if (!phone || !win.scrollTo) return;
+      var box = rootEl.querySelector('.finder__card') || form;
+      var button = panel.querySelector('.dl');
+      if (!box || !box.getBoundingClientRect) return;
+      var scrollY = win.pageYOffset || 0;
+      var inputTop = box.getBoundingClientRect().top + scrollY;
+      var header = doc.querySelector('.site-header');
+      var headerHeight = header && header.offsetHeight ? header.offsetHeight : 0;
+      var top = Math.max(0, inputTop - headerHeight);
+      if (button) {
+        var needed = button.getBoundingClientRect().bottom + scrollY + 16 - win.innerHeight;
+        top = Math.min(Math.max(top, needed), Math.max(0, inputTop - 8));
+      }
+      var reduced = !!(win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      win.scrollTo({ top: top, behavior: reduced ? 'auto' : 'smooth' });
     }
 
     // ---- network ----

@@ -388,3 +388,14 @@ test('font licenses ship with the repo and are publicly served', { timeout: 6000
   assert.match(text, /SIL OPEN FONT LICENSE/i);
   assert.ok(text.includes('IBM Corp') && text.includes('Space Grotesk Project'));
 });
+
+test('the four above-the-fold font files are preloaded (so text is not re-wrapped when they arrive)', { timeout: 60000 }, async () => {
+  const s = await server();
+  const { document } = await doc(s.base, '/');
+  const preloads = [...document.querySelectorAll('link[rel=preload][as=font]')].map(link => link.getAttribute('href'));
+  assert.equal(preloads.length, 4);
+  for (const href of preloads) {
+    assert.equal((await fetch(s.base + href)).status, 200, href);
+    assert.equal(document.querySelector(`link[href="${href}"]`).hasAttribute('crossorigin'), true, 'font preloads need crossorigin');
+  }
+});

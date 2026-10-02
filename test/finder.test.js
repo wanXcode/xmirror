@@ -15,7 +15,7 @@ function reply(status, body, headers = {}) {
 }
 
 // Builds the real server-rendered page, then drives it with fakes.
-function setup({ lang = 'en', mode = 'home', routes = {}, clipboard, permissions } = {}) {
+function setup({ lang = 'en', mode = 'home', routes = {}, clipboard, permissions, finderOptions = {} } = {}) {
   const t = createTranslator(lang);
   const body = mode === 'home' ? renderHome({ t, lang }) : renderViewer({ t, lang });
   const { document, window } = parseHTML(String(renderDocument({ lang, baseUrl: 'https://xput.app', page: mode === 'home' ? 'home' : 'viewer', title: 't', body })));
@@ -38,7 +38,7 @@ function setup({ lang = 'en', mode = 'home', routes = {}, clipboard, permissions
     setTimeout: (fn, ms) => { timeouts.push({ fn, ms }); return timeouts.length; }
   };
   const root = document.querySelector('[data-finder]');
-  const finder = createFinder({ root, doc: document, win: window, fetch, navigate: url => navigations.push(url), timers, clipboard, permissions });
+  const finder = createFinder({ root, doc: document, win: window, fetch, navigate: url => navigations.push(url), timers, clipboard, permissions, ...finderOptions });
   const q = selector => root.querySelector(selector);
   const flush = () => new Promise(resolve => setImmediate(resolve));
   return { document, window, root, finder, q, calls, sizeCalls, navigations, intervals, timeouts, flush, text: t('input') };
@@ -96,7 +96,7 @@ test('Download resolves the canonical link, shows loading, then the links', asyn
   assert.equal(s.root.getAttribute('data-state'), 'result');
   assert.ok(s.q('.rcard'), 'the result card replaces the loading state');
   assert.equal(s.q('.rcard .pill').textContent, '1 video · 1 photo');
-  assert.equal(s.q('.rcard .dl__label').textContent, 'HD 720p');
+  assert.equal(s.q('.rcard .dl__label').textContent, 'Download HD · 720p');
   assert.deepEqual(s.sizeCalls, [{ urls: ['https://video.twimg.com/v/1280x720/a.mp4', 'https://video.twimg.com/v/640x360/b.mp4'] }]);
   assert.equal(s.q('[data-action="download"] .btn__label').textContent, 'Download');
   assert.equal(s.q('[data-action="download"]').disabled, false);
@@ -281,4 +281,39 @@ test('Chinese pages use Chinese state text', async () => {
   s.q('[data-input]').value = POST;
   await s.finder.runDownload();
   assert.equal(s.q('.status-card__title').textContent, '该帖子无法查看');
+});
+
+// ---- phones scroll the result into the first screen ----
+function scrollSetup({ phone = true, reduced = false, dlBottom = 600 } = {}) {
+  const s = setup({ routes: { '/api/resolve': resolveOk() }, finderOptions: { isPhone: () => phone } });
+  const scrolls = [];
+  Object.assign(s.window, { pageYOffset: 0, innerHeight: 844, scrollTo: options => scrolls.push(options), matchMedia: query => ({ matches: reduced && /reduce/.test(query) }) });
+  // linkedom has no layout: describe where things are.
+  s.window.HTMLElement.prototype.getBoundingClientRect = function () {
+    if (this.matches('.finder__card')) return { top: 300, bottom: 420, height: 120 };
+    if (this.matches('.dl')) return { top: dlBottom - 56, bottom: dlBottom, height: 56 };
+    return { top: 0, bottom: 0, height: 0 };
+  };
+  const header = s.document.querySelector('.site-header');
+  Object.defineProperty(header, 'offsetHeight', { value: 64 });
+  s.q('[data-input]').value = POST;
+  return { s, scrolls };
+}
+
+test('phone: after a result, the link box is brought up and the main download button stays in the first screen', async () => {
+  const { s, scrolls } = scrollSetup();
+  await s.finder.runDownload();
+  assert.deepEqual(scrolls, [{ top: 236, behavior: 'smooth' }], 'link box lands one header-height below the top of the page content');
+  const tall = scrollSetup({ dlBottom: 1200 });
+  await tall.s.finder.runDownload();
+  assert.deepEqual(tall.scrolls, [{ top: 292, behavior: 'smooth' }], 'scrolls further so the button fits, but keeps the link box on screen');
+});
+
+test('scrolling respects prefers-reduced-motion and never happens on computers', async () => {
+  const reduced = scrollSetup({ reduced: true });
+  await reduced.s.finder.runDownload();
+  assert.deepEqual(reduced.scrolls, [{ top: 236, behavior: 'auto' }]);
+  const desktop = scrollSetup({ phone: false });
+  await desktop.s.finder.runDownload();
+  assert.deepEqual(desktop.scrolls, []);
 });

@@ -149,3 +149,12 @@ curl -X POST -H "$T" localhost:3000/api/admin/featured/POST_ID/withdraw
 | `DOWNLOAD_PROXY_BASE`、`ENABLE_LOCAL_DOWNLOAD_PROXY` | 下载代理地址、是否启用本地代理 |
 | `MODERATION_ADMIN_TOKEN` | 管理接口口令（不要提交到代码或日志） |
 | `VIEW_COUNTER_FLUSH_MS` | 浏览/分享计数写库间隔 |
+
+## 7. 浏览器自动验收（结果卡与下载面板）
+
+`ops/e2e-results.js` 用 Playwright 在 1366×768、1440×900、390×844 三个视口解析一条横屏、一条竖屏视频，断言主下载按钮完整位于首屏、预览尺寸上限（桌面 340px 列 / 竖屏最高 400px，手机 ≤50vh）、按钮 min-height 56px 与文案、「其他清晰度」间距 4px、正文最多 2 行；并测试下载面板（单视频、混合媒体、图片帖）的键盘打开、初始焦点、Tab 循环、Esc/遮罩/关闭按钮后焦点回到「下载媒体」、焦点环样式、+30% 长文本不截断。它不属于 `npm test`（需要浏览器）：
+
+```bash
+npm install --no-save playwright-core
+CHROME_PATH=/path/to/chrome node ops/e2e-results.js            # 截图写入 docs/screenshots/v3/
+```

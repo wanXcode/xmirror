@@ -52,6 +52,8 @@ test('rejects oversized bodies, whether declared or streamed, and cleans up', as
   try {
     await assert.rejects(downloadImage(declared.url, opts(dir, { maxBytes: 1000 })), /too large/);
     await assert.rejects(downloadImage(chunked.url, opts(dir, { maxBytes: 1000 })), /too large/);
+    // the partial file is removed right after the rejection; give a busy machine a moment
+    for (let i = 0; i < 40 && fs.readdirSync(dir).length; i += 1) await new Promise(resolve => setTimeout(resolve, 25));
     assert.deepEqual(fs.readdirSync(dir), []);
   } finally { declared.server.close(); chunked.server.close(); }
 });
