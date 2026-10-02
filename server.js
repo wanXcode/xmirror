@@ -63,6 +63,8 @@ const { registerResultRoutes } = require('./lib/routes/result');
 const { createFeaturedService } = require('./lib/featured');
 const { registerFeaturedAdminRoutes } = require('./lib/routes/featured-admin');
 const { registerOgRoutes } = require('./lib/routes/og');
+const { registerFontRoutes } = require('./lib/routes/fonts');
+const compression = require('compression');
 const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
 const {
   deleteMediaAsset,
@@ -98,6 +100,8 @@ let activeTranslationJobs = 0;
 // visitor address Cloudflare reports, so rate limits are per visitor.
 app.set('trust proxy', process.env.TRUST_PROXY || DEFAULT_TRUST_PROXY);
 app.use(clientIpMiddleware);
+// gzip/brotli for text responses (HTML, CSS, JS, JSON, SVG). Downloads through /dl stream untouched.
+app.use(compression({ filter: (req, res) => !req.path.startsWith('/dl/') && compression.filter(req, res) }));
 app.use(express.json());
 registerHealthRoute(app);
 
@@ -171,10 +175,16 @@ if ((process.env.ENABLE_LOCAL_DOWNLOAD_PROXY ?? String(process.env.NODE_ENV !== 
 const postStore = createPostStore({ get: dbGet, all: dbAll, run: runDbWrite });
 registerSeoRoutes(app, { store: seoStore, postStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 registerReportRoutes(app, { store: seoStore, baseUrl: PUBLIC_BASE_URL, requireAdmin });
+registerFontRoutes(app);
 app.use(express.static(PUBLIC_DIR, {
   setHeaders(res, filePath) {
     if (path.basename(filePath) === 'index.html') {
       res.set('Cache-Control', 'no-cache, must-revalidate');
+    } else if (/\.(css|js)$/.test(filePath) && /(?:^|&)v=[^&]+/.test(String(res.req?.url.split('?')[1] || ''))) {
+      // Versioned by content (lib/asset-version.js), so safe to keep for a year.
+      res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (/\.(css|js|png|ico|svg|webmanifest)$/.test(filePath)) {
+      res.set('Cache-Control', 'public, max-age=0, must-revalidate');
     }
   }
 }));

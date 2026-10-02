@@ -207,6 +207,22 @@ test('very large files are handed to the browser download manager instead of bei
   assert.equal(card.querySelector('.dl__label').textContent, 'Saved');
 });
 
+test('the in-memory limit is 150 MB: a file at the limit is buffered and saved, one byte over goes to the browser; unknown sizes are buffered', async () => {
+  const url = 'https://video.twimg.com/v/1080.mp4';
+  const LIMIT = 150 * 1024 * 1024;
+  for (const [size, native] of [[LIMIT, false], [LIMIT + 1, true], [undefined, false]]) {
+    const s = setup({ sizes: size === undefined ? {} : { [url]: size } });
+    const card = s.mount(post({ videos: [video()] }));
+    await s.flush();
+    s.click(card.querySelector('.block--video .dl'));
+    await s.flush();
+    assert.equal(s.navigations.length, native ? 1 : 0, `size ${size}`);
+    assert.equal(s.saved.length, native ? 0 : 1, `size ${size}`);
+    assert.equal(card.querySelector('.dl__label').textContent, 'Saved');
+    if (native) assert.ok(s.navigations[0].startsWith('/dl?u='), 'the browser downloads through the attachment proxy');
+  }
+});
+
 test('other qualities download their own file', async () => {
   const s = setup();
   const card = s.mount(post({ videos: [video()] }));

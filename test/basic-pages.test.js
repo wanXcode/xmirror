@@ -266,3 +266,113 @@ test('zh meta descriptions for the home and viewer pages are the approved copy',
   assert.equal(zh.pages.home.description, '免费在线下载推特（X）高清视频，支持 MP4、图片和 GIF。无需登录、无弹窗，粘贴链接即可保存到手机或电脑。');
   assert.equal(zh.pages.viewer.description, '免登录、匿名查看任何公开的 X（推特）帖子。原帖被删除后，保存过的链接依然可以打开。');
 });
+
+test('zh copy: Chinese characters and Latin letters/digits are separated by a space (including filled-in placeholders)', () => {
+  const problems = [];
+  (function walk(node, key) {
+    if (typeof node === 'string') {
+      // Placeholders that get Latin/digit values (ids, counts, emails) must be spaced by the template. {time} and
+      // {analytics} carry Chinese text or their own spaces (checked separately below), so they stand in as Chinese.
+      const filled = node.replace(/\{(time|analytics)\}/g, '字').replace(/\{\w+\}/g, 'Abc3');
+      for (const match of filled.matchAll(/[一-鿿][A-Za-z0-9]|[A-Za-z0-9][一-鿿]/g)) problems.push(`${key}: …${filled.slice(Math.max(0, match.index - 6), match.index + 8)}…`);
+    } else if (Array.isArray(node)) node.forEach((item, index) => walk(item, `${key}[${index}]`));
+    else if (node && typeof node === 'object') for (const [name, value] of Object.entries(node)) walk(value, key ? `${key}.${name}` : name);
+  })(zh, '');
+  assert.deepEqual(problems, []);
+});
+
+test('zh report page reads "在 3 个工作日内" in both places, and a named analytics tool is spaced inside the Chinese sentence', () => {
+  const { createTranslator } = require('../lib/i18n');
+  const t = createTranslator('zh');
+  const text = String(RENDERERS.report({ t, lang: 'zh' }));
+  assert.equal((text.match(/通常在 3 个工作日内/g) || []).length, 2);
+  assert.ok(!/在3/.test(text));
+  const saved = process.env.ANALYTICS_NAME;
+  process.env.ANALYTICS_NAME = 'Plausible';
+  try {
+    const privacy = String(RENDERERS.privacy({ t, lang: 'zh' }));
+    assert.ok(privacy.includes('我们还使用 Plausible 来汇总统计访问量'));
+  } finally { if (saved === undefined) delete process.env.ANALYTICS_NAME; else process.env.ANALYTICS_NAME = saved; }
+  delete process.env.ANALYTICS_NAME;
+  assert.ok(String(RENDERERS.privacy({ t, lang: 'zh' })).includes('我们还使用一款注重隐私的统计工具来汇总统计访问量'));
+});
+
+// ---------- performance: fonts, compression, caching ----------
+test('pages load no third-party font stylesheet; Latin @font-face rules are inline and point at /fonts/', { timeout: 60000 }, async () => {
+  const s = await server();
+  for (const route of ['/', '/zh/', '/ios-shortcut', '/nope']) {
+    const { text, document } = await doc(s.base, route);
+    assert.ok(!/fonts\.googleapis|fonts\.gstatic/.test(text), route);
+    assert.ok(![...document.querySelectorAll('link')].some(link => (link.getAttribute('rel') === 'preconnect')), `${route}: no preconnect to third parties`);
+    const style = [...document.querySelectorAll('style')].map(node => node.textContent).join('');
+    assert.ok(style.includes("font-family:'IBM Plex Sans'") && style.includes('/fonts/space-grotesk/space-grotesk-latin-700-normal.woff2'), route);
+    assert.ok(style.includes('font-display:swap'));
+  }
+});
+
+test('self-hosted fonts: served as woff2 with a one-year immutable cache; nothing else is reachable', { timeout: 60000 }, async () => {
+  const s = await server();
+  const font = await fetch(`${s.base}/fonts/ibm-plex-sans/ibm-plex-sans-latin-400-normal.woff2`);
+  assert.equal(font.status, 200);
+  assert.equal(font.headers.get('content-type'), 'font/woff2');
+  assert.equal(font.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  assert.equal(Buffer.from(await font.arrayBuffer()).toString('latin1', 0, 4), 'wOF2');
+  for (const bad of ['/fonts/evil/a.woff2', '/fonts/ibm-plex-sans/package.json', '/fonts/ibm-plex-sans/..%2f..%2fpackage.json', '/fonts/ibm-plex-sans/nope-400-normal.woff2', '/fonts/noto-sans-sc/noto-sans-sc-1-400-normal.woff2']) {
+    assert.equal((await fetch(s.base + bad)).status, 404, bad);
+  }
+});
+
+test('text responses are compressed (br or gzip) and vary on Accept-Encoding; the download proxy path is not', { timeout: 60000 }, async () => {
+  const s = await server();
+  for (const encoding of ['br', 'gzip']) {
+    for (const route of ['/', '/css/xput.css', '/js/finder.js']) {
+      const response = await fetch(s.base + route, { headers: { 'accept-encoding': encoding } });
+      assert.equal(response.headers.get('content-encoding'), encoding, `${route} ${encoding}`);
+      assert.match(response.headers.get('vary') || '', /Accept-Encoding/i);
+      await response.arrayBuffer();
+    }
+  }
+  const plain = await fetch(`${s.base}/css/xput.css`, { headers: { 'accept-encoding': 'identity' } });
+  assert.equal(plain.headers.get('content-encoding'), null);
+  const sizeBr = (await (await fetch(`${s.base}/`, { headers: { 'accept-encoding': 'br' } })).arrayBuffer()).byteLength;
+  assert.ok(sizeBr > 0);
+  const proxied = await fetch(`${s.base}/dl?u=${encodeURIComponent('https://evil.example/a.json')}`, { headers: { 'accept-encoding': 'gzip' } });
+  assert.equal(proxied.headers.get('content-encoding'), null, '/dl responses are never re-encoded');
+});
+
+test('asset caching: versioned CSS/JS are immutable for a year, unversioned ones revalidate, HTML is never cached', { timeout: 60000 }, async () => {
+  const s = await server();
+  const { document } = await doc(s.base, '/');
+  const css = document.querySelector('link[href^="/css/xput.css"]').getAttribute('href');
+  assert.match(css, /\?v=\d+\.\d+\.\d+-[0-9a-f]{8}$/, 'version = package version + content hash');
+  const script = document.querySelector('script[src^="/js/nav.js"]').getAttribute('src');
+  for (const url of [css, script]) assert.equal((await fetch(s.base + url)).headers.get('cache-control'), 'public, max-age=31536000, immutable', url);
+  assert.equal((await fetch(`${s.base}/css/xput.css`)).headers.get('cache-control'), 'public, max-age=0, must-revalidate');
+  assert.equal((await fetch(`${s.base}/`)).headers.get('cache-control'), 'no-cache, must-revalidate');
+  const etag = (await fetch(`${s.base}/css/xput.css`)).headers.get('etag');
+  // (node:http rather than fetch: fetch hides conditional-request answers behind its own cache rules)
+  const conditional = await new Promise((resolve, reject) => require('node:http').get(`${s.base}/css/xput.css`, { headers: { 'if-none-match': etag, 'accept-encoding': 'gzip' } }, res => { res.resume(); resolve(res.statusCode); }).on('error', reject));
+  assert.equal(conditional, 304);
+});
+
+test('asset version changes whenever a CSS or JS file changes', () => {
+  const { assetVersion } = require('../lib/asset-version');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'xput-assets-'));
+  try {
+    fs.mkdirSync(path.join(dir, 'css')); fs.mkdirSync(path.join(dir, 'js'));
+    fs.writeFileSync(path.join(dir, 'css', 'a.css'), 'a{}'); fs.writeFileSync(path.join(dir, 'js', 'a.js'), '1');
+    const first = assetVersion(dir);
+    assert.equal(assetVersion(dir), first, 'stable for the same files');
+    fs.writeFileSync(path.join(dir, 'js', 'a.js'), '2');
+    assert.notEqual(assetVersion(dir), first);
+    const second = assetVersion(dir);
+    fs.writeFileSync(path.join(dir, 'css', 'b.css'), 'b{}');
+    assert.notEqual(assetVersion(dir), second, 'a new file counts too');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('config/site.json: analytics domain is xput.app and there is no third-party font URL', () => {
+  const site = require('../config/site.json');
+  assert.equal(site.analytics.domain, 'xput.app');
+  assert.ok(!('fonts' in site));
+});

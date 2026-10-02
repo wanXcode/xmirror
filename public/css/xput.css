@@ -18,8 +18,8 @@
   --footer-bg: #1F1A14;
   --footer-ink: #D6CCBF;
 
-  --font-display: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
-  --font-body: 'IBM Plex Sans', 'Noto Sans SC', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Space Grotesk', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   --radius-pill: 999px;
   --radius-card: 20px;

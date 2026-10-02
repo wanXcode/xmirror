@@ -61,3 +61,7 @@ Defaults were implemented for everything below; each can be changed later.
 | featured post | 100 | 100 | 96 | 100 | 1.5 s | 0 |
 
 \* SEO 66 is the deliberate `noindex` ("blocked from indexing"). Best-practices 96 is the console error from the blocked Google Fonts request in the sandbox. The 404 page cannot be audited (Lighthouse rejects non-200 pages).
+
+## Performance follow-up (after local acceptance, 2026-10-02)
+- Mobile LCP was 4.3–5.6 s on the acceptance machine against 2.1–2.5 s in my sandbox. Causes: the render-blocking Google Fonts stylesheet (two third-party origins; blocked in my sandbox, so my earlier numbers did not include it), and no gzip/brotli plus `max-age=0` on CSS/JS from Node. Fixed: fonts are self-hosted and the Latin `@font-face` rules inlined, `compression` (br/gzip) added, CSS/JS URLs carry a content hash and are `immutable`.
+- **Design change to confirm:** Noto Sans SC is no longer loaded as a web font. As unicode-range slices it was ~700 KB per Chinese page and took zh LCP to 6.8 s; Chinese text now uses the visitor's system CJK font (PingFang SC, Microsoft YaHei, Noto Sans CJK SC). Latin text keeps IBM Plex Sans and Space Grotesk. (OG images still render with Noto Sans SC on the server.)

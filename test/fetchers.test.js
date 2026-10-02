@@ -124,7 +124,9 @@ test('falls back to syndication on 5xx, timeouts, network errors and incomplete 
     'embedded error code': () => json(200, { code: 500 }),
     'incomplete': () => json(200, { code: 200, tweet: { id: '100', text: 'x', author: {} } }),
     'network': () => { throw new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } }); },
-    'not found': () => json(404, { code: 404 })
+    // A block page or gateway error is not the post's state: no JSON in the API's own format.
+    '403 without an API body': () => json(403, {}),
+    '404 without an API body': () => json(404, {})
   };
   for (const [name, fx] of Object.entries(cases)) {
     const fetchTweet = createFetcher({
@@ -147,7 +149,7 @@ test('a hanging source is cut off at the timeout and the next source is used', a
   assert.ok(Date.now() - started < 1000);
 });
 
-test('retries a retryable failure once with backoff, but not a 404', async () => {
+test('retries a retryable failure once with backoff, but never a definitive not-found, which also skips the fallback', async () => {
   let fxCalls = 0;
   const sleeps = [];
   const flaky = () => (++fxCalls === 1 ? json(502, {}) : json(200, { code: 200, tweet: FX_TWEET }));
@@ -162,10 +164,10 @@ test('retries a retryable failure once with backoff, but not a 404', async () =>
     ...quiet,
     fetchImpl: mockFetch({
       'api.fxtwitter.com': () => { notFoundCalls++; return json(404, { code: 404 }); },
-      'cdn.syndication.twimg.com': () => json(200, SYN_TWEET)
+      'cdn.syndication.twimg.com': () => { throw new Error('syndication must not be asked'); }
     })
   });
-  await gone('100');
+  await assert.rejects(gone('100'), { code: 'SOURCE_UNAVAILABLE', reason: 'not_found' });
   assert.equal(notFoundCalls, 1);
 });
 
@@ -307,4 +309,80 @@ test('reply count and author followers are carried through when the source has t
   assert.equal(syn.replies, 7);
   assert.equal(syn.author.followers, null);
   assert.equal(normalizeSyndication(SYN_TWEET).replies, null);
+});
+
+// ---- "the post is unavailable" is a state, not an outage ----
+const unavailableCases = {
+  'a post id that never existed': {
+    fx: () => json(404, { code: 404, message: 'NOT_FOUND' }), syn: () => json(404, {}), reason: 'not_found'
+  },
+  'a deleted post': {
+    fx: () => json(404, { code: 404, message: 'NOT_FOUND' }),
+    syn: () => json(200, { __typename: 'TweetTombstone', tombstone: { text: { text: 'This Post was deleted by the Post author. Learn more' } } }), reason: 'not_found',
+    synOnly: 'deleted'
+  },
+  'a post from a private (protected) account': {
+    fx: () => json(401, { code: 401, message: 'PRIVATE_TWEET' }),
+    syn: () => json(200, { __typename: 'TweetTombstone', tombstone: { text: { text: 'You’re unable to view this Post because this account owner limits who can view their Posts.' } } }), reason: 'private',
+    synOnly: 'private'
+  },
+  'a post from a suspended account': {
+    fx: () => json(404, { code: 404, message: 'SUSPENDED' }),
+    syn: () => json(200, { __typename: 'TweetTombstone', tombstone: { text: { text: 'This Post is from a suspended account. Learn more' } } }), reason: 'suspended',
+    synOnly: 'suspended'
+  }
+};
+
+for (const [name, c] of Object.entries(unavailableCases)) {
+  test(`${name}: SOURCE_UNAVAILABLE with a reason; no retry, no fallback, not logged as a source failure`, async () => {
+    const calls = { fx: 0, syn: 0 };
+    const entries = [];
+    const fetchTweet = createFetcher({
+      ...quiet, log: entry => entries.push(entry), retries: 2,
+      fetchImpl: mockFetch({
+        'api.fxtwitter.com': () => { calls.fx += 1; return c.fx(); },
+        'cdn.syndication.twimg.com': () => { calls.syn += 1; return c.syn(); }
+      })
+    });
+    await assert.rejects(fetchTweet('100'), error => { assert.equal(error.code, 'SOURCE_UNAVAILABLE'); assert.equal(error.reason, c.reason); return true; });
+    assert.deepEqual(calls, { fx: 1, syn: 0 }, 'one request to the first source, nothing else');
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].definitive, true, 'marked so failure statistics can leave it out');
+    assert.equal(entries[0].reason, c.reason);
+  });
+
+  if (c.synOnly) {
+    test(`${name}: when only syndication answers, its tombstone gives the reason (${c.synOnly})`, async () => {
+      const fetchTweet = createFetcher({ ...quiet, retries: 0, fetchImpl: mockFetch({ 'api.fxtwitter.com': () => json(503, {}), 'cdn.syndication.twimg.com': c.syn }) });
+      await assert.rejects(fetchTweet('100'), error => { assert.equal(error.code, 'SOURCE_UNAVAILABLE'); assert.equal(error.reason, c.synOnly); return true; });
+    });
+  }
+}
+
+test('unavailable posts are answered 404 (never 503) all the way to the API response, with the reason', async () => {
+  const { archiveErrorResponse } = require('../lib/archive-response');
+  const fetchTweet = createFetcher({ ...quiet, retries: 0, fetchImpl: mockFetch({ 'api.fxtwitter.com': () => json(401, { code: 401, message: 'PRIVATE_TWEET' }) }) });
+  const error = await fetchTweet('100').catch(e => e);
+  const response = archiveErrorResponse(error);
+  assert.equal(response.status, 404);
+  assert.equal(response.body.code, 'SOURCE_UNAVAILABLE');
+  assert.equal(response.body.reason, 'private');
+  assert.equal(response.body.retryable, false);
+  assert.equal(require('../public/js/link').classifyFailure(response.status, response.body.code), 'unavailable');
+  const outage = archiveErrorResponse(Object.assign(new Error('x'), { code: 'SERVICE_UNAVAILABLE' }));
+  assert.equal(outage.status, 503);
+  assert.equal('reason' in outage.body, false);
+});
+
+test('a real outage is still an outage: 5xx on one source and a bad request on the other is SERVICE_UNAVAILABLE', async () => {
+  const fetchTweet = createFetcher({ ...quiet, retries: 0, fetchImpl: mockFetch({ 'api.fxtwitter.com': () => json(503, {}), 'cdn.syndication.twimg.com': () => json(400, {}) }) });
+  await assert.rejects(fetchTweet('100'), error => { assert.equal(error.code, 'SERVICE_UNAVAILABLE'); assert.equal(error.reason, null); return true; });
+});
+
+test('an id beyond the 64-bit range cannot exist: unavailable without contacting any source', async () => {
+  let calls = 0;
+  const fetchTweet = createFetcher({ ...quiet, fetchImpl: mockFetch({ 'api.fxtwitter.com': () => { calls += 1; return json(503, {}); }, 'cdn.syndication.twimg.com': () => { calls += 1; return json(400, {}); } }) });
+  await assert.rejects(fetchTweet('9999999999999999999'), { code: 'SOURCE_UNAVAILABLE', reason: 'not_found' });
+  assert.equal(calls, 0);
+  await assert.rejects(fetchTweet('9223372036854775807'), error => error.code !== 'SOURCE_UNAVAILABLE' || calls > 0, 'the largest valid id is still looked up');
 });

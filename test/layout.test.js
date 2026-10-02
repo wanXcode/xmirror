@@ -106,8 +106,9 @@ test('titles and descriptions are escaped, and fonts/css/js are wired with swap 
   const t = createTranslator('en');
   const source = String(renderDocument({ lang: 'en', baseUrl: BASE, page: 'home', title: '"><script>x</script>', description: 'a"b', body: html`<h1>${t('nav.viewer')}</h1>` }));
   assert.doesNotMatch(source, /<script>x<\/script>/);
-  assert.match(source, /display=swap/);
-  assert.match(source, /<script src="\/js\/nav\.js\?v=[\d.]+" defer>/);
-  assert.match(source, /href="\/css\/xput\.css\?v=[\d.]+"/);
+  assert.match(source, /font-display:swap/);
+  assert.doesNotMatch(source, /fonts\.googleapis/);
+  assert.match(source, /<script src="\/js\/nav\.js\?v=[\d.]+-[0-9a-f]{8}" defer>/);
+  assert.match(source, /href="\/css\/xput\.css\?v=[\d.]+-[0-9a-f]{8}"/);
   assert.match(source, /google-site-verification/);
 });

@@ -84,18 +84,21 @@ test('download headers force a save, never cache, and expose the length for prog
 });
 
 // ---- the Node proxy, driven with a fake upstream ----
-function fakeUpstream({ status = 200, headers = { 'content-type': 'video/mp4', 'content-length': '11' }, body = 'hello world', error } = {}) {
+function fakeUpstream({ status = 200, headers = { 'content-type': 'video/mp4', 'content-length': '11' }, body = 'hello world', error, makeBody } = {}) {
   const seen = [];
+  let current = null;
   const request = (url, options, callback) => {
     seen.push({ url: String(url), options });
     const req = new PassThrough();
-    req.destroy = () => { req.destroyed = true; };
+    // Like a real ClientRequest, destroying the request tears down its response.
+    req.destroy = () => { req.destroyed = true; current?.destroy(); };
     req.end = () => {
       if (error) return setImmediate(() => req.emit('error', error));
       const upstream = new PassThrough();
+      current = upstream;
       upstream.statusCode = status;
       upstream.headers = headers;
-      setImmediate(() => { callback(upstream); upstream.end(body); });
+      setImmediate(() => { callback(upstream); if (makeBody) makeBody(upstream); else upstream.end(body); });
     };
     return req;
   };
@@ -123,6 +126,40 @@ test('node proxy streams the file with attachment headers and sends no visitor c
     assert.equal(seen.length, 1);
     assert.equal(seen[0].url, MP4);
     assert.equal(JSON.stringify(seen[0].options.headers).includes('secret'), false);
+  });
+});
+
+test('a 600 MB video is streamed with backpressure, never buffered; stopping the download stops the upstream', async () => {
+  const TOTAL = 600 * 1024 * 1024;
+  const CHUNK = Buffer.alloc(1024 * 1024, 1);
+  let produced = 0;
+  let stopped = false;
+  const makeBody = upstream => {
+    // Produce a chunk only when the consumer has room, like a real network body.
+    const pump = () => {
+      while (!stopped && produced < TOTAL) {
+        produced += CHUNK.length;
+        if (!upstream.write(CHUNK)) { upstream.once('drain', pump); return; }
+      }
+      if (produced >= TOTAL) upstream.end();
+    };
+    upstream.once('close', () => { stopped = true; });
+    pump();
+  };
+  await withProxy({ headers: { 'content-type': 'video/mp4', 'content-length': String(TOTAL) }, makeBody }, async base => {
+    const response = await fetch(`${base}?u=${encodeURIComponent(MP4)}&n=big.mp4`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-length'), String(TOTAL), 'the browser can show real progress and sizes');
+    assert.match(response.headers.get('content-disposition'), /^attachment;/, 'the browser saves it to disk instead of opening it');
+    const reader = response.body.getReader();
+    let received = 0;
+    while (received < 8 * 1024 * 1024) received += (await reader.read()).value.length;
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.ok(produced < 100 * 1024 * 1024, `upstream was read ${Math.round(produced / 1048576)} MB ahead of the client (limit 100 MB of 600 MB)`);
+    await reader.cancel();
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert.equal(stopped, true, 'cancelling the download closes the upstream connection');
+    assert.ok(produced < TOTAL);
   });
 });
 

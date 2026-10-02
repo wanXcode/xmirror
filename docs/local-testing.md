@@ -106,7 +106,7 @@ MODERATION_ADMIN_TOKEN=local-test PORT=3000 node ops/seed-local.js
 ### 3.8 其他
 - [ ] `/sitemap.xml`（索引）→ `/sitemap-main.xml`（固定页，含 hreflang）、`/sitemap-copies-1.xml`（只有精选且仍可收录的页面）；`/robots.txt`。
 - [ ] 查看页面源码确认服务端渲染（不开 JS 也能看到正文、FAQ、步骤）。
-- [ ] 手机真机上看首屏速度、有无布局跳动；也可跑 Lighthouse（Chrome DevTools → Lighthouse → Mobile）。
+- [ ] 手机真机上看首屏速度、有无布局跳动；也可跑 Lighthouse（Chrome DevTools → Lighthouse → Mobile）。跑分请用生产模式：`NODE_ENV=production npm start`，并确认响应带 `Content-Encoding: br/gzip`、`/css`、`/js` 带 `?v=` 且 `Cache-Control: ...immutable`、字体来自 `/fonts/`（不再请求 Google Fonts）。
 
 ## 4. 精选页流程（管理接口，无后台界面）
 
@@ -130,10 +130,13 @@ curl -X POST -H "$T" localhost:3000/api/admin/featured/POST_ID/withdraw
 | HTTPS 才有的浏览器能力（剪贴板、Web Share） | 局域网是 http | 用 cloudflared/ngrok 隧道（见 §2.4）。 |
 | 链接预览（微信/X/Telegram 的卡片） | 需要公网可访问的 URL | 同样用隧道；用隧道地址在聊天里发一个保存页链接。 |
 | 搜索引擎收录、sitemap 提交、Search Console | 只有线上域名能验证 | 本地检查 sitemap/robots/robots meta/JSON-LD 的内容；上线后在 Search Console 提交 `https://xput.app/sitemap.xml`。 |
-| 统计脚本 | 需要外部服务与线上域名 | 本地可用 `ANALYTICS_SRC=`（空）关闭；线上域名为 `xput.app`（配置项，见 §6）。 |
+| 统计脚本 | 需要外部服务与线上域名 | 本地可用 `ANALYTICS_SRC=`（空）关闭；不设变量时按 `config/site.json` 加载（域名 `xput.app`，见 §6）。 |
 | 线上真实数据的数量/性能 | 本地数据少 | 复制一份线上 `data/` 做 §3.4 的抽查。 |
 
 ## 6. 可配置项（环境变量，优先于 `config/site.json`）
+
+**优先级规则：** 环境变量 > `config/site.json` > 代码默认值。变量**未设置**时读取 `config/site.json`（其中统计脚本的 `data-domain` 为 `xput.app`，脚本地址为 `https://a.zhxs.me/js/script.js`，所以本地不设变量也会加载统计脚本）；变量**设为空字符串**表示关闭（`ANALYTICS_SRC=` 或 `ANALYTICS_DOMAIN=` 任一为空就不加载）。`ANALYTICS_NAME`、`CONTACT_EMAIL`、`SHORTCUT_URL` 同理。
+
 
 | 变量 | 作用 |
 |---|---|
