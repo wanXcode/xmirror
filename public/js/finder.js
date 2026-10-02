@@ -277,8 +277,8 @@
       revealResult();
     }
 
-    // Phones: bring the link box up under the (scrolled-off) header's space and the card with its main
-    // download button into the first screen. Desktops show it all already, so nothing moves there.
+    // Phones: scroll the link box to the top (the hero scrolls out of view) and keep the card's main download
+    // button in the first screen. Computers show it all already, so nothing moves there.
     function revealResult() {
       var phone = options.isPhone ? options.isPhone() : !!(win.matchMedia && win.matchMedia('(max-width: 767px)').matches);
       if (!phone || !win.scrollTo) return;
@@ -287,9 +287,7 @@
       if (!box || !box.getBoundingClientRect) return;
       var scrollY = win.pageYOffset || 0;
       var inputTop = box.getBoundingClientRect().top + scrollY;
-      var header = doc.querySelector('.site-header');
-      var headerHeight = header && header.offsetHeight ? header.offsetHeight : 0;
-      var top = Math.max(0, inputTop - headerHeight);
+      var top = Math.max(0, inputTop - 12);
       if (button) {
         var needed = button.getBoundingClientRect().bottom + scrollY + 16 - win.innerHeight;
         top = Math.min(Math.max(top, needed), Math.max(0, inputTop - 8));

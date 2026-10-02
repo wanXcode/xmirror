@@ -294,8 +294,6 @@ function scrollSetup({ phone = true, reduced = false, dlBottom = 600 } = {}) {
     if (this.matches('.dl')) return { top: dlBottom - 56, bottom: dlBottom, height: 56 };
     return { top: 0, bottom: 0, height: 0 };
   };
-  const header = s.document.querySelector('.site-header');
-  Object.defineProperty(header, 'offsetHeight', { value: 64 });
   s.q('[data-input]').value = POST;
   return { s, scrolls };
 }
@@ -303,7 +301,7 @@ function scrollSetup({ phone = true, reduced = false, dlBottom = 600 } = {}) {
 test('phone: after a result, the link box is brought up and the main download button stays in the first screen', async () => {
   const { s, scrolls } = scrollSetup();
   await s.finder.runDownload();
-  assert.deepEqual(scrolls, [{ top: 236, behavior: 'smooth' }], 'link box lands one header-height below the top of the page content');
+  assert.deepEqual(scrolls, [{ top: 288, behavior: 'smooth' }], 'the link box lands at the top, so the hero scrolls out of view');
   const tall = scrollSetup({ dlBottom: 1200 });
   await tall.s.finder.runDownload();
   assert.deepEqual(tall.scrolls, [{ top: 292, behavior: 'smooth' }], 'scrolls further so the button fits, but keeps the link box on screen');
@@ -312,7 +310,7 @@ test('phone: after a result, the link box is brought up and the main download bu
 test('scrolling respects prefers-reduced-motion and never happens on computers', async () => {
   const reduced = scrollSetup({ reduced: true });
   await reduced.s.finder.runDownload();
-  assert.deepEqual(reduced.scrolls, [{ top: 236, behavior: 'auto' }]);
+  assert.deepEqual(reduced.scrolls, [{ top: 288, behavior: 'auto' }]);
   const desktop = scrollSetup({ phone: false });
   await desktop.s.finder.runDownload();
   assert.deepEqual(desktop.scrolls, []);
