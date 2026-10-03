@@ -1,6 +1,10 @@
-# Frontend v1: items awaiting confirmation
+# Frontend v1: decisions and open items
 
-Defaults were implemented for everything below; each can be changed later.
+Status after the v2.0.0 launch (2026-10-03). **Resolved** = decided and shipped (conclusion given); **Open** = still waiting on someone. Everything else below is a description of what shipped. Open items also live in `docs/backlog.md`.
+
+## Status summary
+- **Resolved**: base on the downloader branch (option A); defaults accepted for old-home tests, batched counters, tombstones, `/help` kept but unlinked, `/report` re-templated, download via fetch stream with native download above ~150MB, Worker on the same host (`/dl*`); featured thresholds 50 interactions / 1000 followers / 10 per day; no admin UI for featured pages; sensitive posts stay un-archivable; Chinese uses system fonts; header not sticky on mobile; "Other qualities" expanded by default; Logo B everywhere; translation/subtitle routes off in production (code kept); admin APIs return 401; indexing rule (see the last section); list page named Worth reading / 值得再读; privacy "last updated" 2026-10-03.
+- **Open**: `ANALYTICS_NAME` (analytics provider name for the privacy page); `CONTACT_EMAIL` confirmed in production `.env`; review of the drafted shortcut FAQ answers and zh copy not in the artboards; separate switches for translation and subtitles; real-device checks on iOS/Android.
 
 ## Copy
 - zh `meta description` for fixed pages is just the subtitle.
@@ -14,13 +18,13 @@ Defaults were implemented for everything below; each can be changed later.
 - Quote-post media, replies and followers were added to the fetch layer additively. Replies and poster images exist only for newly archived posts.
 - Follower count is not available from the syndication fallback, so such posts cannot satisfy the follower gate until set by an admin (`POST /api/admin/featured/:id/followers`).
 - Tombstones (410) are written only via the admin delete API.
-- Legacy-indexed archives keep `index`; every new archive is `noindex`.
+- **Superseded** by the indexing rule below: archives picked by the SEO mechanism (old and new) are indexable; the `legacy_indexed` snapshot is unused.
 - View/share counters are batched in memory and flushed periodically.
 - Local `/dl` proxy is off when `NODE_ENV=production`; the Cloudflare Worker serves `xput.app/dl/*`.
-- Translation/subtitle backend code is orphaned (no UI), left in place.
+- **Resolved**: translation/subtitle routes are off in production (`FEATURE_TRANSLATION`), code kept; splitting it into two switches is in the backlog.
 
 ## Featured pages
-- Thresholds are my defaults: 20 interactions (views + shares), 1000 followers, 10 pages per day (`config/featured.json`).
+- **Resolved**: thresholds are 50 interactions (views + shares), 1000 followers, 10 pages per day (`config/featured.json`).
 - AI content is entered through the admin API and needs human review before publishing; editing a live page returns it to draft.
 - Report link on result pages is `/report?post=CODE`.
 
@@ -31,13 +35,13 @@ Defaults were implemented for everything below; each can be changed later.
 - Images are cached under `DATA_DIR/og`; sensitive posts, unknown codes and render failures get `/xput-share.png`.
 
 ## Cloudflare / deployment
-- Worker route, zone and rate-limit binding syntax in `workers/download-proxy/wrangler.toml` need checking against the real account.
+- **Resolved**: the Worker is deployed on `xput.app/dl*` and verified before launch (see `docs/deploy.md` section 5).
 
 ## Shortcut, report, privacy, 404 (stage 5)
 - Shortcut QR points to the iCloud link from the design spec (`config/site.json` `shortcutUrl`, overridable with `SHORTCUT_URL`). The QR is generated server-side (`qrcode` dependency).
 - The artboards leave 4 of 5 shortcut FAQ answers empty; I wrote them (en + zh).
 - Report page: "[time]" is set to "3 business days"; the form's email is required; "Reason" is sent as a `[code] label — details` prefix because `/api/reports` is unchanged (kinds: copyright / other). `/api/reports` now also accepts an X post link (looked up by canonical URL), a small additive change.
-- Privacy page: all paragraphs were drafted by me from actual behaviour (cookies `xput_lang`, `xput_age`; server logs; the "privacy-friendly analytics" wording must be confirmed against the analytics provider). "Last updated" is 2026-10-01. No contact email is given; contact is via the report page. Supply one if wanted.
+- Privacy page: all paragraphs were drafted by me from actual behaviour (cookies `xput_lang`, `xput_age`; server logs; the "privacy-friendly analytics" wording must be confirmed against the analytics provider). "Last updated" is 2026-10-03 (resolved). No contact email is given; contact is via the report page. Supply one if wanted.
 - zh report/privacy/404 copy is drafted (no zh artboards).
 - Generic 404 page reuses the saved-post "not found" layout (W_404) with Video Downloader / Twitter Viewer links; API and asset paths still get plain-text 404s.
 - Old `public/report.html` / `report.js` were replaced by the server-rendered page.
@@ -64,7 +68,7 @@ Defaults were implemented for everything below; each can be changed later.
 
 ## Performance follow-up (after local acceptance, 2026-10-02)
 - Mobile LCP was 4.3–5.6 s on the acceptance machine against 2.1–2.5 s in my sandbox. Causes: the render-blocking Google Fonts stylesheet (two third-party origins; blocked in my sandbox, so my earlier numbers did not include it), and no gzip/brotli plus `max-age=0` on CSS/JS from Node. Fixed: fonts are self-hosted and the Latin `@font-face` rules inlined, `compression` (br/gzip) added, CSS/JS URLs carry a content hash and are `immutable`.
-- **Design change to confirm:** Noto Sans SC is no longer loaded as a web font. As unicode-range slices it was ~700 KB per Chinese page and took zh LCP to 6.8 s; Chinese text now uses the visitor's system CJK font (PingFang SC, Microsoft YaHei, Noto Sans CJK SC). Latin text keeps IBM Plex Sans and Space Grotesk. (OG images still render with Noto Sans SC on the server.)
+- **Design change (confirmed):** Noto Sans SC is no longer loaded as a web font. As unicode-range slices it was ~700 KB per Chinese page and took zh LCP to 6.8 s; Chinese text now uses the visitor's system CJK font (PingFang SC, Microsoft YaHei, Noto Sans CJK SC). Latin text keeps IBM Plex Sans and Space Grotesk. (OG images still render with Noto Sans SC on the server.)
 
 ## Font licenses
 Space Grotesk, IBM Plex Sans (served from `/fonts/`) and Noto Sans SC (OG images only) are SIL OFL 1.1. The license texts are in `licenses/OFL-*.txt`, and `public/fonts/LICENSE.txt` (public at `/fonts/LICENSE.txt`) ships the notices for the two served families. The font files themselves come from the `@fontsource` npm packages at runtime; they are not copied into the repo.
@@ -72,10 +76,10 @@ Space Grotesk, IBM Plex Sans (served from `/fonts/`) and Noto Sans SC (OG images
 ## Source success-rate statistics
 When computing per-source success rates from the `[fetch]` log lines, leave out entries with `"definitive": true`. They are the post's own state (`reason`: `not_found`, `deleted`, `private`, `suspended`), not a source fault, so they count neither as a failure nor as a success. Only `timeout`, `network`, `upstream` (5xx/unexpected status), `rate_limit` and `incomplete` (parse failure) entries are source failures.
 
-## Other qualities open by default
+## Other qualities open by default (resolved)
 Product decision after v3 review: "Other qualities" starts expanded in both the result card and the download dialog (the boards show it folded). The toggle still folds it away.
 
-## Indexing rule (revised): "Worth reading" / 值得再读
+## Indexing rule (resolved): "Worth reading" / 值得再读
 - Indexable = live AI featured page, or an archive picked by the existing SEO mechanism (`seo_status='index'`, `seo_blocked=0`: automatic scoring plus manual override via `/api/admin/seo/:id`), minus sensitive, blocked, open report, removed. Everything else is `noindex, follow`. This supersedes the earlier "featured only" rule and the `legacy_indexed` snapshot (the column stays, unused).
 - The old `/browse` list is kept, named **Worth reading / 值得再读** again (title, H1, footer entry and featured breadcrumb), restyled, and served at `/browse` (English UI) and `/zh/browse` (Chinese UI). It is in the main sitemap and linked from the footer (a small addition to the footer list in the spec).
 - Archives picked by the SEO mechanism keep their SEO title/description and use the ordinary result template plus SocialMediaPosting structured data.
