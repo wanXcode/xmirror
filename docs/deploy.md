@@ -205,7 +205,7 @@ shasum -a 256 ~/xput-backup/db.sqlite; ssh <服务器> 'sha256sum "<备份目录
    ```
    不想走接口时（服务停着或接口不可用）：`sudo sqlite3 $APP_ROOT/shared/data/db.sqlite "UPDATE posts SET seo_blocked=1, seo_status='noindex' WHERE id=<ID>;"`。
    审核完把被屏蔽的 id 记进部署记录，上线后在 6.6 核对：copies sitemap 的数量 = 导出总数 − 屏蔽数（再减去后来新增的排除项）。这是一次性审核；之后新存档按下面 3.2 的自动收录门槛处理。
-6. **必须**使用版本号 **2.0.0** 的代码（`package.json`、`package-lock.json`、`VERSION.md` 均已升级，合并前再确认一次：`node -p "require('./package.json').version"` 输出 `2.0.0`）。部署后 CSS/JS 的版本号前缀、日志和回滚校验都靠它区分新旧版；版本号没升就不要部署。
+6. **必须**升级版本号再部署：`package.json`、`package-lock.json`、`VERSION.md` 的版本号一致且高于线上版本，并在 `CHANGELOG.md` 顶部追加了本版本说明。合并前确认：`node -p "require('./package.json').version"` 输出的就是本次要发布的 `<版本号>`。部署后 CSS/JS 的版本号前缀、日志和回滚校验都靠它区分新旧版；版本号没升就不要部署。
 
 ### 3.2 设置新的环境变量
 
@@ -277,7 +277,7 @@ sudo sqlite3 $APP_ROOT/shared/data/db.sqlite "SELECT COUNT(*) FROM posts;"     #
 
 # 新版确实在运行（页头有新 logo 的图标版本号，且 HTML 引用带内容哈希的样式）
 curl -s $SITE/ | grep -o 'favicon.svg?v=[^"]*' | head -1           # xput-logo-b-1
-curl -s $SITE/ | grep -o '/css/xput.css?v=[^"]*' | head -1         # 必须形如 2.0.0-1a2b3c4d（前缀不是 2.0.0 说明跑的不是新版）
+curl -s $SITE/ | grep -o '/css/xput.css?v=[^"]*' | head -1         # 必须形如 <版本号>-1a2b3c4d，前缀要与 package.json 中的 version 一致（不一致说明跑的不是新版）
 ```
 
 通过后继续第 6 节的上线检查清单。任何一项不通过且 10 分钟内无法修复 → 回滚（第 4 节）。
@@ -311,7 +311,7 @@ sudo XMIRROR_APP_ROOT=$APP_ROOT $PM2 start $APP_ROOT/current/ops/ecosystem.confi
 sudo $PM2 save
 
 curl -fsS $SITE/healthz                                            # service = xmirror
-curl -s $SITE/ | grep -c 'Version v1.9.9'                          # 回滚后跑的是旧版（v1.9.9），其首页页脚有版本号，期望 1；若 grep 'xput.css?v=2.0.0' 仍有输出说明没回滚成功
+curl -s $SITE/ | grep -o '/css/xput.css?v=[^"]*' | head -1     # 回滚后前缀应变回上一版本号（不再是 <版本号>）；v1.9.9 的页面没有该样式，改用 grep -c 'Version v1.9.9' 期望 1
 ```
 
 数据（`shared/`）原样保留；`.env` 里新增的变量旧版不读取，可以留着。
@@ -335,7 +335,7 @@ sudo sqlite3 $APP_ROOT/shared/data/db.sqlite "PRAGMA integrity_check;"          
 
 ```bash
 cd <仓库工作副本>
-git worktree add --detach /tmp/xmirror-rollback <旧提交 SHA>      # 部署前记录的旧版提交（v1.9.9，回滚后应看到 Version v1.9.9）；release 目录名末尾也含它
+git worktree add --detach /tmp/xmirror-rollback <旧提交 SHA>      # 部署前记录的上一版本提交（回滚后 css 版本号前缀应为上一版本号）；release 目录名末尾也含它
 sudo XMIRROR_SOURCE_DIR=/tmp/xmirror-rollback XMIRROR_APP_ROOT=$APP_ROOT XMIRROR_PM2_BIN=$PM2 \
   bash /tmp/xmirror-rollback/ops/deploy.sh
 ```
