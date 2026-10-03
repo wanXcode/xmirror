@@ -18,6 +18,11 @@
 
 - **测试与 `.env` 隔离**：运行测试不再读取目录下的 `.env`（含生产 release 内的配置），修复了此前在生产环境运行测试时，默认下载通道等用例被 `DOWNLOAD_VIA=node` 污染的问题。
 
+### 相关文档
+
+- [v2.0.1 上线记录](docs/releases/2026-10-03-v2.0.1.md)
+- [运维手册](docs/operations.md)
+
 ## v2.0.0（2026-10-03）
 
 ### 概述
@@ -88,8 +93,8 @@
 - [docs/frontend-v1-delivery.md](docs/frontend-v1-delivery.md)：前端第一期交付说明
 - [docs/frontend-open-questions.md](docs/frontend-open-questions.md)：已确认与待确认事项
 - [docs/caching.md](docs/caching.md)：缓存策略
-- docs/operations.md：日常运维手册（待补充）
-- docs/releases/2026-10-03-v2.0.0.md：本次上线记录（待补充）
+- [docs/operations.md](docs/operations.md)：日常运维手册
+- [docs/releases/2026-10-03-v2.0.0.md](docs/releases/2026-10-03-v2.0.0.md)：本次上线记录
 
 ## v1.9.9 及以前（推文存档站时期，历史记录）
 

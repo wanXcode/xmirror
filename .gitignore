@@ -14,3 +14,7 @@ server.log
 # Local/editor files
 .DS_Store
 npm-debug.log*
+
+# Local credentials and deployment backups
+keys/
+bak/

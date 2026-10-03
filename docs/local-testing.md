@@ -78,7 +78,7 @@ MODERATION_ADMIN_TOKEN=local-test PORT=3000 node ops/seed-local.js
 - [ ] **最重要**：把线上的 `data/`（`db.sqlite` + `images/` + `videos/`）**复制一份**到本地临时目录（`DATA_DIR=/path/to/copy npm start`，不要直接指向生产目录），随机抽查几十个线上已分享过的短码，都能打开且内容完整。
 - [ ] 旧别名短码（重复合并产生的）301 到主短码：`/OLD001` → `/DEMO05`。
 - [ ] 旧静态地址 `/archives/post_xxx.html` 301 到对应短码；找不到的返回 404。
-- [ ] 老存档现在也是 `noindex`（已按你的决定）。
+- [ ] 已选入「值得再读」且无排除项的老存档是 `index, follow`；未选入、被屏蔽、敏感或有未处理举报的是 `noindex, follow`（以 `docs/deploy.md` 和实时数据库为准）。
 - [ ] `/DEMO03` 返回 410，页面有「这份副本已被移除」和参考编号。
 
 ### 3.5 年龄确认
@@ -104,7 +104,7 @@ MODERATION_ADMIN_TOKEN=local-test PORT=3000 node ops/seed-local.js
 - [ ] 手机上：菜单抽屉、语言抽屉、遮罩、返回键行为；长中文文案不撑破布局。
 
 ### 3.8 其他
-- [ ] `/sitemap.xml`（索引）→ `/sitemap-main.xml`（固定页，含 hreflang）、`/sitemap-copies-1.xml`（只有精选且仍可收录的页面）；`/robots.txt`。
+- [ ] `/sitemap.xml`（索引）→ `/sitemap-main.xml`（固定页，含 hreflang）、`/sitemap-copies-1.xml`（值得再读与已上线精选、且仍可收录的页面）；`/robots.txt`。
 - [ ] 查看页面源码确认服务端渲染（不开 JS 也能看到正文、FAQ、步骤）。
 - [ ] 手机真机上看首屏速度、有无布局跳动；也可跑 Lighthouse（Chrome DevTools → Lighthouse → Mobile）。跑分请用生产模式：`NODE_ENV=production npm start`，并确认响应带 `Content-Encoding: br/gzip`、`/css`、`/js` 带 `?v=` 且 `Cache-Control: ...immutable`、字体来自 `/fonts/`（不再请求 Google Fonts）。
 
