@@ -49,7 +49,7 @@ LCP 1.4–1.7s，CLS 0，所有页面性能分 99–100。改动要点：拉丁�
 
 ## 6. 上线前需要手动完成
 
-1. 设置环境变量 `ANALYTICS_NAME`（隐私页统计服务名）和 `CONTACT_EMAIL`（隐私页、举报页联系邮箱）；隐私政策"最后更新"日期按正式上线日填写（现为占位 2026-10-01）。
+1. 设置环境变量 `ANALYTICS_NAME`（隐私页统计服务名）和 `CONTACT_EMAIL`（隐私页、举报页联系邮箱）；隐私政策"最后更新"日期按正式上线日填写（现为 2026-10-03，上线日期变动时同步修改）。
 2. 部署 `workers/download-proxy`（Cloudflare Worker），核对 `wrangler.toml` 的路由、zone、限流绑定写法；生产环境本地 `/dl` 默认关闭，下载全部走 Worker。
 3. 真机验证（需 HTTPS 隧道或线上环境）：iPhone Safari / Android Chrome 的下载、图片系统分享、快捷指令；旧存档用线上数据副本抽查。
 4. 上线后在 Search Console 提交 `https://xput.app/sitemap.xml`。

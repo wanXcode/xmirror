@@ -155,6 +155,17 @@ sudo ls -la "$BK"; sudo du -sh "$BK"
 echo "备份目录: $BK"
 ```
 
+把数据库备份和 `.env` 下载到本地电脑（在**本地电脑**上执行；`<服务器>` 为 SSH 主机名，`<备份目录>` 为上面输出的 `$BK`）。`.env` 含密钥，下载后只放在本机加密磁盘上，不要提交、不要上传到聊天或工单：
+```bash
+mkdir -p ~/xput-backup && chmod 700 ~/xput-backup
+# 备份目录属于 root，先在服务器上改成登录用户可读，再下载（或用 ssh + sudo cat 管道，二选一）
+ssh <服务器> 'sudo chown -R $USER "<备份目录>"'
+scp <服务器>:<备份目录>/db.sqlite <服务器>:<备份目录>/env <服务器>:<备份目录>/PREVIOUS_RELEASE.txt ~/xput-backup/
+chmod 600 ~/xput-backup/env
+# 校验：本地与服务器上的校验和一致
+shasum -a 256 ~/xput-backup/db.sqlite; ssh <服务器> 'sha256sum "<备份目录>/db.sqlite"'
+```
+
 > `ops/deploy.sh` 在部署时还会自动再做一份数据库快照到 `$APP_ROOT/recovery_snapshots/<release>/db.sqlite`。上面的备份是它之外的完整备份，不要省略。
 > 备份目录与数据在同一块磁盘上只能防误操作；如有条件，把 `$BK` 再同步到另一台机器或对象存储。
 
@@ -194,7 +205,7 @@ echo "备份目录: $BK"
    ```
    不想走接口时（服务停着或接口不可用）：`sudo sqlite3 $APP_ROOT/shared/data/db.sqlite "UPDATE posts SET seo_blocked=1, seo_status='noindex' WHERE id=<ID>;"`。
    审核完把被屏蔽的 id 记进部署记录，上线后在 6.6 核对：copies sitemap 的数量 = 导出总数 − 屏蔽数（再减去后来新增的排除项）。这是一次性审核；之后新存档按下面 3.2 的自动收录门槛处理。
-6. 建议在合并前把 `package.json` 版本号和 `VERSION.md` 更新为新版本（现在仍是 1.9.9），便于日志和回滚时区分；不更新也不影响功能。
+6. **必须**使用版本号 **2.0.0** 的代码（`package.json`、`package-lock.json`、`VERSION.md` 均已升级，合并前再确认一次：`node -p "require('./package.json').version"` 输出 `2.0.0`）。部署后 CSS/JS 的版本号前缀、日志和回滚校验都靠它区分新旧版；版本号没升就不要部署。
 
 ### 3.2 设置新的环境变量
 
@@ -226,7 +237,7 @@ EOF
 | `SEO_AUTO_INDEX_BLOCK_SENSITIVE` | 可选 | 默认 `true`：X 标记 `possibly_sensitive`（含引用帖带标记）的帖子不自动收录；存档入口本身也拒绝这类帖子 |
 | `SHORTCUT_URL`、`VIEW_COUNTER_FLUSH_MS`、`FETCH_RATE_LIMIT_PER_MIN`、`DOWNLOAD_RATE_LIMIT_PER_MIN` | 可选 | 默认值即可 |
 
-隐私政策页面的"最后更新"日期是代码里的占位 `2026-10-01`（`lib/content/*.js` 的 `pages.privacy.updatedOn`），请在合并前改成实际上线日。
+隐私政策页面的"最后更新"日期已设为 `2026-10-03`（`lib/content/*.js` 的 `pages.privacy.updatedOn`）；如果上线日期推迟，请在合并前同步修改。
 
 ### 3.3 部署
 
@@ -266,7 +277,7 @@ sudo sqlite3 $APP_ROOT/shared/data/db.sqlite "SELECT COUNT(*) FROM posts;"     #
 
 # 新版确实在运行（页头有新 logo 的图标版本号，且 HTML 引用带内容哈希的样式）
 curl -s $SITE/ | grep -o 'favicon.svg?v=[^"]*' | head -1           # xput-logo-b-1
-curl -s $SITE/ | grep -o '/css/xput.css?v=[^"]*' | head -1         # 形如 1.9.9-1a2b3c4d
+curl -s $SITE/ | grep -o '/css/xput.css?v=[^"]*' | head -1         # 必须形如 2.0.0-1a2b3c4d（前缀不是 2.0.0 说明跑的不是新版）
 ```
 
 通过后继续第 6 节的上线检查清单。任何一项不通过且 10 分钟内无法修复 → 回滚（第 4 节）。
@@ -300,7 +311,7 @@ sudo XMIRROR_APP_ROOT=$APP_ROOT $PM2 start $APP_ROOT/current/ops/ecosystem.confi
 sudo $PM2 save
 
 curl -fsS $SITE/healthz                                            # service = xmirror
-curl -s $SITE/ | grep -c 'Version v1.9.9'                          # 旧版首页页脚有版本号，期望 1
+curl -s $SITE/ | grep -c 'Version v1.9.9'                          # 回滚后跑的是旧版（v1.9.9），其首页页脚有版本号，期望 1；若 grep 'xput.css?v=2.0.0' 仍有输出说明没回滚成功
 ```
 
 数据（`shared/`）原样保留；`.env` 里新增的变量旧版不读取，可以留着。
@@ -324,7 +335,7 @@ sudo sqlite3 $APP_ROOT/shared/data/db.sqlite "PRAGMA integrity_check;"          
 
 ```bash
 cd <仓库工作副本>
-git worktree add --detach /tmp/xmirror-rollback <旧提交 SHA>      # 部署前记录的旧版提交（v1.9.9）；release 目录名末尾也含它
+git worktree add --detach /tmp/xmirror-rollback <旧提交 SHA>      # 部署前记录的旧版提交（v1.9.9，回滚后应看到 Version v1.9.9）；release 目录名末尾也含它
 sudo XMIRROR_SOURCE_DIR=/tmp/xmirror-rollback XMIRROR_APP_ROOT=$APP_ROOT XMIRROR_PM2_BIN=$PM2 \
   bash /tmp/xmirror-rollback/ops/deploy.sh
 ```
