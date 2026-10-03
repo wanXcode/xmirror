@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>XPut homepage – mobile</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1747C9;text-decoration:none}a:hover{color:#0F2F8A}
+</style>
+</helmet>
+<div style="width: 390px; height: 1500px; box-sizing: border-box; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #111418; background: #F6F7F9; display: flex; flex-direction: column">
+
+<header style="height: 60px; flex-shrink: 0; background: #FFFFFF; border-bottom: 1px solid #E3E6EB; padding: 0 16px; display: flex; align-items: center; justify-content: space-between">
+<a href="#" style="display: flex; align-items: center; gap: 8px; color: #111418">
+<span style="width: 28px; height: 28px; border-radius: 7px; background: #111418; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px">X</span>
+<span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px">XPut</span>
+</a>
+<div style="display: flex; gap: 8px">
+<button style="height: 44px; padding: 0 12px; border: 1px solid #D5D9E0; border-radius: 8px; background: #FFFFFF; font: inherit; font-size: 14px; color: #111418">EN · 中文</button>
+<button aria-label="Menu" style="width: 44px; height: 44px; border: 1px solid #D5D9E0; border-radius: 8px; background: #FFFFFF; display: flex; align-items: center; justify-content: center">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#111418" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+</button>
+</div>
+</header>
+
+<section style="padding: 36px 16px 24px; display: flex; flex-direction: column; gap: 14px; text-align: center">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 32px; line-height: 1.12; font-weight: 700; letter-spacing: -0.02em">X (Twitter) Video Downloader</h1>
+<p style="margin: 0; font-size: 16px; line-height: 1.5; color: #454C57">Save videos, GIFs and original images from any X post. Keep a permanent copy in case it gets deleted.</p>
+<div style="display: flex; justify-content: center; gap: 8px; margin-top: 6px">
+<button style="height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #111418; background: #111418; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600">Video</button>
+<button style="height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #D5D9E0; background: #FFFFFF; color: #111418; font: inherit; font-size: 14px">Image</button>
+<button style="height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid #D5D9E0; background: #FFFFFF; color: #111418; font: inherit; font-size: 14px">GIF</button>
+</div>
+<label for="murl" style="position: absolute; left: -9999px">Paste an X post link</label>
+<input id="murl" type="url" placeholder="Paste X post link" style="height: 54px; box-sizing: border-box; border: 1.5px solid #C9CED6; border-radius: 12px; padding: 0 14px; font: inherit; font-size: 16px; background: #FFFFFF; color: #111418">
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+<button style="height: 52px; border-radius: 10px; border: 1px solid #D5D9E0; background: #FFFFFF; color: #111418; font: inherit; font-size: 15px; font-weight: 500">Paste</button>
+<button style="height: 52px; border-radius: 10px; border: 0; background: #1747C9; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600">Download</button>
+<button style="height: 52px; border-radius: 10px; border: 1.5px solid #1747C9; background: #FFFFFF; color: #1747C9; font: inherit; font-size: 15px; font-weight: 600">View</button>
+</div>
+<p style="margin: 0; font-size: 13px; color: #5B6370">Download saves the media. View opens the post without login — the link keeps working even if it is deleted.</p>
+</section>
+
+<section style="padding: 0 16px 28px">
+<div style="background: #FFFFFF; border: 1px solid #E3E6EB; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 14px">
+<span style="font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #5B6370">Example result</span>
+<div style="height: 180px; border-radius: 10px; background: #1B1F26; color: #9AA3AF; display: flex; align-items: center; justify-content: center; font-size: 13px">[Video thumbnail]</div>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 14px">
+<span style="width: 28px; height: 28px; border-radius: 50%; background: #D5D9E0"></span>
+<span style="font-weight: 600">[Author name]</span>
+<span style="color: #5B6370">@[handle]</span>
+</div>
+<a href="#" style="height: 52px; border-radius: 10px; background: #1747C9; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-weight: 600">Download 1280 × 720</a>
+<a href="#" style="height: 48px; border-radius: 10px; border: 1px solid #C9CED6; color: #111418; display: flex; align-items: center; justify-content: center; font-weight: 500">640 × 360</a>
+<div style="padding: 14px; background: #EEF2FD; border-radius: 10px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 14px; color: #2A3039; line-height: 1.45"><b>Keep a permanent copy.</b> Stays online even if the post is deleted.</span>
+<button style="height: 44px; border-radius: 8px; border: 1px solid #1747C9; background: #FFFFFF; color: #1747C9; font: inherit; font-size: 14px; font-weight: 600">Archive this post</button>
+</div>
+</div>
+</section>
+
+<section style="background: #FFFFFF; border-top: 1px solid #E3E6EB; padding: 32px 16px; display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700">How it works</h2>
+<div style="display: flex; gap: 14px"><span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: #1747C9">01</span><span style="line-height: 1.5">Tap Share on the X post and copy the link.</span></div>
+<div style="display: flex; gap: 14px"><span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: #1747C9">02</span><span style="line-height: 1.5">Paste it here and tap Download.</span></div>
+<div style="display: flex; gap: 14px"><span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; color: #1747C9">03</span><span style="line-height: 1.5">Pick a quality to save, or archive the post.</span></div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1500}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

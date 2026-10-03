@@ -8,7 +8,6 @@ const https = require('https');
 const crypto = require('crypto');
 const { version: APP_VERSION } = require('./package.json');
 const seo = require('./lib/seo');
-const { prepareContent, structuredData } = require('./lib/seo-content');
 const { migrateReports, registerReportRoutes } = require('./lib/content-reports');
 const { createSeoStore } = require('./lib/seo-store');
 const { registerSeoRoutes } = require('./lib/seo-routes');
@@ -46,8 +45,29 @@ const {
 } = require('./lib/x-post');
 const { normalizePublicBaseUrl, buildPublicUrl } = require('./lib/public-url');
 const { createAdminGuard } = require('./lib/admin-auth');
-const { ArchiveError, normalizeArchiveUrl, archiveErrorResponse, readSourceResponse, archiveSuccessResponse } = require('./lib/archive-response');
+const { ArchiveError, normalizeArchiveUrl, archiveErrorResponse, archiveSuccessResponse } = require('./lib/archive-response');
 const { registerHealthRoute } = require('./lib/health');
+const { createFetcher } = require('./lib/fetchers');
+const { resolveUrl, isSensitiveTweet } = require('./lib/resolve');
+const { clientIpMiddleware, DEFAULT_TRUST_PROXY } = require('./lib/client-ip');
+const { isReservedShortCode, loadReservedShortCodes } = require('./lib/shortcode');
+const { registerNotFound, registerPageRoutes } = require('./lib/routes/pages');
+const SITE_CONFIG = require('./config/site.json');
+const { hasAgeConfirmation, setAgeConfirmation } = require('./lib/age-gate');
+const { createDownloadProxy } = require('./lib/download-proxy');
+const { createMediaInfo } = require('./lib/media-info');
+const { migrateFrontendSchema } = require('./lib/frontend-schema');
+const { createPostStore } = require('./lib/post-store');
+const { createViewCounter } = require('./lib/view-counter');
+const { registerResultRoutes } = require('./lib/routes/result');
+const { createFeaturedService } = require('./lib/featured');
+const { registerFeaturedAdminRoutes } = require('./lib/routes/featured-admin');
+const { registerOgRoutes } = require('./lib/routes/og');
+const { registerFontRoutes } = require('./lib/routes/fonts');
+const { registerBrowseRoutes } = require('./lib/routes/browse');
+const { resolveDownloadConfig } = require('./lib/download-config');
+const compression = require('compression');
+const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
 const {
   deleteMediaAsset,
   deleteMediaAssetBestEffort
@@ -78,6 +98,14 @@ const translationQueued = new Set();
 const translationRunning = new Set();
 let activeTranslationJobs = 0;
 
+// Cloudflare -> nginx -> node: trust the local proxy hop and prefer the
+// visitor address Cloudflare reports, so rate limits are per visitor.
+app.set('trust proxy', process.env.TRUST_PROXY || DEFAULT_TRUST_PROXY);
+app.use(clientIpMiddleware);
+// gzip/brotli for text responses (HTML, CSS, JS, JSON, SVG). Downloads through /dl stream untouched.
+app.use(compression({ filter: (req, res) => !/^\/(?:dl|node-dl)\/?$/.test(req.path) && compression.filter(req, res) }));
+// Nothing under /api is ever cached by browsers or the CDN; handlers may only tighten this.
+app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 app.use(express.json());
 registerHealthRoute(app);
 
@@ -137,12 +165,35 @@ const seoReviewService = createReviewService({ moderator: seoModerator, dataDir:
 const seoStore = createSeoStore(db, { dataDir: DATA_DIR, moderator: seoModerator, reviewService: seoReviewService, autoIndex: process.env.SEO_AUTO_INDEX !== 'false' });
 const seoAI = require('./lib/seo-ai').createSeoAI({ store: seoStore, dataDir: DATA_DIR, isBusy: () => activeTranslationJobs > 0 });
 seoStore.onEvaluated(post => seoAI.enqueue(post));
-registerSeoRoutes(app, { store: seoStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
-registerReportRoutes(app, { store: seoStore, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
+// Fixed pages first: they must win over the 6-character short code route.
+registerPageRoutes(app, { baseUrl: PUBLIC_BASE_URL, downloadBase: resolveDownloadConfig().base, shortcutUrl: process.env.SHORTCUT_URL || SITE_CONFIG.shortcutUrl });
+
+// Download proxy: the Cloudflare Worker serves /dl in production; DOWNLOAD_VIA=node switches the pages to the
+// Node proxy on /node-dl without any code change (see lib/download-config.js).
+const DOWNLOAD = resolveDownloadConfig();
+if (DOWNLOAD.mountPaths.length) {
+  const proxyLimit = createRateLimiter({ windowMs: 60000, max: Number(process.env.DOWNLOAD_RATE_LIMIT_PER_MIN) || 60, code: 'RATE_LIMITED', message: '下载过于频繁，请稍后再试' });
+  const downloadProxy = createDownloadProxy();
+  for (const proxyPath of DOWNLOAD.mountPaths) {
+    app.get(proxyPath, proxyLimit, (req, res, next) => downloadProxy(req, res).catch(next));
+    app.head(proxyPath, (req, res, next) => downloadProxy(req, res).catch(next));
+  }
+}
+console.log(`下载代理: ${DOWNLOAD.via}（页面使用 ${DOWNLOAD.base}）`);
+const postStore = createPostStore({ get: dbGet, all: dbAll, run: runDbWrite });
+registerBrowseRoutes(app, { store: postStore, baseUrl: PUBLIC_BASE_URL });
+registerSeoRoutes(app, { store: seoStore, postStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
+registerReportRoutes(app, { store: seoStore, baseUrl: PUBLIC_BASE_URL, requireAdmin });
+registerFontRoutes(app);
 app.use(express.static(PUBLIC_DIR, {
   setHeaders(res, filePath) {
     if (path.basename(filePath) === 'index.html') {
       res.set('Cache-Control', 'no-cache, must-revalidate');
+    } else if (/\.(css|js)$/.test(filePath) && /(?:^|&)v=[^&]+/.test(String(res.req?.url.split('?')[1] || ''))) {
+      // Versioned by content (lib/asset-version.js), so safe to keep for a year.
+      res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (/\.(css|js|png|ico|svg|webmanifest)$/.test(filePath)) {
+      res.set('Cache-Control', 'public, max-age=0, must-revalidate');
     }
   }
 }));
@@ -150,6 +201,7 @@ app.use('/images', express.static(path.join(DATA_DIR, 'images')));
 app.use('/videos', express.static(path.join(DATA_DIR, 'videos')));
 app.use('/subtitles', express.static(path.join(DATA_DIR, 'subtitles')));
 
+const RESERVED_SHORT_CODES = loadReservedShortCodes();
 const SHORT_CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
 function randomShortCode(length = 6) {
@@ -164,6 +216,7 @@ function randomShortCode(length = 6) {
 async function generateUniqueShortCode(maxRetries = 20) {
   for (let i = 0; i < maxRetries; i++) {
     const code = randomShortCode(6);
+    if (isReservedShortCode(code, RESERVED_SHORT_CODES)) continue;
     const exists = await new Promise((resolve, reject) => {
       db.get(
         `SELECT 1 FROM posts WHERE short_code=?
@@ -208,7 +261,9 @@ async function ensureVideoColumnsReady() {
     ['video_filename', 'TEXT'],
     ['video_bytes', 'INTEGER DEFAULT 0'],
     ['video_total_bytes', 'INTEGER DEFAULT 0'],
-    ['video_error', 'TEXT']
+    ['video_error', 'TEXT'],
+    ['video_is_gif', 'INTEGER DEFAULT 0'],
+    ['extra_videos', 'TEXT']
   ];
   for (const [name, definition] of definitions) {
     if (!columns.some(column => column.name === name)) {
@@ -337,46 +392,14 @@ db.serialize(() => {
     ON post_aliases(target_post_id)`);
 });
 
+const fetchTweet = createFetcher();
+
 function extractTweetId(url) {
   return extractXPostId(url);
 }
 
-async function fetchFromFxTwitter(tweetId) {
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'api.fxtwitter.com',
-      path: `/status/${tweetId}`,
-      method: 'GET',
-      headers: { 'User-Agent': 'Mozilla/5.0' }
-    };
-    const req = https.request(options, (res) => {
-      let data = [];
-      res.on('error', reject);
-      res.on('aborted', () => reject(new ArchiveError('NETWORK_ERROR')));
-      res.on('data', chunk => data.push(chunk));
-      res.on('end', () => {
-        try {
-          const buffer = Buffer.concat(data);
-          const json = JSON.parse(buffer.toString('utf8'));
-          resolve(readSourceResponse(res.statusCode, json));
-        } catch (e) { reject(e); }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(15000, () => req.destroy(new ArchiveError('REQUEST_TIMEOUT')));
-    req.end();
-  });
-}
-
-async function downloadImage(url, filename) {
-  return new Promise((resolve, reject) => {
-    const filePath = path.join(__dirname, 'data', 'images', filename);
-    const file = fs.createWriteStream(filePath);
-    https.get(url, (response) => {
-      response.pipe(file);
-      file.on('finish', () => { file.close(); resolve(`/images/${filename}`); });
-    }).on('error', reject);
-  });
+function downloadImage(url, filename) {
+  return downloadImageFile(url, { dir: path.join(DATA_DIR, 'images'), filename });
 }
 
 const VIDEO_DOWNLOAD_CONCURRENCY = Math.max(1, Number(process.env.VIDEO_DOWNLOAD_CONCURRENCY) || 1);
@@ -414,6 +437,7 @@ function formatBytes(bytes) {
 
 function downloadVideoWithProgress(url, filename, onProgress) {
   return new Promise((resolve, reject) => {
+    if (!isTwimgUrl(url)) return reject(new Error('视频来源不在允许范围内'));
     const videoDir = path.join(DATA_DIR, 'videos');
     fs.mkdirSync(videoDir, { recursive: true });
     const filePath = videoPathForFilename(filename);
@@ -464,29 +488,58 @@ function downloadVideoWithProgress(url, filename, onProgress) {
   });
 }
 
+async function updateExtraVideo(postId, filename, fields) {
+  const post = await getPostById(postId);
+  let extras;
+  try { extras = JSON.parse(post?.extra_videos || '[]'); } catch { extras = []; }
+  const item = extras.find(entry => entry.filename === filename);
+  if (!item) return;
+  Object.assign(item, fields);
+  await runDbWrite('UPDATE posts SET extra_videos=? WHERE id=?', [JSON.stringify(extras), postId]);
+}
+
+async function downloadExtraVideos(postId) {
+  const post = await getPostById(postId);
+  let extras;
+  try { extras = JSON.parse(post?.extra_videos || '[]'); } catch { extras = []; }
+  for (const item of extras.filter(entry => entry.status === 'queued')) {
+    try {
+      const result = await downloadVideoWithProgress(item.source_url, item.filename, () => {});
+      await updateExtraVideo(postId, item.filename, { status: 'completed', path: result.path });
+    } catch (err) {
+      console.error(`附加视频下载失败: ${err.message}`);
+      await updateExtraVideo(postId, item.filename, { status: 'failed' });
+    }
+  }
+}
+
 async function processVideoJob(job) {
-  const { postId, url, filename } = job;
+  const { postId, url, filename, extrasOnly } = job;
   let lastReportedAt = 0;
   try {
-    await updateVideoRow(postId, { video_status: 'downloading', video_error: null });
-    const result = await downloadVideoWithProgress(url, filename, async (bytes, total) => {
-      const now = Date.now();
-      if (bytes !== total && now - lastReportedAt < 500) return;
-      lastReportedAt = now;
-      await updateVideoRow(postId, { video_bytes: bytes, video_total_bytes: total });
-    });
-    await updateVideoRow(postId, {
-      video: result.path,
-      video_status: 'completed',
-      video_bytes: result.bytes,
-      video_total_bytes: result.total || result.bytes,
-      video_error: null
-    });
-    console.log(`视频下载成功: ${result.path}`);
+    if (!extrasOnly) {
+      await updateVideoRow(postId, { video_status: 'downloading', video_error: null });
+      const result = await downloadVideoWithProgress(url, filename, async (bytes, total) => {
+        const now = Date.now();
+        if (bytes !== total && now - lastReportedAt < 500) return;
+        lastReportedAt = now;
+        await updateVideoRow(postId, { video_bytes: bytes, video_total_bytes: total });
+      });
+      await updateVideoRow(postId, {
+        video: result.path,
+        video_status: 'completed',
+        video_bytes: result.bytes,
+        video_total_bytes: result.total || result.bytes,
+        video_error: null
+      });
+      console.log(`视频下载成功: ${result.path}`);
+    }
   } catch (err) {
     console.error(`视频下载失败: ${err.message}`);
     await updateVideoRow(postId, { video_status: 'failed', video_error: err.message || '视频下载失败' });
+    return;
   }
+  await downloadExtraVideos(postId).catch(err => console.error('附加视频任务失败:', err.message));
 }
 
 function pumpVideoQueue() {
@@ -503,10 +556,10 @@ function pumpVideoQueue() {
   }
 }
 
-function queueVideoDownload({ postId, url, filename }) {
+function queueVideoDownload({ postId, url, filename, extrasOnly = false }) {
   if (!postId || !url || !filename || videoJobs.has(postId)) return false;
   videoJobs.add(postId);
-  videoQueue.push({ postId, url, filename });
+  videoQueue.push({ postId, url, filename, extrasOnly });
   pumpVideoQueue();
   return true;
 }
@@ -524,6 +577,18 @@ function queuePendingVideoDownloads() {
       }
     }
   );
+  // Primary video finished but the extra videos were interrupted by a restart.
+  db.all(
+    `SELECT id, video_source_url, video_filename FROM posts
+     WHERE video_status='completed' AND extra_videos LIKE '%"status":"queued"%'`,
+    [],
+    (err, rows) => {
+      if (err) return console.error('恢复附加视频任务失败:', err.message);
+      for (const row of rows || []) {
+        queueVideoDownload({ postId: row.id, url: row.video_source_url || 'extras', filename: row.video_filename || 'extras', extrasOnly: true });
+      }
+    }
+  );
 }
 
 async function resumeVideoDownloadIfNeeded(post) {
@@ -534,6 +599,9 @@ async function resumeVideoDownloadIfNeeded(post) {
   }
   if (['queued', 'downloading'].includes(post.video_status)) {
     queueVideoDownload({ postId: post.id, url: post.video_source_url, filename: post.video_filename });
+  } else if (post.video_status === 'completed' && /"status":"(?:queued|failed)"/.test(post.extra_videos || '')) {
+    await runDbWrite('UPDATE posts SET extra_videos=REPLACE(extra_videos, \'"status":"failed"\', \'"status":"queued"\') WHERE id=?', [post.id]);
+    queueVideoDownload({ postId: post.id, url: post.video_source_url, filename: post.video_filename, extrasOnly: true });
   }
 }
 
@@ -665,6 +733,12 @@ async function translateWithSiliconFlow(parts, targetLang, attempt = null) {
 }
 
 const SUBTITLE_LANGUAGES = Object.freeze({ en: 'English', 'zh-CN': '简体中文' });
+// Translation and subtitles (Whisper/LLM back ends) have no UI in this release: off in production, code kept.
+// FEATURE_TRANSLATION=true turns them on; unset means on only outside production.
+const TRANSLATION_ENABLED = (process.env.FEATURE_TRANSLATION ?? String(process.env.NODE_ENV !== 'production')) === 'true';
+app.use(['/api/translate', '/api/posts/:id/subtitles'], (_req, res, next) => (TRANSLATION_ENABLED
+  ? next()
+  : res.status(404).json({ success: false, code: 'FEATURE_DISABLED', error: '该功能未启用' })));
 const subtitleQueue = [];
 const subtitleJobs = new Set();
 const activeSubtitlePosts = new Set();
@@ -812,6 +886,7 @@ function pumpSubtitleQueue() {
 }
 
 async function queueSubtitleJob(postId, lang) {
+  if (!TRANSLATION_ENABLED) return false;
   const key = `${postId}:${lang}`;
   if (subtitleJobs.has(key)) return false;
   const current = await getSubtitleTrack(postId, lang);
@@ -830,14 +905,20 @@ function queuePendingSubtitleJobs() {
   });
 }
 
+const MAX_EXTRA_VIDEOS = 4;
+
+function extraVideoFilename(tweetId, index, variantUrl) {
+  return `${tweetId}_video_${index + 1}.mp4`;
+}
+
 async function fetchXPost(url) {
   const tweetId = extractTweetId(url);
   if (!tweetId) throw new Error('无法提取推文ID');
 
-  const tweet = await fetchFromFxTwitter(tweetId);
+  const tweet = await fetchTweet(tweetId);
 
-  // X 平台官方成人内容标记检测
-  if (tweet.possibly_sensitive === true) {
+  // X 平台官方成人内容标记检测（含被引用推文）
+  if (isSensitiveTweet(tweet)) {
     throw new ModerationRejectError("该推文被 X 平台标记为成人内容，无法存档", {
       stage: "x_platform_flag",
       url,
@@ -846,7 +927,6 @@ async function fetchXPost(url) {
     });
   }
   const author = tweet.author || {};
-  const media = tweet.media || {};
 
   const allImageUrls = [];
 
@@ -854,7 +934,7 @@ async function fetchXPost(url) {
     allImageUrls.push(tweet.article.cover_media.media_info.original_img_url);
   }
 
-  (media.photos || []).forEach(p => { if (p.url) allImageUrls.push(p.url); });
+  tweet.photos.forEach(p => { if (p.url) allImageUrls.push(p.url); });
 
   if (tweet.media_entities) {
     for (const e of tweet.media_entities) {
@@ -873,8 +953,7 @@ async function fetchXPost(url) {
   const localImages = [];
   const urlToLocalPath = new Map();
   for (let i = 0; i < uniqueUrls.length; i++) {
-    const ext = uniqueUrls[i].split('.').pop().split('?')[0] || 'jpg';
-    const filename = `${tweetId}_${i}.${ext}`;
+    const filename = `${tweetId}_${i}.${imageExtension(uniqueUrls[i])}`;
     try {
       const localPath = await downloadImage(uniqueUrls[i], filename);
       localImages.push(localPath);
@@ -885,16 +964,31 @@ async function fetchXPost(url) {
     }
   }
 
-  let localVideoPath = null;
+  // The first video (or GIF) is the primary one and keeps using the existing
+  // single-video columns; further ones are downloaded after it.
   let videoSourceUrl = null;
   let videoFilename = null;
   let videoStatus = 'none';
-  const videoUrl = media.videos?.[0]?.url;
-  if (videoUrl) {
-    const videoExt = videoUrl.split('.').pop().split('?')[0] || 'mp4';
-    videoFilename = `${tweetId}_video.${videoExt.replace(/[^a-z0-9]/gi, '') || 'mp4'}`;
-    videoSourceUrl = videoUrl;
+  let videoIsGif = 0;
+  const [primary, ...others] = tweet.videos;
+  if (primary) {
+    videoSourceUrl = primary.variants[0].url;
+    videoFilename = `${tweetId}_video.mp4`;
     videoStatus = 'queued';
+    videoIsGif = primary.type === 'gif' ? 1 : 0;
+  }
+  const extraVideos = others.slice(0, MAX_EXTRA_VIDEOS).map((video, index) => ({
+    type: video.type,
+    source_url: video.variants[0].url,
+    filename: extraVideoFilename(tweetId, index),
+    path: null,
+    status: 'queued'
+  }));
+
+  // The video's cover image is kept for share previews; a failure only means no cover.
+  let videoPoster = null;
+  if (primary?.thumbnail && isTwimgUrl(primary.thumbnail)) {
+    try { videoPoster = await downloadImage(primary.thumbnail, `${tweetId}_poster.${imageExtension(primary.thumbnail)}`); } catch { /* optional */ }
   }
 
   const { htmlContent } = renderTweetContent({ tweet, localImages, urlToLocalPath, escapeHtml });
@@ -905,134 +999,20 @@ async function fetchXPost(url) {
     author_avatar: author.avatar_url || '',
     content: htmlContent,
     images: localImages,
-    video: localVideoPath,
+    video: null,
     video_source_url: videoSourceUrl,
     video_filename: videoFilename,
     video_status: videoStatus,
+    video_is_gif: videoIsGif,
+    extra_videos: extraVideos.length ? JSON.stringify(extraVideos) : null,
     video_bytes: 0,
     video_total_bytes: 0,
     video_error: null,
-    tweet_time: normalizeXTimestamp(tweet.created_timestamp, null)
+    video_poster: videoPoster,
+    reply_count: tweet.replies,
+    author_followers: tweet.author?.followers ?? null,
+    tweet_time: normalizeXTimestamp(tweet.created_at, null)
   };
-}
-
-function generateMirrorHtml(post) {
-  const prepared = prepareContent(post, DATA_DIR);
-  const content = prepared.html;
-  const videoStatus = post.video_status || (post.video ? 'completed' : (post.video_source_url ? 'queued' : 'none'));
-  const videoBytes = Number(post.video_bytes) || 0;
-  const videoTotal = Number(post.video_total_bytes) || 0;
-  const videoPercent = videoTotal > 0 ? Math.min(100, Math.round((videoBytes / videoTotal) * 100)) : 0;
-  let videoHtml = '';
-  if (videoStatus === 'completed' && /^\/videos\/[A-Za-z0-9_.-]+$/.test(post.video || '')) {
-    videoHtml = buildVideoPlayerHtml(post);
-  } else if (['queued', 'downloading'].includes(videoStatus)) {
-    const initialText = videoStatus === 'downloading' ? '视频正在下载中…' : '视频即将开始下载…';
-    videoHtml = `<div class="video-placeholder" data-video-status="${videoStatus}" data-video-post-id="${post.id}" role="status" aria-live="polite">
-      <div class="video-placeholder-title">🎞️ ${initialText}</div>
-      <div class="video-progress"><div class="video-progress-bar" style="width:${videoPercent}%"></div></div>
-      <div class="video-progress-text">${videoPercent > 0 ? `${videoPercent}% · ${formatBytes(videoBytes)}${videoTotal ? ` / ${formatBytes(videoTotal)}` : ''}` : '正在准备下载'}</div>
-    </div>`;
-  } else if (videoStatus === 'failed') {
-    videoHtml = `<div class="video-placeholder video-placeholder-error" data-video-status="failed" data-video-post-id="${post.id}" role="status">视频下载失败，请重新提交原链接重试。</div>`;
-  }
-
-  const meta = seo.metadata(post);
-  const summary = meta.description;
-  const ogPath = seo.imagesFor(post).find(image => {
-    try { return fs.statSync(path.join(DATA_DIR, image)).size > 0; } catch { return false; }
-  });
-  const ogImage = buildPublicUrl(ogPath || '/xput-share.png', PUBLIC_BASE_URL);
-  const pageTitle = `${escapeHtml(meta.title)} | XPut`;
-  const canonicalPath = post.short_code ? `/${post.short_code}` : `/archives/${post.html_file}`;
-  const canonicalUrl = buildPublicUrl(canonicalPath, PUBLIC_BASE_URL);
-  const refererPath = post.short_code ? `/${post.short_code}/referer` : post.url;
-  const publishedAt = normalizeXTimestamp(post.tweet_time, null);
-  const savedAt = post.created_at ? (post.created_at.includes("T") ? post.created_at : post.created_at.replace(" ", "T") + "Z") : new Date().toISOString();
-  const createdAt = normalizeXTimestamp(savedAt);
-  const sourceLang = detectContentLanguage(content);
-
-  const html = `<!DOCTYPE html>
-<html lang="${escapeHtml(sourceLang)}">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${pageTitle}</title>
-<meta name="description" content="${escapeHtml(summary)}">
-
-<meta name="author" content="${escapeHtml(post.author)}">
-<meta name="robots" content="${seo.robotsFor(post)}">
-
-<link rel="canonical" href="${canonicalUrl}">
-<link rel="icon" href="/favicon.ico?v=xput-tray-1" sizes="16x16 32x32 48x48">
-<link rel="icon" href="/favicon.svg?v=xput-tray-1" type="image/svg+xml" sizes="any">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=xput-tray-1">
-<link rel="mask-icon" href="/safari-pinned-tab.svg?v=xput-tray-1" color="#2563eb">
-<link rel="manifest" href="/site.webmanifest?v=xput-tray-1">
-<meta property="og:title" content="${pageTitle}">
-<meta property="og:description" content="${escapeHtml(summary)}">
-<meta property="og:type" content="article">
-<meta property="og:image" content="${escapeHtml(ogImage)}">
-<meta property="og:url" content="${canonicalUrl}">
-<meta property="og:site_name" content="XPut">
-<meta property="og:locale" content="${({en:'en_US',zh:'zh_CN','zh-CN':'zh_CN',ja:'ja_JP',ko:'ko_KR'})[sourceLang] || 'en_US'}">
-${publishedAt ? `<meta property="article:published_time" content="${publishedAt}">` : ''}
-<meta property="article:author" content="${escapeHtml(post.author)}">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${pageTitle}">
-<meta name="twitter:description" content="${escapeHtml(summary)}">
-<meta name="twitter:image" content="${escapeHtml(ogImage)}">
-<meta name="twitter:creator" content="@${escapeHtml(post.author_handle)}">
-<script type="application/ld+json">${structuredData(post, PUBLIC_BASE_URL, sourceLang, ogPath ? ogImage : null)}</script>
-<meta name="twitter:domain" content="${new URL(PUBLIC_BASE_URL).hostname}">
-<!-- Retain the existing analytics site ID to preserve historical reporting across the domain migration. -->
-<script defer data-domain="xmirror.app" src="https://a.zhxs.me/js/script.js"></script>
-<link rel="preload" href="/xput-logo.svg" as="image" type="image/svg+xml">
-<link rel="stylesheet" href="/theme.css?v=${APP_VERSION}">
-<link rel="stylesheet" href="/article.css?v=${APP_VERSION}">
-</head>
-<body class="mirror-page">
-<nav class="article-tools" aria-label="页面设置"><button class="quiet-button" type="button" onclick="toggleTheme()" aria-label="切换主题"><span aria-hidden="true">◐</span></button><button class="quiet-button article-lang" type="button" aria-hidden="true">EN</button></nav>
-<div class="container">
-<div class="post" data-post-id="${post.id}" data-source-lang="${sourceLang}">
-<div class="article-byline">
-<img class="avatar" width="38" height="38" alt="" decoding="async" src="${escapeHtml(post.author_avatar)}" onerror="this.style.display='none'">
-<div class="author-info"><div class="author-name">${escapeHtml(post.author)}</div><div class="author-handle">@${escapeHtml(post.author_handle)}</div></div>
-</div>
-${prepared.headingHtml}
-${publishedAt ? `<p class="post-published">原帖发布于 <time datetime="${publishedAt}">${publishedAt.slice(0,10)}</time></p>` : ''}
-<div class="translate-toolbar">
-<button id="translateBtn" class="translate-btn" type="button" onclick="toggleTranslate()" aria-controls="originContent translatedContent" aria-busy="false">翻译为中文</button>
-<span id="translateStatus" class="translate-status" role="status" aria-live="polite" aria-atomic="true"></span>
-</div>
-<div id="originContent" class="content content-view active" aria-hidden="false">${content}</div>
-<div id="translatedContent" class="content content-view" aria-hidden="true"></div>
-${videoHtml}
-<nav class="archive-navigation" aria-label="存档导航"><a href="/browse">浏览公开存档</a><a href="/report?post=${post.short_code}">投诉／删除申请</a></nav>
-${post.related?.length ? `<section class="related-posts"><h2>同一作者的其他存档</h2><ul>${post.related.map(p => `<li><a href="/${p.short_code}">${seo.escape(seo.metadata(p).title)}</a></li>`).join('')}</ul></section>` : ''}
-<div class="article-end"><a class="back-home" href="/">← 返回 XPut 首页</a><span class="saved-mark"><time class="article-time" datetime="${createdAt}">${new Date(createdAt).toLocaleString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time> 保存</span><a class="source" href="${refererPath}" target="_blank" rel="noopener noreferrer">在 X 查看原帖 ↗</a></div>
-</div></div>
-<script src="/seo-events.js?v=${APP_VERSION}" defer></script>
-<script src="/mirror-page.js?v=${APP_VERSION}-links2" defer></script>
-</body>
-</html>`;
-
-  return html;
-}
-
-function buildVideoPlayerHtml(post) {
-  return `<div class="video-shell" data-video-post-id="${post.id}">
-    <video controls playsinline preload="metadata" aria-label="${escapeHtml(seo.metadata(post).title)}"><source src="${escapeHtml(post.video)}" type="video/mp4"></video>
-    <div class="subtitle-toolbar" role="group" aria-label="字幕设置">
-      <label for="subtitleSelect">CC 字幕</label>
-      <select id="subtitleSelect" class="subtitle-select">
-        <option value="" selected>关闭字幕</option>
-        <option value="en">English</option>
-        <option value="zh-CN">简体中文</option>
-      </select>
-      <span id="subtitleStatus" class="subtitle-status" role="status" aria-live="polite"></span>
-    </div>
-  </div>`;
 }
 
 async function getPostById(id) {
@@ -1221,6 +1201,7 @@ async function persistTranslationJobCounts(jobId) {
 }
 
 function enqueueTranslationJob(jobId) {
+  if (!TRANSLATION_ENABLED) return;
   const key = String(jobId);
   if (translationQueued.has(key) || translationRunning.has(key)) return;
   translationQueued.add(key);
@@ -1576,11 +1557,12 @@ async function archiveXUrl(url) {
       }
       await runDbWrite(
         `UPDATE posts SET author=?,author_handle=?,author_avatar=?,content=?,images=?,video=?,
-         video_status=?,video_source_url=?,video_filename=?,video_bytes=?,video_total_bytes=?,video_error=?,tweet_time=? WHERE id=?`,
+         video_status=?,video_source_url=?,video_filename=?,video_bytes=?,video_total_bytes=?,video_error=?,tweet_time=?,
+         video_is_gif=?,extra_videos=?,reply_count=?,author_followers=?,video_poster=? WHERE id=?`,
         [refreshed.author, refreshed.author_handle, refreshed.author_avatar, refreshed.content,
           JSON.stringify(refreshed.images), refreshed.video, refreshed.video_status, refreshed.video_source_url,
           refreshed.video_filename, refreshed.video_bytes, refreshed.video_total_bytes, refreshed.video_error,
-          refreshed.tweet_time, existing.id]
+          refreshed.tweet_time, refreshed.video_is_gif, refreshed.extra_videos, refreshed.reply_count, refreshed.author_followers, refreshed.video_poster, existing.id]
       );
       Object.assign(existing, refreshed, { images: JSON.stringify(refreshed.images) });
     }
@@ -1591,9 +1573,6 @@ async function archiveXUrl(url) {
     await seoStore.invalidate(existing.id);
     await refreshSeo(existing.id);
     Object.assign(existing, await getPostById(existing.id));
-    const htmlPath = path.join(ARCHIVES_DIR, existing.html_file);
-    const htmlContent = generateMirrorHtml(existing);
-    fs.writeFileSync(htmlPath, htmlContent, 'utf8');
     await resumeVideoDownloadIfNeeded(existing);
     return archiveSuccessResponse(existing, true);
   }
@@ -1627,11 +1606,13 @@ async function archiveXUrl(url) {
   try {
     stmt = await runDbWrite(
       `INSERT INTO posts(url,author,author_handle,author_avatar,content,images,video,video_status,video_source_url,
-       video_filename,video_bytes,video_total_bytes,video_error,tweet_time,html_file,short_code)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       video_filename,video_bytes,video_total_bytes,video_error,tweet_time,html_file,short_code,video_is_gif,extra_videos,
+       reply_count,author_followers,video_poster)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [canonicalUrl, content.author, content.author_handle, content.author_avatar, content.content, JSON.stringify(content.images),
         content.video, content.video_status, content.video_source_url, content.video_filename, content.video_bytes,
-        content.video_total_bytes, content.video_error, content.tweet_time, htmlFile, shortCode]
+        content.video_total_bytes, content.video_error, content.tweet_time, htmlFile, shortCode,
+        content.video_is_gif, content.extra_videos, content.reply_count, content.author_followers, content.video_poster]
     );
   } catch (insertErr) {
     if (String(insertErr.message || '').includes('UNIQUE constraint failed: posts.url')) {
@@ -1641,11 +1622,8 @@ async function archiveXUrl(url) {
           existing2.short_code = await generateUniqueShortCode();
           await runDbWrite('UPDATE posts SET short_code=? WHERE id=?', [existing2.short_code, existing2.id]);
         }
-        const htmlPath = path.join(ARCHIVES_DIR, existing2.html_file);
         await refreshSeo(existing2.id);
         Object.assign(existing2, await getPostById(existing2.id));
-        const htmlContent = generateMirrorHtml(existing2);
-        fs.writeFileSync(htmlPath, htmlContent, 'utf8');
         await resumeVideoDownloadIfNeeded(existing2);
         return archiveSuccessResponse(existing2, true);
       }
@@ -1656,13 +1634,18 @@ async function archiveXUrl(url) {
   const result = stmt.lastID;
   await seoStore.run('UPDATE posts SET seo_quality_version=?,seo_ai_enabled=1 WHERE id=?', [process.env.SEO_QUALITY_VERSION === '2' ? '2' : '3', result]);
   await refreshSeo(result);
-  const htmlContent = generateMirrorHtml(await getPostById(result));
-  fs.writeFileSync(path.join(ARCHIVES_DIR, htmlFile), htmlContent, 'utf8');
   if (content.video_source_url) {
     queueVideoDownload({ postId: result, url: content.video_source_url, filename: content.video_filename });
   }
 
   return archiveSuccessResponse({ id: result, ...content, short_code: shortCode });
+}
+
+// SQLite stores "YYYY-MM-DD HH:MM:SS" in UTC; expose it as an ISO timestamp.
+function savedAtIso(value) {
+  if (!value) return null;
+  const text = String(value);
+  return text.includes('T') ? text : `${text.replace(' ', 'T')}Z`;
 }
 
 function sendArchiveError(res, error) {
@@ -1671,7 +1654,16 @@ function sendArchiveError(res, error) {
   return res.status(response.status).json(response.body);
 }
 
-app.post('/api/archive', async (req, res) => {
+// One budget per visitor shared by every endpoint that triggers an upstream fetch.
+const FETCH_RATE_LIMIT_PER_MIN = Math.max(1, Number(process.env.FETCH_RATE_LIMIT_PER_MIN) || 20);
+const fetchRateLimit = createRateLimiter({
+  windowMs: 60000,
+  max: FETCH_RATE_LIMIT_PER_MIN,
+  code: 'RATE_LIMITED',
+  message: '请求过于频繁，请稍后再试'
+});
+
+app.post('/api/archive', fetchRateLimit, async (req, res) => {
   try {
     const payload = await archiveXUrl(req.body?.url);
     return res.json(payload);
@@ -1680,7 +1672,58 @@ app.post('/api/archive', async (req, res) => {
   }
 });
 
-app.get('/api/archive/quick', async (req, res) => {
+app.post('/api/resolve', fetchRateLimit, async (req, res) => {
+  try {
+    const payload = await resolveUrl(req.body?.url, { confirmAge: req.body?.confirm_age === true || hasAgeConfirmation(req) }, {
+      fetchTweet,
+      precheck: url => { if (getModerationSettings().enabled) moderator.precheckUrl(url); },
+      assess: payload => getModerationSettings().enabled ? reviewService.assess(payload) : null,
+      escapeHtml
+    });
+    res.set('Cache-Control', 'no-store');
+    return res.json(payload);
+  } catch (error) {
+    return sendArchiveError(res, error);
+  }
+});
+
+// File sizes for the result cards (HEAD requests to X's CDN, cached).
+const mediaInfo = createMediaInfo();
+const mediaInfoLimit = createRateLimiter({ windowMs: 60000, max: 60, code: 'RATE_LIMITED', message: '请求过于频繁，请稍后再试' });
+app.post('/api/media-info', mediaInfoLimit, async (req, res) => {
+  const urls = req.body?.urls;
+  if (!Array.isArray(urls) || urls.length === 0 || urls.length > 10 || urls.some(url => typeof url !== 'string' || url.length > 2048)) {
+    return res.status(400).json({ success: false, code: 'INVALID_REQUEST', error: '无效请求' });
+  }
+  res.set('Cache-Control', 'no-store').json({ success: true, sizes: await mediaInfo.sizes(urls) });
+});
+
+// Age confirmation lives in a session cookie; /api/resolve reads it server-side.
+app.post('/api/age-confirm', (req, res) => {
+  if (req.get('origin') && req.get('origin') !== new URL(PUBLIC_BASE_URL).origin && !/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(req.get('origin'))) return res.sendStatus(403);
+  setAgeConfirmation(res, { secure: req.secure });
+  res.set('Cache-Control', 'no-store').json({ success: true });
+});
+
+// "Check for a saved copy": database lookup only, never contacts X.
+app.post('/api/saved-copy', fetchRateLimit, async (req, res) => {
+  try {
+    const canonicalUrl = normalizeArchiveUrl(req.body?.url);
+    const tweetId = extractTweetId(canonicalUrl);
+    const rows = await dbAll(
+      'SELECT id, short_code, created_at, url FROM posts WHERE url=? OR url LIKE ? OR url LIKE ? ORDER BY id ASC',
+      [canonicalUrl, `%/status/${tweetId}%`, `%/article/${tweetId}%`]
+    );
+    const post = rows.find(row => extractTweetId(row.url) === tweetId && row.short_code);
+    res.set('Cache-Control', 'no-store');
+    if (!post) return res.json({ success: true, found: false });
+    return res.json({ success: true, found: true, url: `/${post.short_code}`, saved_at: savedAtIso(post.created_at) });
+  } catch (error) {
+    return sendArchiveError(res, error);
+  }
+});
+
+app.get('/api/archive/quick', fetchRateLimit, async (req, res) => {
   const rawUrl = (req.query.url || '').toString().trim();
   const format = (req.query.format || 'redirect').toString().toLowerCase();
 
@@ -1756,11 +1799,13 @@ const reviewAdminLimit = createRateLimiter({ windowMs: 60000, max: 10 });
 app.post('/api/admin/moderation/recheck', requireAdmin, reviewAdminLimit, async (req, res) => {
   try {
     const url = normalizeArchiveUrl(req.body?.url);
-    const tweet = await fetchFromFxTwitter(extractTweetId(url));
-    if (tweet.possibly_sensitive === true) return res.status(409).json({ error: '原平台敏感标记需人工检查媒体，本次未放行' });
+    const tweetId = extractTweetId(url);
+    fetchTweet.cache.delete(tweetId); // rechecks must see the current text
+    const tweet = await fetchTweet(tweetId);
+    if (isSensitiveTweet(tweet)) return res.status(409).json({ error: '原平台敏感标记需人工检查媒体，本次未放行' });
     const rendered = renderTweetContent({ tweet, escapeHtml });
     try {
-      await reviewService.assess({ url, authorHandle: tweet.author?.screen_name || '', authorName: tweet.author?.name || '', content: rendered.htmlContent }, { retry: true });
+      await reviewService.assess({ url, authorHandle: tweet.author.screen_name, authorName: tweet.author.name, content: rendered.htmlContent }, { retry: true });
     } catch (e) {
       if (!['CONTENT_MODERATION_REJECTED', 'CONTENT_MODERATION_PENDING'].includes(e.code)) throw e;
     }
@@ -1787,6 +1832,12 @@ app.post('/api/delete', requireAdmin, async (req, res) => {
     const post = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE id=?',[id],(e,row)=>e?j(e):r(row)));
     if (!post) return res.status(404).json({error:'存档不存在'});
 
+    // Leave a removal notice so the old link says "this copy was removed" instead of "does not exist".
+    if (post.short_code) {
+      const reference = typeof req.body.reference === 'string' ? req.body.reference.trim().slice(0, 64) : '';
+      await runDbWrite('INSERT OR REPLACE INTO removed_posts(short_code, post_id, reference) VALUES(?,?,?)', [post.short_code, post.id, reference || null]);
+    }
+
     const htmlPath = path.join(ARCHIVES_DIR, post.html_file);
     if (fs.existsSync(htmlPath)) fs.unlinkSync(htmlPath);
 
@@ -1797,6 +1848,12 @@ app.post('/api/delete', requireAdmin, async (req, res) => {
     }
 
     deleteMediaAsset(DATA_DIR, post.video);
+    try {
+      for (const extra of JSON.parse(post.extra_videos || '[]')) {
+        if (extra.path) deleteMediaAsset(DATA_DIR, extra.path);
+        if (extra.filename) { try { fs.unlinkSync(`${videoPathForFilename(extra.filename)}.part`); } catch {} }
+      }
+    } catch {}
     if (post.video_filename) {
       try { fs.unlinkSync(`${videoPathForFilename(post.video_filename)}.part`); } catch {}
     }
@@ -1819,26 +1876,17 @@ app.post('/api/delete', requireAdmin, async (req, res) => {
   }
 });
 
+// Old per-file links keep working by redirecting to the short code page.
 app.get('/archives/:fileName', async (req, res, next) => {
   const { fileName } = req.params;
   if (!/^post_\d+\.html$/.test(fileName)) return next();
-
   try {
-    const post = await new Promise((resolve, reject) => {
-      db.get('SELECT * FROM posts WHERE html_file=?', [fileName], (err, row) => err ? reject(err) : resolve(row));
-    });
-
-    if (post?.short_code) {
-      return res.redirect(301, `/${post.short_code}`);
-    }
-    if (post) {
-      return res.set('Cache-Control', 'no-store').status(200).send(generateMirrorHtml(post));
-    }
+    const post = await dbGet('SELECT short_code FROM posts WHERE html_file=?', [fileName]);
+    if (post?.short_code) return res.redirect(301, `/${post.short_code}`);
   } catch (e) {
     console.error('旧链接301映射失败:', e.message);
     return res.sendStatus(503);
   }
-
   return next();
 });
 
@@ -1867,32 +1915,12 @@ app.get(/^\/([A-Za-z0-9]{6})\/referer$/, async (req, res, next) => {
   }
 });
 
-app.get(/^\/([A-Za-z0-9]{6})$/, async (req, res, next) => {
-  try {
-    const shortCode = req.params[0];
-    const post = await new Promise((resolve, reject) => {
-      db.get(
-        `SELECT * FROM posts WHERE short_code=?
-         UNION ALL
-         SELECT p.* FROM post_aliases a JOIN posts p ON p.id=a.target_post_id
-         WHERE a.alias_code=? LIMIT 1`,
-        [shortCode, shortCode],
-        (err, row) => err ? reject(err) : resolve(row)
-      );
-    });
-
-    if (!post) return next();
-
-    if (post.short_code !== shortCode) return res.redirect(301, `/${post.short_code}`);
-    res.set('Cache-Control', 'no-store');
-    post.related = await seoStore.related(post);
-    const htmlContent = generateMirrorHtml(post);
-    return res.status(200).send(htmlContent);
-  } catch (e) {
-    console.error('短链访问失败:', e.message);
-    return res.sendStatus(503);
-  }
-});
+const DOWNLOAD_BASE = DOWNLOAD.base;
+const viewCounter = createViewCounter({ flush: batch => postStore.applyCounts(batch), intervalMs: Number(process.env.VIEW_COUNTER_FLUSH_MS) || 30000 });
+const featuredService = createFeaturedService({ db: { get: dbGet, all: dbAll, run: runDbWrite }, store: postStore });
+registerResultRoutes(app, { store: postStore, counter: viewCounter, baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE, featured: featuredService });
+registerFeaturedAdminRoutes(app, { service: featuredService, requireAdmin });
+registerOgRoutes(app, { store: postStore, dataDir: DATA_DIR, publicDir: path.join(__dirname, 'public') });
 
 async function refreshSeo(id) {
   try { return await seoStore.refresh(id); }
@@ -1907,17 +1935,26 @@ async function startServer() {
     await ensureShortCodeReady();
     await ensureVideoColumnsReady();
     await seoStore.migrate();
+    await migrateFrontendSchema({ run: runDbWrite, all: dbAll, get: dbGet });
     await seoAI.migrate();
     await migrateReports(seoStore);
     let hashBatch;
     let hashCursor = 0;
     do { hashBatch = await seoStore.backfillHashes(100, hashCursor); hashCursor = hashBatch.lastId; } while (hashBatch.scanned === 100);
+    const reserved6 = [...RESERVED_SHORT_CODES].filter(word => /^[a-z0-9]{6}$/.test(word));
+    if (reserved6.length) {
+      const clashes = await new Promise((resolve, reject) => db.all(
+        `SELECT short_code FROM posts WHERE lower(short_code) IN (${reserved6.map(() => '?').join(',')})`, reserved6,
+        (err, rows) => err ? reject(err) : resolve(rows || [])));
+      if (clashes.length) console.warn(`保留字与已有短码冲突（会被固定页面遮挡）: ${clashes.map(row => row.short_code).join(', ')}`);
+    }
     console.log('短链字段与历史数据检查完成');
   } catch (e) {
     console.error('短链初始化失败:', e.message);
     process.exit(1);
   }
 
+  registerNotFound(app, { baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE });
   app.listen(PORT,'0.0.0.0',()=>{
     console.log(`XMirror运行在http://0.0.0.0:${PORT}`);
     console.log(`SQLite: ${dbPath}`);
@@ -1925,9 +1962,9 @@ async function startServer() {
     maintainSeo();
     setInterval(maintainSeo, 60000).unref();
     setInterval(() => seoAI.tick().catch(() => console.error('SEO title worker failed')), 5000).unref();
+    viewCounter.start();
     queuePendingVideoDownloads();
-    queuePendingSubtitleJobs();
-    queuePendingTranslationJobs();
+    if (TRANSLATION_ENABLED) { queuePendingSubtitleJobs(); queuePendingTranslationJobs(); }
   });
 }
 

@@ -1,0 +1,22 @@
+# Deploy: cd workers/download-proxy && npx wrangler deploy
+name = "xput-download-proxy"
+main = "index.js"
+compatibility_date = "2025-01-01"
+workers_dev = false
+
+# Serve the Worker on the same hostname as the site so the page needs no CORS:
+#   https://xput.app/dl?u=<media url>&n=<file name>
+# Replace the zone name with the zone that holds your domain.
+routes = [
+  { pattern = "xput.app/dl*", zone_name = "xput.app" }
+]
+
+# Per-visitor limit for full downloads (Workers Rate Limiting binding).
+# `period` must be 10 or 60 seconds. If your account does not have this binding,
+# delete this block and use a WAF rate limiting rule on /dl instead (see README.md).
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 60
+  period = 60

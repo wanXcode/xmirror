@@ -16,8 +16,8 @@ test('admin review HTTP authorization, persistent decision and grouped log', {ti
  const base='http://127.0.0.1:'+port;
  for(let i=0;i<100;i++){try{if((await fetch(base+'/healthz')).ok)break;}catch{} await new Promise(r=>setTimeout(r,50));}
  const url=base+'/api/admin/moderation/reviews/'+id;
- assert.equal((await fetch(url)).status,403);
- assert.equal((await fetch(base+'/api/admin/moderation/recheck',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:'https://x.com/i/status/42'})})).status,403);
+ assert.equal((await fetch(url)).status,401);
+ assert.equal((await fetch(base+'/api/admin/moderation/recheck',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:'https://x.com/i/status/42'})})).status,401);
  const headers={'x-admin-token':'review-test','Content-Type':'application/json'};
  const record=await fetch(url,{headers});assert.equal(record.headers.get('cache-control'),'no-store');assert.equal((await record.json()).record.action,'review');
  const write=body=>fetch(url,{method:'POST',headers,body:JSON.stringify(body)});

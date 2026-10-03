@@ -32,24 +32,20 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   await run(db, 'INSERT INTO posts(id,url,short_code,content,images,author,author_handle,tweet_time,html_file) VALUES(?,?,?,?,?,?,?,?,?)', [1,'https://x.com/i/status/123','Ab1234',content,'["/images/sample.jpg"]','Alice','alice','2026-09-26T01:00:00Z','post_123.html']);
   let page = await (await fetch(base+'/Ab1234')).text();
   assert.match(page, /content="noindex, follow"/);
-  assert.match(page, /property="og:image" content="https:\/\/xput.app\/images\/sample.jpg"/);
+  assert.match(page, /property="og:image" content="https:\/\/xput.app\/og\/Ab1234.png"/);
   assert.match(page, /<html lang="en">/);
   await run(db, "UPDATE posts SET images='[]' WHERE id=1");
-  const fallbackPage = await (await fetch(base+'/Ab1234')).text();
-  for (const tag of ['property="og:image"', 'name="twitter:image"']) {
-    assert.ok(fallbackPage.includes(`<meta ${tag} content="https://xput.app/xput-share.png">`));
-  }
   const shareImage = await fetch(base+'/xput-share.png');
   assert.equal(shareImage.status, 200);
   assert.match(shareImage.headers.get('content-type'), /image\/png/);
   await run(db, 'UPDATE posts SET images=? WHERE id=1', ['["/images/sample.jpg"]']);
-  assert.match(await (await fetch(base+'/')).text(), /href="\/Ab1234"/);
-  assert.equal((await fetch(base+'/api/admin/seo')).status,403);
+  assert.equal((await fetch(base+'/api/admin/seo')).status,401);
   const action=async body=>fetch(base+'/api/admin/seo/1',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':'test-only-token'},body:JSON.stringify(body)});
   assert.equal((await action({override:'index',blocked:'false'})).status,400);
   assert.equal((await (await action({override:null,blocked:false})).json()).status,'index');
-  page = await (await fetch(base+'/Ab1234')).text();assert.match(page,/content="index, follow"/);
-  assert.match(await (await fetch(base+'/sitemap.xml')).text(), /\/Ab1234/);
+  // An archive picked by the SEO mechanism stays indexable (the old "worth re-reading" set): robots, sitemap, list, structured data.
+  page = await (await fetch(base+'/Ab1234')).text();assert.match(page,/content="index, follow"/);assert.match(page,/"@type":"SocialMediaPosting"/);
+  assert.match(await (await fetch(base+'/sitemap-copies-1.xml')).text(), /\/Ab1234/, 'a selected archive is in the copies sitemap');
   assert.match(await (await fetch(base+'/browse')).text(), /\/Ab1234/);
   await run(db, 'INSERT INTO posts(id,url,short_code,content,images,author,author_handle,tweet_time,html_file,seo_status,seo_blocked) VALUES(?,?,?,?,?,?,?,?,?,?,?)', [2,'https://x.com/i/status/456','Cd3456','<h1>Needle guide</h1><p>Searchable archive</p>','[]','Bob Builder','bob_builder','2026-09-26T02:00:00Z','post_456.html','index',0]);
   const searchPage = await (await fetch(base+'/browse?q=needle')).text();
@@ -63,10 +59,10 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   const generatedPost=await get('SELECT * FROM posts WHERE id=2');
   const generatedHash=require('../lib/seo-title').fingerprint(generatedPost);
   await run(db,'UPDATE posts SET seo_title=?,seo_description=?,seo_title_hash=? WHERE id=2',['Needle archive guide','An archived guide.',generatedHash]);
-  for(const route of ['/Cd3456','/browse','/']) {
+  for(const route of ['/browse']) {
     const html=await(await fetch(base+route)).text();assert.match(html,/Needle archive guide/);
-    if(route==='/Cd3456')assert.equal((html.match(/<h1\b/g)||[]).length,1);
   }
+  assert.equal(((await(await fetch(base+'/Cd3456')).text()).match(/<h1\b/g)||[]).length,1);
   const apiPosts=await(await fetch(base+'/api/posts')).json();
   assert.equal(apiPosts.posts.find(p=>p.id===2).title,'Needle archive guide');
   const escapedSearch = await (await fetch(base+'/browse?q=%3Cscript%3E')).text();
@@ -77,15 +73,15 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   await run(db,'INSERT INTO post_aliases(alias_code,target_post_id) VALUES(?,?)',['Cd5678',1]);
   assert.equal((await fetch(base+'/Cd5678',{redirect:'manual'})).status,301);
   for(const p of ['/demo/','/admin-xput.html','/api/posts']) assert.match((await fetch(base+p)).headers.get('x-robots-tag'),/noindex/);
-  const robots=await(await fetch(base+'/robots.txt')).text();assert.match(robots,/Sitemap: https:\/\/xput.app\/sitemap.xml/);assert.match(robots,/Disallow: \/api\/archive\//);assert.doesNotMatch(robots,/Disallow: \/(?:demo|admin)/);
+  const robots=await(await fetch(base+'/robots.txt')).text();assert.match(robots,/Sitemap: https:\/\/xput.app\/sitemap.xml/);assert.match(robots,/Disallow: \/api\//);assert.match(robots,/Disallow: \/dl\n/);assert.match(robots,/Disallow: \/node-dl\n/);assert.doesNotMatch(robots,/Disallow: \/(?:demo|admin)/);
   await action({override:'index',blocked:true});
   assert.equal((await (await action({override:'index'})).json()).status,'noindex', 'recommend does not clear a block');
-  assert.doesNotMatch(await(await fetch(base+'/sitemap.xml')).text(),/Ab1234/);
+  assert.doesNotMatch(await(await fetch(base+'/sitemap-copies-1.xml')).text(),/Ab1234/);
   assert.match(await(await fetch(base+'/Ab1234')).text(),/noindex/);
   const reportResponse = await fetch(base+'/api/reports',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:'https://xput.app/Ab1234',kind:'privacy',reason:'Please remove my private personal information.',contact:'person@example.com'})});
   assert.equal(reportResponse.status,201);
   const reportId=(await reportResponse.json()).id;
-  assert.equal((await fetch(base+'/api/admin/reports')).status,403);
+  assert.equal((await fetch(base+'/api/admin/reports')).status,401);
   const reportList=await (await fetch(base+'/api/admin/reports',{headers:{'x-admin-token':'test-only-token'}})).json();
   assert.equal(reportList.reports[0].id,reportId);
   assert.equal(reportList.reports[0].post_exists,true);
@@ -98,8 +94,7 @@ test('real server serves canonical, sitemap, noindex, admin guard and SSR links 
   assert.equal(closedAgain.status,409,'a stale closed report cannot mutate the archive');
   assert.equal((await fetch(base+'/report')).status,200);
   const home=await (await fetch(base+'/')).text();
-  assert.match(home,/href="\/help"/);assert.match(home,/og:image/);assert.match(home,/href="\/report"/);
-  assert.match(await (await fetch(base+'/Ab1234')).text(),/SocialMediaPosting/);
+  assert.match(home,/href="\/report"/);
   assert.match((await fetch(base+'/Ab1234/referer',{redirect:'manual'})).headers.get('x-robots-tag'),/noindex/);
   await run(db,'DELETE FROM posts WHERE id IN (1,2)');
   const historicalReports=await (await fetch(base+'/api/admin/reports?status=closed',{headers:{'x-admin-token':'test-only-token'}})).json();

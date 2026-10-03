@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>XPut Twitter Viewer – desktop</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1747C9;text-decoration:none}a:hover{color:#0F2F8A}
+</style>
+</helmet>
+<div style="font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #111418; background: #F6F7F9; min-height: 100vh">
+
+<header style="background: #FFFFFF; border-bottom: 1px solid #E3E6EB">
+<div style="max-width: 1200px; margin: 0 auto; padding: 0 32px; height: 68px; display: flex; align-items: center; justify-content: space-between">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; color: #111418">
+<span style="width: 32px; height: 32px; border-radius: 8px; background: #111418; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px">X</span>
+<span style="font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 20px">XPut</span>
+</a>
+<nav style="display: flex; align-items: center; gap: 28px; font-size: 15px; font-weight: 500">
+<a href="Main.dc.html" style="color: #111418">Video Downloader</a>
+<a href="#" style="color: #111418">Image Downloader</a>
+<a href="#" style="color: #111418">GIF Downloader</a>
+<a href="#" style="color: #1747C9">Twitter Viewer</a>
+<button style="height: 38px; padding: 0 14px; border: 1px solid #D5D9E0; border-radius: 8px; background: #FFFFFF; font: inherit; font-size: 14px; color: #111418">English · 中文</button>
+</nav>
+</div>
+</header>
+
+<section style="max-width: 1200px; margin: 0 auto; padding: 72px 32px 40px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 20px">
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 54px; line-height: 1.08; font-weight: 700; letter-spacing: -0.02em; max-width: 860px">Twitter Viewer</h1>
+<p style="margin: 0; font-size: 19px; line-height: 1.55; color: #454C57; max-width: 660px">View any public X post without logging in. Every link you open here keeps working, even if the original post is deleted.</p>
+<div style="width: 100%; max-width: 760px; margin-top: 12px; display: flex; gap: 10px; padding: 8px; background: #FFFFFF; border: 1.5px solid #C9CED6; border-radius: 14px">
+<label for="vurl" style="position: absolute; left: -9999px">Paste an X post link</label>
+<input id="vurl" type="url" placeholder="Paste an X or Twitter post link" style="flex-grow: 1; min-width: 0; height: 52px; border: 0; outline: none; padding: 0 14px; font: inherit; font-size: 16px; background: transparent; color: #111418">
+<button style="height: 52px; padding: 0 30px; border-radius: 10px; border: 0; background: #1747C9; color: #FFFFFF; font: inherit; font-size: 16px; font-weight: 600">View</button>
+</div>
+<p style="margin: 0; font-size: 14px; color: #5B6370">Free · No X account needed · Public posts only</p>
+</section>
+
+<section style="max-width: 1200px; margin: 0 auto; padding: 0 32px 72px">
+<article style="max-width: 640px; margin: 0 auto; background: #FFFFFF; border: 1px solid #E3E6EB; border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; align-items: center; justify-content: space-between">
+<div style="display: flex; align-items: center; gap: 12px">
+<span style="width: 44px; height: 44px; border-radius: 50%; background: #D5D9E0"></span>
+<div style="display: flex; flex-direction: column; text-align: left">
+<span style="font-weight: 600">[Author name]</span>
+<span style="color: #5B6370; font-size: 14px">@[handle]</span>
+</div>
+</div>
+<span style="font-size: 13px; font-weight: 600; color: #1D6B3A; background: #E6F4EA; padding: 6px 10px; border-radius: 999px">Saved copy</span>
+</div>
+<p style="margin: 0; font-size: 18px; line-height: 1.6; text-align: left">[Full post text appears here, including long posts, in a clean reading layout.]</p>
+<div style="height: 300px; border-radius: 12px; background: #1B1F26; color: #9AA3AF; display: flex; align-items: center; justify-content: center; font-size: 13px">[Images or video]</div>
+<div style="display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: #5B6370">
+<span>[Posted date] · Saved [saved date]</span>
+<span>[Reply count] replies</span>
+</div>
+<div style="display: flex; gap: 10px; border-top: 1px solid #E3E6EB; padding-top: 18px">
+<button style="flex-grow: 1; height: 46px; border-radius: 10px; border: 0; background: #1747C9; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600">Copy share link</button>
+<button style="flex-grow: 1; height: 46px; border-radius: 10px; border: 1px solid #C9CED6; background: #FFFFFF; color: #111418; font: inherit; font-size: 15px; font-weight: 500">Download media</button>
+<a href="#" style="flex-grow: 1; height: 46px; border-radius: 10px; border: 1px solid #C9CED6; color: #111418; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 500">Open on X</a>
+</div>
+</article>
+</section>
+
+<section style="background: #FFFFFF; border-top: 1px solid #E3E6EB">
+<div style="max-width: 1200px; margin: 0 auto; padding: 72px 32px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 18px">No login wall</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.55">Read posts, images and videos without an X account.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 18px">Links that last</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.55">Each post is saved when you view it, so your link still works after the original is deleted.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 0; font-size: 18px">Easy to share</h3>
+<p style="margin: 0; color: #454C57; line-height: 1.55">Send a clean link anyone can open, with previews in chat apps.</p>
+</div>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1700}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
