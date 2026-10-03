@@ -68,6 +68,7 @@ const { registerBrowseRoutes } = require('./lib/routes/browse');
 const { resolveDownloadConfig } = require('./lib/download-config');
 const compression = require('compression');
 const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
+const { downloadVideoToFile } = require('./lib/video-download');
 const {
   deleteMediaAsset,
   deleteMediaAssetBestEffort
@@ -436,56 +437,10 @@ function formatBytes(bytes) {
 }
 
 function downloadVideoWithProgress(url, filename, onProgress) {
-  return new Promise((resolve, reject) => {
-    if (!isTwimgUrl(url)) return reject(new Error('视频来源不在允许范围内'));
-    const videoDir = path.join(DATA_DIR, 'videos');
-    fs.mkdirSync(videoDir, { recursive: true });
-    const filePath = videoPathForFilename(filename);
-    const tempPath = `${filePath}.part`;
-    const request = https.get(url, { headers: { 'User-Agent': 'XMirror/1.0' } }, response => {
-      if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
-        response.resume();
-        return downloadVideoWithProgress(response.headers.location, filename, onProgress).then(resolve, reject);
-      }
-      if (response.statusCode !== 200) {
-        response.resume();
-        return reject(new Error(`下载失败，状态码: ${response.statusCode}`));
-      }
-
-      const total = Number(response.headers['content-length']) || 0;
-      let downloaded = 0;
-      const file = fs.createWriteStream(tempPath);
-      const report = () => onProgress?.(downloaded, total);
-      response.on('data', chunk => {
-        downloaded += chunk.length;
-        report();
-      });
-      response.on('error', err => {
-        file.destroy();
-        reject(err);
-      });
-      file.on('error', reject);
-      file.on('finish', () => {
-        file.close(err => {
-          if (err) return reject(err);
-          try {
-            fs.renameSync(tempPath, filePath);
-            report();
-            resolve({ path: `/videos/${filename}`, bytes: downloaded, total });
-          } catch (renameError) {
-            reject(renameError);
-          }
-        });
-      });
-      response.pipe(file);
-    });
-    request.on('error', reject);
-    request.setTimeout(30000, () => request.destroy(new Error('视频下载连接超时')));
-  }).catch(err => {
-    const tempPath = `${videoPathForFilename(filename)}.part`;
-    try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch {}
-    throw err;
-  });
+  const videoDir = path.join(DATA_DIR, 'videos');
+  fs.mkdirSync(videoDir, { recursive: true });
+  return downloadVideoToFile(url, { filePath: videoPathForFilename(filename), onProgress, isAllowedUrl: isTwimgUrl })
+    .then(({ bytes, total }) => ({ path: `/videos/${filename}`, bytes, total }));
 }
 
 async function updateExtraVideo(postId, filename, fields) {

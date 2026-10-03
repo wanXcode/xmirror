@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
+const { PassThrough } = require('node:stream');
+const { EventEmitter } = require('node:events');
 const { downloadImage, imageExtension, isTwimgUrl } = require('../lib/media-download');
 
 function serve(handler) {
@@ -52,10 +54,31 @@ test('rejects oversized bodies, whether declared or streamed, and cleans up', as
   try {
     await assert.rejects(downloadImage(declared.url, opts(dir, { maxBytes: 1000 })), /too large/);
     await assert.rejects(downloadImage(chunked.url, opts(dir, { maxBytes: 1000 })), /too large/);
-    // the partial file is removed right after the rejection; give a busy machine a moment
-    for (let i = 0; i < 40 && fs.readdirSync(dir).length; i += 1) await new Promise(resolve => setTimeout(resolve, 25));
     assert.deepEqual(fs.readdirSync(dir), []);
   } finally { declared.server.close(); chunked.server.close(); }
+});
+
+// Deterministic regression: the write stream opens its file asynchronously, so a failure in the very
+// first tick used to unlink before the file existed and leave `a.jpg.part` behind. The rejection must
+// only arrive once the temp file is closed and gone - checked immediately, with no waiting.
+test('removes the temp file before rejecting, even when the failure beats the async open', async () => {
+  const fake = (body, { abort = false } = {}) => (url, _opts, onResponse) => {
+    const req = new EventEmitter(); req.destroy = () => {};
+    const response = new PassThrough(); response.statusCode = 200; response.headers = { 'content-type': 'image/png' };
+    process.nextTick(() => {
+      onResponse(response);
+      response.write(body);
+      if (abort) response.emit('aborted'); else response.end();
+    });
+    return req;
+  };
+  for (let i = 0; i < 20; i += 1) {
+    const dir = tmp();
+    await assert.rejects(downloadImage('http://x/y', opts(dir, { maxBytes: 10, request: fake('x'.repeat(50)) })), /too large/);
+    assert.deepEqual(fs.readdirSync(dir), [], 'oversized');
+    await assert.rejects(downloadImage('http://x/y', opts(dir, { request: fake('abc', { abort: true }) })), /aborted/);
+    assert.deepEqual(fs.readdirSync(dir), [], 'aborted upstream');
+  }
 });
 
 test('times out a stalled download and leaves no partial file', async () => {
@@ -63,7 +86,6 @@ test('times out a stalled download and leaves no partial file', async () => {
   const { server, url } = await serve((_, res) => { res.setHeader('content-type', 'image/jpeg'); res.write('abc'); });
   try {
     await assert.rejects(downloadImage(url, opts(dir, { timeoutMs: 100 })), /timed out/);
-    for (let i = 0; i < 40 && fs.readdirSync(dir).length; i += 1) await new Promise(resolve => setTimeout(resolve, 25));
     assert.deepEqual(fs.readdirSync(dir), []);
   } finally { server.closeAllConnections(); server.close(); }
 });
