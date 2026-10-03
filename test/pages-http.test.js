@@ -63,3 +63,24 @@ test('the shared stylesheet and nav script are served, and existing routes keep 
   assert.equal((await fetch(`${base}/healthz`)).status, 200);
   assert.equal((await fetch(`${base}/Zz9Zz9`)).status, 404);    // unknown short code
 });
+
+test('/help and /zh/help redirect permanently to the home FAQ; the FAQ has the anchor', { timeout: 30000 }, async t => {
+  const base = await startServer(t);
+  for (const [from, to] of [['/help', '/#faq'], ['/help.html', '/#faq'], ['/zh/help', '/zh/#faq'], ['/zh/help.html', '/zh/#faq']]) {
+    const response = await fetch(`${base}${from}`, { redirect: 'manual' });
+    assert.equal(response.status, 301, from);
+    assert.equal(response.headers.get('location'), to, from);
+  }
+  for (const page of ['/', '/zh/']) {
+    const html = await (await fetch(`${base}${page}`)).text();
+    assert.equal((html.match(/id="faq"/g) || []).length, 1, `${page} has exactly one #faq anchor`);
+  }
+});
+
+test('internal documents are not publicly served (old public/VERSION.md and help page file)', { timeout: 30000 }, async t => {
+  const base = await startServer(t);
+  for (const path of ['/VERSION.md', '/CHANGELOG.md', '/help.html.bak', '/docs/deploy.md']) {
+    assert.equal((await fetch(`${base}${path}`)).status, 404, path);
+  }
+  assert.equal(fs.existsSync(path.join(__dirname, '..', 'public', 'VERSION.md')), false);
+});

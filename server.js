@@ -1,5 +1,6 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+// Tests set XPUT_SKIP_DOTENV so a developer's or the production release's .env cannot leak into them.
+if (process.env.XPUT_SKIP_DOTENV !== '1') require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();

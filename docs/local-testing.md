@@ -159,3 +159,6 @@ curl -X POST -H "$T" localhost:3000/api/admin/featured/POST_ID/withdraw
 npm install --no-save playwright-core
 CHROME_PATH=/path/to/chrome node ops/e2e-results.js            # 截图写入 docs/screenshots/v3/
 ```
+
+## 测试与 `.env` 隔离
+`npm test` 通过预加载 `test/support/no-dotenv.js` 设置 `XPUT_SKIP_DOTENV=1`，测试进程及其启动的服务器都不会读取仓库目录下的 `.env`（含生产 release 内的 `.env`），结果与本机或生产配置无关。单独运行某个测试文件时请带上同样的预加载：`node --require ./test/support/no-dotenv.js --test test/xxx.test.js`。
