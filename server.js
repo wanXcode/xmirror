@@ -690,12 +690,12 @@ async function translateWithSiliconFlow(parts, targetLang, attempt = null) {
 }
 
 const SUBTITLE_LANGUAGES = Object.freeze({ en: 'English', 'zh-CN': '简体中文' });
-// Translation and subtitles are separate switches, each off in production and on elsewhere unless set.
-// FEATURE_TRANSLATION=true turns on post translation (/api/translate, the "Translate post" link);
-// FEATURE_SUBTITLES=true turns on video subtitles (/api/posts/:id/subtitles), which are not released yet.
-const featureFlag = name => (process.env[name] ?? String(process.env.NODE_ENV !== 'production')) === 'true';
-const TRANSLATION_ENABLED = featureFlag('FEATURE_TRANSLATION');
-const SUBTITLES_ENABLED = featureFlag('FEATURE_SUBTITLES');
+// Translation and subtitles are separate switches.
+// FEATURE_TRANSLATION (post translation: /api/translate and the "Translate post" link) is on by default everywhere; set it to false to turn it off.
+// FEATURE_SUBTITLES (video subtitles, /api/posts/:id/subtitles) is not released: off in production, on elsewhere unless set.
+const featureFlag = (name, fallback) => (process.env[name] ?? String(fallback)) === 'true';
+const TRANSLATION_ENABLED = featureFlag('FEATURE_TRANSLATION', true);
+const SUBTITLES_ENABLED = featureFlag('FEATURE_SUBTITLES', process.env.NODE_ENV !== 'production');
 const featureDisabled = (_req, res) => res.status(404).json({ success: false, code: 'FEATURE_DISABLED', error: '该功能未启用' });
 app.use('/api/translate', (req, res, next) => (TRANSLATION_ENABLED ? next() : featureDisabled(req, res)));
 app.use('/api/posts/:id/subtitles', (req, res, next) => (SUBTITLES_ENABLED ? next() : featureDisabled(req, res)));

@@ -88,7 +88,7 @@ test('admin APIs: no token or a wrong token is 401, a missing server token is 50
   try { assert.equal((await fetch(`${unconfigured.base}/api/admin/featured`, { headers: { 'x-admin-token': '' } })).status, 503); } finally { await unconfigured.stop(); }
 });
 
-test('translation and subtitle routes: separate switches, both off in production by default, both on in development', { timeout: 60000 }, async () => {
+test('translation and subtitle routes: separate switches; translation on by default, subtitles off in production', { timeout: 60000 }, async () => {
   const translation = [['GET', '/api/translate/1'], ['POST', '/api/translate/1/tasks'], ['GET', '/api/translate/tasks/1'], ['POST', '/api/translate/tasks/1/retry']];
   const subtitles = [['GET', '/api/posts/1/subtitles'], ['POST', '/api/posts/1/subtitles']];
   const call = (base, [method, route]) => fetch(base + route, { method, headers: { 'content-type': 'application/json' }, body: method === 'POST' ? '{}' : undefined }).then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }));
@@ -99,9 +99,9 @@ test('translation and subtitle routes: separate switches, both off in production
       for (const route of disabledRoutes) { const r = await call(s.base, route); assert.equal(r.status, 404, route.join(' ')); assert.equal(r.body.code, 'FEATURE_DISABLED'); }
     } finally { await s.stop(); }
   };
-  await check({ NODE_ENV: 'production' }, [], [...translation, ...subtitles]);
-  // Turning on translation must not turn on subtitles.
-  await check({ NODE_ENV: 'production', FEATURE_TRANSLATION: 'true' }, translation, subtitles);
-  await check({ NODE_ENV: 'production', FEATURE_SUBTITLES: 'true' }, subtitles, translation);
+  await check({ NODE_ENV: 'production' }, translation, subtitles);
+  await check({ NODE_ENV: 'production', FEATURE_TRANSLATION: 'false' }, [], [...translation, ...subtitles]);
+  // The two switches are independent.
+  await check({ NODE_ENV: 'production', FEATURE_SUBTITLES: 'true' }, [...translation, ...subtitles], []);
   await check({ NODE_ENV: 'development' }, [...translation, ...subtitles], []);
 });
