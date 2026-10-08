@@ -180,6 +180,44 @@ test('AI training ambiguity and explicit adult compound tags enter review', () =
     const result=createTestModerator().moderateArchivedContent({content});
     assert.equal(result.action,'review');
     assert.ok(result.matched.every(m=>m.field==='content' && m.evidence));
-    assert.equal(result.ruleVersion,6);
+    assert.equal(result.ruleVersion,7);
   }
+});
+
+// Synthetic fixtures: no production identifiers or original post body.
+test('rejects explicit sexual compounds, including character substitutions', () => {
+  const moderator = createTestModerator();
+  for (const content of ['被操射了', '被艹到', '被肏得', '操射出来', '<p>被<b>操</b>射了</p>']) {
+    assert.throws(() => moderator.moderateArchivedContent({ content }), error => {
+      assert.equal(error.code, 'CONTENT_MODERATION_REJECTED');
+      assert.ok(error.details.matched.some(m => m.value === '露骨色情复合表达'));
+      return true;
+    });
+  }
+});
+
+test('school, sports, emoji and ordinary operation language alone remain allowed', () => {
+  const moderator = createTestModerator();
+  for (const content of ['高中同学一起吃饭打游戏 #体育生 #男高', '农场的大🐔发育很好',
+    '这个请求被操作系统拒绝了', '比赛射门得分，体操得了冠军', '完成操作到下一步']) {
+    assert.equal(moderator.moderateArchivedContent({ content }).action, 'allow');
+  }
+});
+
+test('operator source ledger blocks URL aliases before fetching and fails closed', t => {
+  const fs = require('node:fs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'blocked-sources-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const blockedSourcesPath = path.join(dir, 'sources.json');
+  const moderator = createModerator({ blockedSourcesPath, rulesPath: path.join(__dirname, '../config/moderation-rules.json'), logPath: null });
+  assert.equal(moderator.precheckUrl('https://x.com/i/status/81').action, 'allow');
+  fs.writeFileSync(blockedSourcesPath, JSON.stringify(['81']));
+  for (const url of ['https://x.com/i/status/81', 'https://twitter.com/example/status/81/photo/1', 'https://x.com/i/article/81']) {
+    assert.throws(() => moderator.precheckUrl(url), { code: 'CONTENT_MODERATION_REJECTED' });
+  }
+  assert.equal(moderator.precheckUrl('https://x.com/i/status/810').action, 'allow');
+  fs.writeFileSync(blockedSourcesPath, '{}');
+  assert.throws(() => moderator.precheckUrl('https://x.com/i/status/82'), /Invalid.*ledger/);
+  fs.writeFileSync(blockedSourcesPath, '{');
+  assert.throws(() => moderator.precheckUrl('https://x.com/i/status/82'), SyntaxError);
 });

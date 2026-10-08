@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "blockDomains": [
     "fansone.co",
     "onlyfans.com",
@@ -91,6 +91,11 @@
       "pattern": "(想被我?操|用力操|狠狠操|使劲操)",
       "score": 6,
       "label": "露骨色情动作"
+    },
+    {
+      "pattern": "(被[操艹肏](?:射|到|得)|[操艹肏]射(?:了|出来|出來))",
+      "score": 6,
+      "label": "露骨色情复合表达"
     }
   ],
   "rejectThreshold": 6,

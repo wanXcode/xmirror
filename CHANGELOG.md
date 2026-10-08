@@ -2,6 +2,13 @@
 
 每个版本的说明追加在文件顶部，最新版本在最前。
 
+## v2.1.2 (2026-10-09)
+
+- Tighten explicit sexual compound detection while preserving benign school, sports and technical language.
+- Reassess cached archive submissions against current rules and manual decisions.
+- Support a private operator-managed source-ID block ledger to reject removed sources before fetching media.
+- Add rule and HTTP regression tests; no schema changes or external moderation provider.
+
 ## v2.1.1（2026-10-09）
 
 ### 调整
