@@ -166,18 +166,40 @@
       postJson(cfg.endpoints.ageConfirm, {}).then(function (response) { if (response.ok) reload(); }).catch(function () {});
     });
 
-    // ---- translate post ----
-    var translateRoot = doc.querySelector('[data-translate]');
+    // ---- translate post (X style: the translation replaces the text in place, "Show original" goes back) ----
     var tr = cfg.translation;
-    var translation = { taskId: null, shown: false, polls: 0 };
+    var translateRoot = doc.querySelector('[data-translate]');
+    var translation = { taskId: null, shown: false, polls: 0, target: null };
     if (translateRoot && tr) {
+      var original = doc.querySelector('[data-post-text]');
       var trToggle = translateRoot.querySelector('[data-translate-toggle]');
-      var trPanel = translateRoot.querySelector('[data-translation]');
       var trStatus = translateRoot.querySelector('[data-translation-status]');
-      var trBody = translateRoot.querySelector('[data-translation-body]');
       var trRetry = translateRoot.querySelector('[data-translation-retry]');
+      var trBody = doc.querySelector('[data-translation-body]');
+
+      // Browser languages in order of preference -> the first one XPut can translate into; the page language is the fallback.
+      var pickTarget = function (languages, fallback) {
+        for (var i = 0; i < languages.length; i += 1) {
+          var tag = String(languages[i] || '').toLowerCase();
+          if (/^zh-(tw|hk|mo|hant)/.test(tag)) return 'zh-TW';
+          if (/^zh/.test(tag)) return 'zh-CN';
+          if (/^en/.test(tag)) return 'en';
+          if (/^(ja|ko|es)(-|$)/.test(tag)) return tag.slice(0, 2);
+        }
+        return fallback;
+      };
+      var sameLanguage = function (source, target) {
+        return source === target || (source === 'zh' && (target === 'zh-CN' || target === 'zh-TW'));
+      };
+      var languages = nav.languages && nav.languages.length ? nav.languages : (nav.language ? [nav.language] : []);
+      translation.target = pickTarget(languages, tr.fallbackTarget);
+      // The link only appears when the reader's language differs from the post's.
+      if (!sameLanguage(tr.sourceLang, translation.target)) translateRoot.hidden = false;
 
       var setStatus = function (message) { trStatus.textContent = message || ''; };
+      var languageName = function (code) {
+        try { return new win.Intl.DisplayNames([cfg.lang], { type: 'language' }).of(code); } catch (error) { return ''; }
+      };
       var showBlocks = function (task) {
         var nodes = (task.blocks || []).map(function (block) {
           var tag = block.type === 'h2' || block.type === 'h3' ? block.type : 'p';
@@ -187,24 +209,43 @@
           return el;
         });
         trBody.replaceChildren.apply(trBody, nodes);
+        trBody.setAttribute('lang', translation.target === 'zh-CN' ? 'zh-Hans' : translation.target === 'zh-TW' ? 'zh-Hant' : translation.target);
+      };
+      var attribution = function (task) {
+        var from = task.sourceLang && task.sourceLang !== 'auto' ? task.sourceLang : tr.sourceLang;
+        var name = from ? languageName(from) : '';
+        return (name ? Link.fillTemplate(tr.text.translateFrom, { lang: name }) : tr.text.translateBy) + ' · ' + tr.text.translateDisclaimer;
       };
       var describe = function (task) {
         var failed = task.failed || 0;
         trRetry.hidden = !(task.status === 'partial_failed' || (task.status === 'failed' && failed));
-        if (task.status === 'completed') return tr.text.translateDone + ' · ' + tr.text.translateDisclaimer;
+        if (task.status === 'completed') return attribution(task);
         if (task.status === 'partial_failed') return Link.fillTemplate(tr.text.translatePartial, { failed: failed });
         if (task.status === 'failed') return tr.text.translateFailed;
         if (task.status === 'queued' && !task.completed) return tr.text.translateQueued;
         return Link.fillTemplate(tr.text.translateProgress, { done: task.completed || 0, total: task.total || 0 });
       };
-      var failWith = function (message) { setStatus(message); trRetry.hidden = false };
+      var failWith = function (message) {
+        setStatus(message);
+        trRetry.hidden = false;
+        if (!translation.taskId) setShown(false);
+      };
+      // Showing the translation hides the original text; going back restores it. Nothing is requested twice.
+      var setShown = function (shown) {
+        translation.shown = shown;
+        trBody.hidden = !shown || !translation.taskId;
+        original.hidden = shown && !!translation.taskId;
+        trToggle.disabled = false;
+        trToggle.textContent = shown ? tr.text.translateShowOriginal : (translation.taskId ? tr.text.translateShowTranslation : tr.text.translate);
+        trToggle.setAttribute('aria-pressed', shown ? 'true' : 'false');
+      };
       var TERMINAL = { completed: 1, partial_failed: 1, failed: 1 };
       var apply = function (task) {
         translation.taskId = task.id;
         showBlocks(task);
+        setShown(translation.shown);
         setStatus(describe(task));
-        if (TERMINAL[task.status]) return;
-        if (translation.polls >= POLL_LIMIT) return;
+        if (TERMINAL[task.status] || translation.polls >= POLL_LIMIT) return;
         translation.polls += 1;
         timers.setTimeout(refresh, 1500);
       };
@@ -223,32 +264,22 @@
         });
       };
       var start = function () {
-        setStatus(tr.text.translateStarting);
+        translation.shown = true;
+        trToggle.disabled = true;
+        trToggle.textContent = tr.text.translateStarting;
+        setStatus('');
         trRetry.hidden = true;
-        return postJson(tr.endpoints.create, { targetLang: tr.targetLang }).then(readJson).then(onReply).catch(function () { failWith(tr.text.translateFailed); });
+        return postJson(tr.endpoints.create, { targetLang: translation.target }).then(readJson).then(onReply).catch(function () { failWith(tr.text.translateFailed); });
       };
-      var toggleTranslation = function () {
-        if (!translation.shown) {
-          translation.shown = true;
-          trPanel.hidden = false;
-          trToggle.textContent = tr.text.translateShowOriginal;
-          trToggle.setAttribute('aria-expanded', 'true');
-          if (!translation.taskId) return start();
-          return Promise.resolve();
-        }
-        translation.shown = false;
-        trPanel.hidden = true;
-        trToggle.textContent = translation.taskId ? tr.text.translateShowTranslation : tr.text.translate;
-        trToggle.setAttribute('aria-expanded', 'false');
+      trToggle.addEventListener('click', function () {
+        if (!translation.taskId) return start();
+        setShown(!translation.shown);
         return Promise.resolve();
-      };
-      trToggle.setAttribute('aria-expanded', 'false');
-      trToggle.addEventListener('click', toggleTranslation);
+      });
       trRetry.addEventListener('click', function () {
         trRetry.hidden = true;
         if (!translation.taskId) { start(); return; }
         translation.polls = 0;
-        setStatus(tr.text.translateStarting);
         postJson(tr.endpoints.task + translation.taskId + '/retry', {}).then(readJson).then(onReply).catch(function () { failWith(tr.text.translateFailed); });
       });
     }

@@ -22,6 +22,7 @@ const { createChatCompletion } = require('./lib/siliconflow');
 const {
   normalizeTargetLanguage,
   TranslationFormatError,
+  SUPPORTED_LANGUAGES,
   detectContentLanguage,
   extractTranslatableBlocks,
   sourceHash: translationSourceHash,
@@ -579,7 +580,7 @@ function extractSummary(content) {
 async function translateWithSiliconFlow(parts, targetLang, attempt = null) {
   if (!SILICONFLOW_API_KEY) throw new Error('未配置翻译API Key');
 
-  const langName = targetLang === 'zh-CN' ? '简体中文' : (targetLang === 'en' ? 'English' : targetLang);
+  const langName = SUPPORTED_LANGUAGES[targetLang] || targetLang;
   const body = {
     temperature: 0.1,
     response_format: { type: 'json_object' },

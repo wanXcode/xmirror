@@ -288,49 +288,74 @@ test('dialog closes with Esc, the overlay or the close button, and focus returns
   function withKey(s, name) { s.__key(name); }
 });
 
-const task = (extra = {}) => ({ id: 3, status: 'running', total: 2, completed: 1, failed: 0,
+const task = (extra = {}) => ({ id: 3, status: 'running', total: 2, completed: 1, failed: 0, sourceLang: 'en',
   blocks: [{ index: 0, type: 'p', text: '你好', translated: true }, { index: 1, type: 'p', text: 'World', translated: false }], ...extra });
+const done = task({ status: 'completed', completed: 2, blocks: [{ index: 0, type: 'p', text: '你好', translated: true }, { index: 1, type: 'p', text: '世界', translated: true }] });
+const offer = { sourceLang: 'en', fallbackTarget: 'en' };
 
-test('translate: no button unless the page offers translation', () => {
+test('translate: nothing is rendered unless the page offers translation', () => {
   assert.equal(setup().q('[data-translate]'), null);
 });
 
-test('translate: clicking creates the task, shows progress under the post, and finishes with attribution', async () => {
-  const s = setup({ translation: { targetLang: 'zh-CN' }, lang: 'zh', post: { content: 'hello' }, routes: {
+test('translate: the link shows only when the browser language differs from the post language', () => {
+  const same = setup({ translation: offer, nav: { languages: ['en-US'] } });
+  assert.equal(same.q('[data-translate]').hidden, true);
+  const differs = setup({ translation: offer, nav: { languages: ['de-DE', 'ja-JP'] } });
+  assert.equal(differs.q('[data-translate]').hidden, false);
+  // Chinese post, Taiwan reader: still Chinese, no link.
+  assert.equal(setup({ translation: { sourceLang: 'zh', fallbackTarget: 'zh-CN' }, nav: { languages: ['zh-TW'] } }).q('[data-translate]').hidden, true);
+});
+
+test('translate: target follows the first supported browser language, else the page language', async () => {
+  const cases = [[['zh-TW', 'en'], 'zh-TW'], [['zh-HK'], 'zh-TW'], [['zh-CN'], 'zh-CN'], [['fr-FR', 'es-MX'], 'es'], [['ko-KR'], 'ko'], [['fr-FR'], 'en'], [[], 'en']];
+  for (const [languages, expected] of cases) {
+    const s = setup({ translation: { sourceLang: 'ja', fallbackTarget: 'en' }, nav: { languages }, routes: { '/api/translate/7/tasks': reply(202, { success: true, task: task() }) } });
+    s.click(s.q('[data-translate-toggle]'));
+    await s.flush();
+    assert.equal(s.calls.find(c => c.url === '/api/translate/7/tasks').body.targetLang, expected, languages.join());
+  }
+});
+
+test('translate: the translation replaces the text in place, then Show original / Show translation switch without new requests', async () => {
+  const s = setup({ translation: offer, lang: 'zh', nav: { languages: ['zh-CN'] }, routes: {
     '/api/translate/7/tasks': reply(202, { success: true, task: task() }),
-    '/api/translate/tasks/3': reply(200, { success: true, task: task({ status: 'completed', completed: 2, blocks: [{ index: 0, type: 'p', text: '你好', translated: true }, { index: 1, type: 'p', text: '世界', translated: true }] }) })
+    '/api/translate/tasks/3': reply(200, { success: true, task: done })
   } });
   const button = s.q('[data-translate-toggle]');
+  const text = s.q('[data-post-text]');
+  const body = s.q('[data-translation-body]');
   assert.equal(button.textContent, '翻译帖子');
-  assert.equal(s.q('[data-translation]').hidden, true);
+  assert.equal(body.hidden, true);
   s.click(button);
   await s.flush();
-  assert.deepEqual(s.calls.find(c => c.url === '/api/translate/7/tasks').body, { targetLang: 'zh-CN' });
-  assert.equal(s.q('[data-translation]').hidden, false);
+  assert.equal(text.hidden, true);
+  assert.equal(body.hidden, false);
+  assert.equal(body.getAttribute('lang'), 'zh-Hans');
   assert.equal(s.q('[data-translation-status]').textContent, '已翻译 1 / 2 段…');
-  assert.equal(s.q('[data-translation-body]').children.length, 2);
   s.timeouts.at(-1).fn();
   await s.flush();
+  assert.equal(body.textContent, '你好世界');
   assert.match(s.q('[data-translation-status]').textContent, /^由 XPut 翻译/);
-  assert.equal(s.q('[data-translation-body]').textContent, '你好世界');
-  assert.equal(s.q('[data-translation-retry]').hidden, true);
-  // Toggle hides/shows without a second request.
+  assert.equal(button.textContent, '显示原文');
   s.click(button);
-  assert.equal(s.q('[data-translation]').hidden, true);
+  assert.equal(text.hidden, false);
+  assert.equal(body.hidden, true);
   assert.equal(button.textContent, '显示译文');
   s.click(button);
-  assert.equal(s.q('[data-translation]').hidden, false);
+  assert.equal(text.hidden, true);
   assert.equal(s.calls.filter(c => c.url === '/api/translate/7/tasks').length, 1);
 });
 
-test('translate: rate limit shows a busy message with retry; partial failure offers retry of the rest', async () => {
-  const limited = setup({ translation: { targetLang: 'en' }, routes: { '/api/translate/7/tasks': reply(429, { success: false }) } });
+test('translate: rate limit keeps the original and offers retry; partial failure retries only the rest', async () => {
+  const limited = setup({ translation: offer, nav: { languages: ['ja'] }, routes: { '/api/translate/7/tasks': reply(429, { success: false }) } });
   limited.click(limited.q('[data-translate-toggle]'));
   await limited.flush();
   assert.match(limited.q('[data-translation-status]').textContent, /Too many translation requests/);
   assert.equal(limited.q('[data-translation-retry]').hidden, false);
+  assert.equal(limited.q('[data-post-text]').hidden, false);
+  assert.equal(limited.q('[data-translate-toggle]').textContent, 'Translate post');
 
-  const partial = setup({ translation: { targetLang: 'en' }, routes: {
+  const partial = setup({ translation: offer, nav: { languages: ['ja'] }, routes: {
     '/api/translate/7/tasks': reply(202, { success: true, task: task({ status: 'partial_failed', failed: 1 }) }),
     '/api/translate/tasks/3/retry': reply(202, { success: true, task: task({ status: 'queued', completed: 1 }) })
   } });
@@ -345,6 +370,6 @@ test('translate: rate limit shows a busy message with retry; partial failure off
 });
 
 test('translate: not rendered on the age-check page', () => {
-  const s = setup({ ageConfirmed: false, post: { sensitive: 1 }, translation: { targetLang: 'en' } });
+  const s = setup({ ageConfirmed: false, post: { sensitive: 1 }, translation: offer });
   assert.equal(s.q('[data-translate]'), null);
 });
