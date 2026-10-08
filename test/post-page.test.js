@@ -373,3 +373,10 @@ test('translate: not rendered on the age-check page', () => {
   const s = setup({ ageConfirmed: false, post: { sensitive: 1 }, translation: offer });
   assert.equal(s.q('[data-translate]'), null);
 });
+
+test('translate: the link sits above the post text', () => {
+  const s = setup({ translation: offer });
+  const control = s.q('[data-translate]');
+  const text = s.q('[data-post-text]');
+  assert.ok(control.compareDocumentPosition(text) & 4, 'the control comes before the text in the document');
+});
