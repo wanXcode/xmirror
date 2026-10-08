@@ -118,10 +118,12 @@ const ARCHIVES_DIR = process.env.ARCHIVES_DIR || path.join(ROOT_DIR, 'archives')
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 const moderator = createModerator({
   rulesPath: path.join(ROOT_DIR, 'config', 'moderation-rules.json'),
+  blockedSourcesPath: path.join(DATA_DIR, 'moderation-blocked-sources.json'),
   logPath: path.join(DATA_DIR, 'moderation.log.jsonl')
 });
 const seoModerator = createModerator({
   rulesPath: path.join(ROOT_DIR, 'config', 'moderation-rules.json'),
+  blockedSourcesPath: path.join(DATA_DIR, 'moderation-blocked-sources.json'),
   logPath: null
 });
 const MODERATION_SETTINGS_PATH = path.join(DATA_DIR, 'moderation-settings.json');
@@ -1525,6 +1527,15 @@ async function archiveXUrl(url) {
           refreshed.tweet_time, refreshed.video_is_gif, refreshed.extra_videos, refreshed.reply_count, refreshed.author_followers, refreshed.video_poster, existing.id]
       );
       Object.assign(existing, refreshed, { images: JSON.stringify(refreshed.images) });
+    }
+    // Cached archives must obey current rules and content-bound manual decisions.
+    if (moderationSettings.enabled) {
+      await reviewService.assess({
+        url: existing.url,
+        authorHandle: existing.author_handle,
+        authorName: existing.author,
+        content: existing.content
+      });
     }
     if (!existing.short_code) {
       existing.short_code = await generateUniqueShortCode();
