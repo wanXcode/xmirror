@@ -15,11 +15,11 @@ const row = (extra = {}) => ({
 
 function reply(status, body) { return { ok: status < 300, status, json: async () => body, headers: { get: () => null } }; }
 
-function setup({ lang = 'en', post = {}, routes = {}, nav = {}, phone = false, ageConfirmed = true } = {}) {
+function setup({ lang = 'en', post = {}, routes = {}, nav = {}, phone = false, ageConfirmed = true, translation = null } = {}) {
   const t = createTranslator(lang);
   const view = buildPostView(row(post));
   const source = String(renderDocument({ lang, baseUrl: 'https://xput.app', page: null, path: '/Ab1234', title: 't',
-    body: renderPost({ t, lang, view, downloadBase: '/dl', ageConfirmed, shareUrl: 'https://xput.app/Ab1234', title: 'Jack on X' }) }));
+    body: renderPost({ t, lang, view, downloadBase: '/dl', ageConfirmed, translation, shareUrl: 'https://xput.app/Ab1234', title: 'Jack on X' }) }));
   const { document, window } = parseHTML(source);
   const calls = [];
   const timeouts = [];
@@ -286,4 +286,65 @@ test('dialog closes with Esc, the overlay or the close button, and focus returns
     assert.ok(focus.active() === s.q('[data-open-drawer]'));
   }
   function withKey(s, name) { s.__key(name); }
+});
+
+const task = (extra = {}) => ({ id: 3, status: 'running', total: 2, completed: 1, failed: 0,
+  blocks: [{ index: 0, type: 'p', text: '你好', translated: true }, { index: 1, type: 'p', text: 'World', translated: false }], ...extra });
+
+test('translate: no button unless the page offers translation', () => {
+  assert.equal(setup().q('[data-translate]'), null);
+});
+
+test('translate: clicking creates the task, shows progress under the post, and finishes with attribution', async () => {
+  const s = setup({ translation: { targetLang: 'zh-CN' }, lang: 'zh', post: { content: 'hello' }, routes: {
+    '/api/translate/7/tasks': reply(202, { success: true, task: task() }),
+    '/api/translate/tasks/3': reply(200, { success: true, task: task({ status: 'completed', completed: 2, blocks: [{ index: 0, type: 'p', text: '你好', translated: true }, { index: 1, type: 'p', text: '世界', translated: true }] }) })
+  } });
+  const button = s.q('[data-translate-toggle]');
+  assert.equal(button.textContent, '翻译帖子');
+  assert.equal(s.q('[data-translation]').hidden, true);
+  s.click(button);
+  await s.flush();
+  assert.deepEqual(s.calls.find(c => c.url === '/api/translate/7/tasks').body, { targetLang: 'zh-CN' });
+  assert.equal(s.q('[data-translation]').hidden, false);
+  assert.equal(s.q('[data-translation-status]').textContent, '已翻译 1 / 2 段…');
+  assert.equal(s.q('[data-translation-body]').children.length, 2);
+  s.timeouts.at(-1).fn();
+  await s.flush();
+  assert.match(s.q('[data-translation-status]').textContent, /^由 XPut 翻译/);
+  assert.equal(s.q('[data-translation-body]').textContent, '你好世界');
+  assert.equal(s.q('[data-translation-retry]').hidden, true);
+  // Toggle hides/shows without a second request.
+  s.click(button);
+  assert.equal(s.q('[data-translation]').hidden, true);
+  assert.equal(button.textContent, '显示译文');
+  s.click(button);
+  assert.equal(s.q('[data-translation]').hidden, false);
+  assert.equal(s.calls.filter(c => c.url === '/api/translate/7/tasks').length, 1);
+});
+
+test('translate: rate limit shows a busy message with retry; partial failure offers retry of the rest', async () => {
+  const limited = setup({ translation: { targetLang: 'en' }, routes: { '/api/translate/7/tasks': reply(429, { success: false }) } });
+  limited.click(limited.q('[data-translate-toggle]'));
+  await limited.flush();
+  assert.match(limited.q('[data-translation-status]').textContent, /Too many translation requests/);
+  assert.equal(limited.q('[data-translation-retry]').hidden, false);
+
+  const partial = setup({ translation: { targetLang: 'en' }, routes: {
+    '/api/translate/7/tasks': reply(202, { success: true, task: task({ status: 'partial_failed', failed: 1 }) }),
+    '/api/translate/tasks/3/retry': reply(202, { success: true, task: task({ status: 'queued', completed: 1 }) })
+  } });
+  partial.click(partial.q('[data-translate-toggle]'));
+  await partial.flush();
+  assert.match(partial.q('[data-translation-status]').textContent, /1 paragraphs could not be translated/);
+  assert.equal(partial.q('[data-translation-retry]').hidden, false);
+  partial.click(partial.q('[data-translation-retry]'));
+  await partial.flush();
+  assert.ok(partial.calls.some(c => c.url === '/api/translate/tasks/3/retry'));
+  assert.equal(partial.q('[data-translation-retry]').hidden, true);
+});
+
+test('translate: not rendered on the age-check page', () => {
+  const s = setup({ ageConfirmed: false, post: { sensitive: 1 }, translation: { targetLang: 'en' } });
+  assert.equal(s.q('[data-translate]'), null);
 });

@@ -166,6 +166,93 @@
       postJson(cfg.endpoints.ageConfirm, {}).then(function (response) { if (response.ok) reload(); }).catch(function () {});
     });
 
+    // ---- translate post ----
+    var translateRoot = doc.querySelector('[data-translate]');
+    var tr = cfg.translation;
+    var translation = { taskId: null, shown: false, polls: 0 };
+    if (translateRoot && tr) {
+      var trToggle = translateRoot.querySelector('[data-translate-toggle]');
+      var trPanel = translateRoot.querySelector('[data-translation]');
+      var trStatus = translateRoot.querySelector('[data-translation-status]');
+      var trBody = translateRoot.querySelector('[data-translation-body]');
+      var trRetry = translateRoot.querySelector('[data-translation-retry]');
+
+      var setStatus = function (message) { trStatus.textContent = message || ''; };
+      var showBlocks = function (task) {
+        var nodes = (task.blocks || []).map(function (block) {
+          var tag = block.type === 'h2' || block.type === 'h3' ? block.type : 'p';
+          var el = doc.createElement(tag);
+          el.textContent = block.text;
+          if (!block.translated) el.className = 'is-pending';
+          return el;
+        });
+        trBody.replaceChildren.apply(trBody, nodes);
+      };
+      var describe = function (task) {
+        var failed = task.failed || 0;
+        trRetry.hidden = !(task.status === 'partial_failed' || (task.status === 'failed' && failed));
+        if (task.status === 'completed') return tr.text.translateDone + ' · ' + tr.text.translateDisclaimer;
+        if (task.status === 'partial_failed') return Link.fillTemplate(tr.text.translatePartial, { failed: failed });
+        if (task.status === 'failed') return tr.text.translateFailed;
+        if (task.status === 'queued' && !task.completed) return tr.text.translateQueued;
+        return Link.fillTemplate(tr.text.translateProgress, { done: task.completed || 0, total: task.total || 0 });
+      };
+      var failWith = function (message) { setStatus(message); trRetry.hidden = false };
+      var TERMINAL = { completed: 1, partial_failed: 1, failed: 1 };
+      var apply = function (task) {
+        translation.taskId = task.id;
+        showBlocks(task);
+        setStatus(describe(task));
+        if (TERMINAL[task.status]) return;
+        if (translation.polls >= POLL_LIMIT) return;
+        translation.polls += 1;
+        timers.setTimeout(refresh, 1500);
+      };
+      var readJson = function (response) {
+        return response.json().catch(function () { return null; }).then(function (data) { return { response: response, data: data }; });
+      };
+      var onReply = function (result) {
+        if (result.response.status === 429) { failWith(tr.text.translateBusy); return; }
+        if (!result.response.ok || !result.data || !result.data.success) { failWith((result.data && result.data.error) || tr.text.translateFailed); return; }
+        apply(result.data.task);
+      };
+      var refresh = function () {
+        // A dropped poll is not a failed translation: keep trying until the limit.
+        fetchFn(tr.endpoints.task + translation.taskId, { credentials: 'same-origin' }).then(readJson).then(onReply).catch(function () {
+          if (translation.polls < POLL_LIMIT) { translation.polls += 1; timers.setTimeout(refresh, 3000); }
+        });
+      };
+      var start = function () {
+        setStatus(tr.text.translateStarting);
+        trRetry.hidden = true;
+        return postJson(tr.endpoints.create, { targetLang: tr.targetLang }).then(readJson).then(onReply).catch(function () { failWith(tr.text.translateFailed); });
+      };
+      var toggleTranslation = function () {
+        if (!translation.shown) {
+          translation.shown = true;
+          trPanel.hidden = false;
+          trToggle.textContent = tr.text.translateShowOriginal;
+          trToggle.setAttribute('aria-expanded', 'true');
+          if (!translation.taskId) return start();
+          return Promise.resolve();
+        }
+        translation.shown = false;
+        trPanel.hidden = true;
+        trToggle.textContent = translation.taskId ? tr.text.translateShowTranslation : tr.text.translate;
+        trToggle.setAttribute('aria-expanded', 'false');
+        return Promise.resolve();
+      };
+      trToggle.setAttribute('aria-expanded', 'false');
+      trToggle.addEventListener('click', toggleTranslation);
+      trRetry.addEventListener('click', function () {
+        trRetry.hidden = true;
+        if (!translation.taskId) { start(); return; }
+        translation.polls = 0;
+        setStatus(tr.text.translateStarting);
+        postJson(tr.endpoints.task + translation.taskId + '/retry', {}).then(readJson).then(onReply).catch(function () { failWith(tr.text.translateFailed); });
+      });
+    }
+
     // ---- a video that is still being saved ----
     var polls = 0;
     var pollTimer = null;

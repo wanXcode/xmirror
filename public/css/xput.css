@@ -596,6 +596,16 @@ html.has-lightbox { overflow: hidden; }
 .post__text .quoted-post p { margin: 0 0 0.4em; }
 .post__text a { text-decoration: underline; }
 
+.post__translate { display: flex; flex-direction: column; gap: 10px; }
+.post__translate-btn { align-self: flex-start; padding: 4px 0; background: none; border: 0; font: inherit; font-size: 15px; font-weight: 600; color: var(--accent-ink); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.post__translation { padding: 12px 14px; border-left: 3px solid var(--line-strong); background: var(--bg); border-radius: 0 12px 12px 0; display: flex; flex-direction: column; gap: 8px; }
+.post__translation-status { margin: 0; font-size: 13px; color: #7A6E60; }
+.post__translation-body { font-size: 17px; line-height: 1.65; overflow-wrap: anywhere; }
+@media (min-width: 768px) { .post__translation-body { font-size: 19px; } }
+.post__translation-body p, .post__translation-body h2, .post__translation-body h3 { margin: 0 0 0.8em; }
+.post__translation-body > :last-child { margin-bottom: 0; }
+.post__translation-body .is-pending { color: var(--ink-soft); opacity: 0.75; }
+
 .post__media { display: flex; flex-direction: column; gap: 10px; }
 .preview--post { aspect-ratio: 16 / 9; max-height: 560px; }
 .preview__video--static { object-fit: contain; }

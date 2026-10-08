@@ -1874,7 +1874,7 @@ app.get(/^\/([A-Za-z0-9]{6})\/referer$/, async (req, res, next) => {
 const DOWNLOAD_BASE = DOWNLOAD.base;
 const viewCounter = createViewCounter({ flush: batch => postStore.applyCounts(batch), intervalMs: Number(process.env.VIEW_COUNTER_FLUSH_MS) || 30000 });
 const featuredService = createFeaturedService({ db: { get: dbGet, all: dbAll, run: runDbWrite }, store: postStore });
-registerResultRoutes(app, { store: postStore, counter: viewCounter, baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE, featured: featuredService });
+registerResultRoutes(app, { store: postStore, counter: viewCounter, baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE, featured: featuredService, translationEnabled: TRANSLATION_ENABLED });
 registerFeaturedAdminRoutes(app, { service: featuredService, requireAdmin });
 registerOgRoutes(app, { store: postStore, dataDir: DATA_DIR, publicDir: path.join(__dirname, 'public') });
 
