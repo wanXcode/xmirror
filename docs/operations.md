@@ -83,7 +83,8 @@ sudo certbot renew --cert-name xput.app --dry-run --no-random-sleep-on-renew
 | `SHORTCUT_URL` | 默认站点配置中的快捷指令 | 未设置 |
 | `DOWNLOAD_VIA` | 生产默认 Worker；应急模式详见下文 | 未设置 |
 | `DOWNLOAD_PROXY_BASE` / `ENABLE_LOCAL_DOWNLOAD_PROXY` | 代理地址覆盖/旧开关，默认无 | 未设置 |
-| `FEATURE_TRANSLATION` | 生产默认关闭，控制翻译和字幕 | 未设置 |
+| `FEATURE_TRANSLATION` | 默认开启（v2.1.0 起），帖子页出现「翻译帖子」；设为 `false` 关闭。只控制翻译，不影响字幕。需已配置 `SILICONFLOW_API_KEY`，否则点击翻译会提示服务暂不可用 | 未设置（默认开启） |
+| `FEATURE_SUBTITLES` | 字幕路由开关（功能未发布），生产保持关闭；v2.1.0 起与翻译分开 | 未设置 |
 | `SEO_AUTO_INDEX` | 默认启用自动收录 | 未设置 |
 | `SEO_AUTO_INDEX_DAILY_CAP` | 默认每日 20，UTC 日 | 未设置 |
 | `SEO_AUTO_INDEX_BLOCK_SENSITIVE` | 默认阻止敏感帖自动收录 | 未设置 |

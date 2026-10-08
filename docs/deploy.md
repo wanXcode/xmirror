@@ -230,7 +230,8 @@ EOF
 | `MODERATION_ADMIN_TOKEN` | 已有 | 管理接口鉴权，未带/错误返回 401，未配置返回 503 |
 | `PUBLIC_BASE_URL` | 建议确认 | 应为 `https://xput.app`（canonical、分享图、sitemap、来源校验） |
 | `DOWNLOAD_VIA` | **不要设置** | 生产默认 `worker`（页面用 `/dl`）。仅应急时设为 `node`（见 `docs/download-proxy-rollout.md`） |
-| `FEATURE_TRANSLATION` | **不要设置** | 生产默认关闭翻译/字幕路由。**如果现网正在使用翻译/字幕功能，上线后它们会停用**，这是预期行为 |
+| `FEATURE_TRANSLATION` | **不要设置** | 默认开启（v2.1.0 起）：上线后帖子页即出现「翻译帖子」，需确认 `SILICONFLOW_API_KEY` 已配置；紧急关闭设为 `false` 并重启 |
+| `FEATURE_SUBTITLES` | **不要设置** | 生产默认关闭字幕路由。**v2.1.0 起字幕与翻译开关分开：如果现网靠 `FEATURE_TRANSLATION=true` 在用字幕，升级后字幕会停用**，这是预期行为（字幕功能后期单独开发） |
 | `ANALYTICS_DOMAIN` / `ANALYTICS_SRC` | 可不设 | 不设则读 `config/site.json`（域名 `xput.app`）；设为空字符串表示关闭统计 |
 | `SEO_AUTO_INDEX` | 可选 | 默认开启：新存档按评分自动收录。设为 `false` 则全部改为人工选入 |
 | `SEO_AUTO_INDEX_DAILY_CAP` | 可选 | 自动收录的每日新增上限，默认 `20`（按 UTC 日计，超出的顺延到次日；人工选入不受限）。默认值也在 `config/seo-auto-index.json` |
