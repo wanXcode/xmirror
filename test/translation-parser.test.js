@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
-const { TranslationFormatError } = require('../lib/translation');
+const { TranslationFormatError, SUPPORTED_LANGUAGES } = require('../lib/translation');
 
 // Exercise the actual server parser without starting HTTP or opening runtime data.
 function parser(content) {
@@ -10,7 +10,7 @@ function parser(content) {
   const code = source.slice(source.indexOf('async function translateWithSiliconFlow('), source.indexOf('const SUBTITLE_LANGUAGES'));
   const context = vm.createContext({
     SILICONFLOW_API_KEY: 'test', SILICONFLOW_MODEL: 'test', SILICONFLOW_FALLBACK_MODELS: [], SILICONFLOW_BASE_URL: 'test',
-    TranslationFormatError,
+    TranslationFormatError, SUPPORTED_LANGUAGES,
     createChatCompletion: async () => ({ json: { choices: [{ message: { content } }] } })
   });
   vm.runInContext(code, context);

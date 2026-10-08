@@ -22,6 +22,7 @@ const { createChatCompletion } = require('./lib/siliconflow');
 const {
   normalizeTargetLanguage,
   TranslationFormatError,
+  SUPPORTED_LANGUAGES,
   detectContentLanguage,
   extractTranslatableBlocks,
   sourceHash: translationSourceHash,
@@ -579,7 +580,7 @@ function extractSummary(content) {
 async function translateWithSiliconFlow(parts, targetLang, attempt = null) {
   if (!SILICONFLOW_API_KEY) throw new Error('未配置翻译API Key');
 
-  const langName = targetLang === 'zh-CN' ? '简体中文' : (targetLang === 'en' ? 'English' : targetLang);
+  const langName = SUPPORTED_LANGUAGES[targetLang] || targetLang;
   const body = {
     temperature: 0.1,
     response_format: { type: 'json_object' },
@@ -1874,7 +1875,7 @@ app.get(/^\/([A-Za-z0-9]{6})\/referer$/, async (req, res, next) => {
 const DOWNLOAD_BASE = DOWNLOAD.base;
 const viewCounter = createViewCounter({ flush: batch => postStore.applyCounts(batch), intervalMs: Number(process.env.VIEW_COUNTER_FLUSH_MS) || 30000 });
 const featuredService = createFeaturedService({ db: { get: dbGet, all: dbAll, run: runDbWrite }, store: postStore });
-registerResultRoutes(app, { store: postStore, counter: viewCounter, baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE, featured: featuredService });
+registerResultRoutes(app, { store: postStore, counter: viewCounter, baseUrl: PUBLIC_BASE_URL, downloadBase: DOWNLOAD_BASE, featured: featuredService, translationEnabled: TRANSLATION_ENABLED });
 registerFeaturedAdminRoutes(app, { service: featuredService, requireAdmin });
 registerOgRoutes(app, { store: postStore, dataDir: DATA_DIR, publicDir: path.join(__dirname, 'public') });
 
