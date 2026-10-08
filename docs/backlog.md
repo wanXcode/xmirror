@@ -13,7 +13,7 @@
 
 ## 功能与性能
 
-- ⬜ 拆分翻译和字幕开关：把 `FEATURE_TRANSLATION` 拆为两个独立开关。
+- ✅ 拆分翻译和字幕开关：`FEATURE_TRANSLATION` 只控制翻译，`FEATURE_SUBTITLES` 单独控制字幕（v2.1.0）。字幕功能后期单独开发，生产保持关闭。
 - ⬜ 分享图压缩到 200KB 以下：目前约 238KB，接近 WhatsApp 预览上限。
 
 ## 第二期计划

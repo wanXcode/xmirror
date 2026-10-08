@@ -13,7 +13,8 @@
 
 ### 上线说明
 
-- 部署本版本不设置 `FEATURE_TRANSLATION` 即不会有任何可见变化。该开关同时控制翻译与字幕路由，打开前需确认 `SILICONFLOW_API_KEY` 已配置，并评估翻译用量（每帖每种目标语言首次翻译才产生调用，之后走缓存）。
+- **开关拆分**：`FEATURE_TRANSLATION` 现在只控制翻译；字幕路由改由新的 `FEATURE_SUBTITLES` 控制，生产默认关闭（字幕功能后期单独开发）。此前靠 `FEATURE_TRANSLATION=true` 同时开启字幕的环境，升级后字幕会停用。
+- 部署本版本不设置 `FEATURE_TRANSLATION` 即不会有任何可见变化。打开翻译前需确认 `SILICONFLOW_API_KEY` 已配置，并评估翻译用量（每帖每种目标语言首次翻译才产生调用，之后走缓存）。
 
 ## v2.0.2（2026-10-04）
 

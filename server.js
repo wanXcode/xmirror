@@ -690,12 +690,15 @@ async function translateWithSiliconFlow(parts, targetLang, attempt = null) {
 }
 
 const SUBTITLE_LANGUAGES = Object.freeze({ en: 'English', 'zh-CN': '简体中文' });
-// Translation and subtitles (Whisper/LLM back ends) have no UI in this release: off in production, code kept.
-// FEATURE_TRANSLATION=true turns them on; unset means on only outside production.
-const TRANSLATION_ENABLED = (process.env.FEATURE_TRANSLATION ?? String(process.env.NODE_ENV !== 'production')) === 'true';
-app.use(['/api/translate', '/api/posts/:id/subtitles'], (_req, res, next) => (TRANSLATION_ENABLED
-  ? next()
-  : res.status(404).json({ success: false, code: 'FEATURE_DISABLED', error: '该功能未启用' })));
+// Translation and subtitles are separate switches, each off in production and on elsewhere unless set.
+// FEATURE_TRANSLATION=true turns on post translation (/api/translate, the "Translate post" link);
+// FEATURE_SUBTITLES=true turns on video subtitles (/api/posts/:id/subtitles), which are not released yet.
+const featureFlag = name => (process.env[name] ?? String(process.env.NODE_ENV !== 'production')) === 'true';
+const TRANSLATION_ENABLED = featureFlag('FEATURE_TRANSLATION');
+const SUBTITLES_ENABLED = featureFlag('FEATURE_SUBTITLES');
+const featureDisabled = (_req, res) => res.status(404).json({ success: false, code: 'FEATURE_DISABLED', error: '该功能未启用' });
+app.use('/api/translate', (req, res, next) => (TRANSLATION_ENABLED ? next() : featureDisabled(req, res)));
+app.use('/api/posts/:id/subtitles', (req, res, next) => (SUBTITLES_ENABLED ? next() : featureDisabled(req, res)));
 const subtitleQueue = [];
 const subtitleJobs = new Set();
 const activeSubtitlePosts = new Set();
@@ -843,7 +846,7 @@ function pumpSubtitleQueue() {
 }
 
 async function queueSubtitleJob(postId, lang) {
-  if (!TRANSLATION_ENABLED) return false;
+  if (!SUBTITLES_ENABLED) return false;
   const key = `${postId}:${lang}`;
   if (subtitleJobs.has(key)) return false;
   const current = await getSubtitleTrack(postId, lang);
@@ -1921,7 +1924,8 @@ async function startServer() {
     setInterval(() => seoAI.tick().catch(() => console.error('SEO title worker failed')), 5000).unref();
     viewCounter.start();
     queuePendingVideoDownloads();
-    if (TRANSLATION_ENABLED) { queuePendingSubtitleJobs(); queuePendingTranslationJobs(); }
+    if (SUBTITLES_ENABLED) queuePendingSubtitleJobs();
+    if (TRANSLATION_ENABLED) queuePendingTranslationJobs();
   });
 }
 
