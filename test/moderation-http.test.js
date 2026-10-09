@@ -53,7 +53,7 @@ test('cached archives obey current rules and manual rejection without refetching
  const resolved=service.resolve(payload);
  fs.writeFileSync(path.join(dir,'moderation-reviews',resolved.id+'.json'),JSON.stringify({id:resolved.id,payload,ruleVersion:resolved.ruleVersion,action:'reject',source:'manual',matched:[],reason:'Synthetic manual rejection'}));
  fs.writeFileSync(path.join(dir,'moderation-blocked-sources.json'), JSON.stringify(['75']));
- for(const [id,expected] of [['75',422],['71',422],['72',409],['73',200],['74',422]]) {
+ for(const [id,expected] of [['75',422],['71',422],['72',200],['73',200],['74',422]]) {
    const r=await fetch(base+'/api/archive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:`https://x.com/example/status/${id}`})});
    assert.equal(r.status,expected,`cached post ${id}`);
    const body=await r.json();

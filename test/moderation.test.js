@@ -180,7 +180,7 @@ test('AI training ambiguity and explicit adult compound tags enter review', () =
     const result=createTestModerator().moderateArchivedContent({content});
     assert.equal(result.action,'review');
     assert.ok(result.matched.every(m=>m.field==='content' && m.evidence));
-    assert.equal(result.ruleVersion,7);
+    assert.equal(result.ruleVersion,8);
   }
 });
 
@@ -220,4 +220,28 @@ test('operator source ledger blocks URL aliases before fetching and fails closed
   assert.throws(() => moderator.precheckUrl('https://x.com/i/status/82'), /Invalid.*ledger/);
   fs.writeFileSync(blockedSourcesPath, '{');
   assert.throws(() => moderator.precheckUrl('https://x.com/i/status/82'), SyntaxError);
+});
+
+test('does not reject ordinary Chinese words that merely contain a sensitive substring', () => {
+  const moderator = createTestModerator();
+  for (const content of ['其中出现了新问题', '欢迎加入社群交流', '进出口交易额增长', '我们满足交易条件', '国内射击比赛', '这是一台打桩机施工现场']) {
+    const result = moderator.moderateArchivedContent({ url: 'https://x.com/example/status/2', authorHandle: 'example', content });
+    assert.equal(result.action, 'allow', content);
+  }
+});
+
+test('does not hold well-known harmless English phrases for review', () => {
+  const moderator = createTestModerator();
+  for (const content of ['He graduated magna cum laude.', 'Visible to the naked eye.', 'Moby Dick is a novel by Melville.']) {
+    const result = moderator.moderateArchivedContent({ url: 'https://x.com/example/status/3', authorHandle: 'example', content });
+    assert.equal(result.action, 'allow', content);
+  }
+});
+
+test('still rejects the explicit terms that were moved to context-aware rules', () => {
+  const moderator = createTestModerator();
+  for (const content of ['想要被中出', '一起群交吧', '给我口交', '足交视频', '被内射了']) {
+    assert.throws(() => moderator.moderateArchivedContent({ url: 'https://x.com/example/status/4', authorHandle: 'example', content }),
+      ModerationRejectError, content);
+  }
 });

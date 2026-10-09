@@ -1529,13 +1529,18 @@ async function archiveXUrl(url) {
       Object.assign(existing, refreshed, { images: JSON.stringify(refreshed.images) });
     }
     // Cached archives must obey current rules and content-bound manual decisions.
+    // A context-only "review" signal must not lock out a post that was already archived and accepted.
     if (moderationSettings.enabled) {
-      await reviewService.assess({
-        url: existing.url,
-        authorHandle: existing.author_handle,
-        authorName: existing.author,
-        content: existing.content
-      });
+      try {
+        await reviewService.assess({
+          url: existing.url,
+          authorHandle: existing.author_handle,
+          authorName: existing.author,
+          content: existing.content
+        });
+      } catch (err) {
+        if (err.code !== 'CONTENT_MODERATION_PENDING') throw err;
+      }
     }
     if (!existing.short_code) {
       existing.short_code = await generateUniqueShortCode();
