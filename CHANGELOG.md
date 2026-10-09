@@ -2,6 +2,15 @@
 
 每个版本的说明追加在文件顶部，最新版本在最前。
 
+## v2.1.3（2026-10-10）
+
+### 修复
+
+- 审核规则升级至 v8：为容易误命中普通中文词组的关键词增加上下文排除，并新增 safePhrases。
+- 已存档帖子再次提交时，仅需复核的命中不再阻断返回原存档；明确拒绝仍然阻断。
+- 新增只读审核回测脚本，输出帖子 ID 和命中规则，不输出正文。
+- 无数据库结构迁移；不修改生产环境变量；保留私有来源 ID 屏蔽名单。
+
 ## v2.1.2 (2026-10-09)
 
 - Tighten explicit sexual compound detection while preserving benign school, sports and technical language.
