@@ -194,7 +194,19 @@
       var languages = nav.languages && nav.languages.length ? nav.languages : (nav.language ? [nav.language] : []);
       translation.target = pickTarget(languages, tr.fallbackTarget);
       // The link only appears when the reader's language differs from the post's.
-      if (!sameLanguage(tr.sourceLang, translation.target)) translateRoot.hidden = false;
+      var differs = !sameLanguage(tr.sourceLang, translation.target);
+      if (differs) translateRoot.hidden = false;
+
+      // "Stop auto-translating" is remembered in this browser only; storage can be missing or blocked.
+      var storage = options.storage !== undefined ? options.storage : (function () { try { return win.localStorage; } catch (error) { return null; } })();
+      var AUTO_KEY = 'xput.autoTranslate';
+      var autoOff = false;
+      try { autoOff = !!storage && storage.getItem(AUTO_KEY) === 'off'; } catch (error) { autoOff = false; }
+      var trAuto = translateRoot.querySelector('[data-translation-auto]');
+      var showAutoSwitch = function () {
+        trAuto.textContent = autoOff ? tr.text.translateAutoOn : tr.text.translateAutoOff;
+        trAuto.hidden = false;
+      };
 
       var setStatus = function (message) { trStatus.textContent = message || ''; };
       var languageName = function (code) {
@@ -271,6 +283,11 @@
         trRetry.hidden = true;
         return postJson(tr.endpoints.create, { targetLang: translation.target }).then(readJson).then(onReply).catch(function () { failWith(tr.text.translateFailed); });
       };
+      trAuto.addEventListener('click', function () {
+        autoOff = !autoOff;
+        try { if (storage) { if (autoOff) storage.setItem(AUTO_KEY, 'off'); else storage.removeItem(AUTO_KEY); } } catch (error) { /* this visit still follows the click */ }
+        showAutoSwitch();
+      });
       trToggle.addEventListener('click', function () {
         if (!translation.taskId) return start();
         setShown(!translation.shown);
@@ -282,6 +299,10 @@
         translation.polls = 0;
         postJson(tr.endpoints.task + translation.taskId + '/retry', {}).then(readJson).then(onReply).catch(function () { failWith(tr.text.translateFailed); });
       });
+
+      // Like X: translate on arrival for a reader whose language differs, unless they stopped it or the post is long.
+      if (differs && tr.auto && !autoOff) { showAutoSwitch(); start(); }
+      else if (differs && autoOff) showAutoSwitch();
     }
 
     // ---- a video that is still being saved ----

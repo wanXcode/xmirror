@@ -599,6 +599,7 @@ html.has-lightbox { overflow: hidden; }
 .post__translate { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
 .post__translate[hidden], .post__text[hidden] { display: none; }
 .post__translate-btn { padding: 4px 0; background: none; border: 0; font: inherit; font-size: 15px; color: var(--accent-ink); cursor: pointer; }
+.post__translate-btn--quiet { font-size: 13px; color: #7A6E60; }
 .post__translate-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
 .post__translate-btn:disabled { color: #7A6E60; cursor: default; text-decoration: none; }
 .post__translate-status { font-size: 13px; color: #7A6E60; }

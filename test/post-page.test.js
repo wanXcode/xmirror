@@ -15,7 +15,12 @@ const row = (extra = {}) => ({
 
 function reply(status, body) { return { ok: status < 300, status, json: async () => body, headers: { get: () => null } }; }
 
-function setup({ lang = 'en', post = {}, routes = {}, nav = {}, phone = false, ageConfirmed = true, translation = null } = {}) {
+function memoryStorage(initial = {}) {
+  const data = { ...initial };
+  return { getItem: key => (key in data ? data[key] : null), setItem: (key, value) => { data[key] = String(value); }, removeItem: key => { delete data[key]; }, data };
+}
+
+function setup({ lang = 'en', post = {}, routes = {}, nav = {}, phone = false, ageConfirmed = true, translation = null, storage = memoryStorage() } = {}) {
   const t = createTranslator(lang);
   const view = buildPostView(row(post));
   const source = String(renderDocument({ lang, baseUrl: 'https://xput.app', page: null, path: '/Ab1234', title: 't',
@@ -38,6 +43,7 @@ function setup({ lang = 'en', post = {}, routes = {}, nav = {}, phone = false, a
   };
   const page = initPostPage({
     doc: document, win: window, fetch, timers, nav, isPhone: () => phone, reload: () => reloads.push(1),
+    storage,
     result: { File, saveBlob: () => {} }
   });
   const q = sel => document.querySelector(sel);
@@ -379,4 +385,57 @@ test('translate: the link sits above the post text', () => {
   const control = s.q('[data-translate]');
   const text = s.q('[data-post-text]');
   assert.ok(control.compareDocumentPosition(text) & 4, 'the control comes before the text in the document');
+});
+
+const auto = { sourceLang: 'ja', fallbackTarget: 'en', auto: true };
+
+test('auto translate: a reader whose language differs gets the translation without clicking, with Show original', async () => {
+  const s = setup({ translation: auto, lang: 'zh', nav: { languages: ['zh-CN'] }, routes: {
+    '/api/translate/7/tasks': reply(200, { success: true, task: done })
+  } });
+  await s.flush();
+  assert.deepEqual(s.calls.find(c => c.url === '/api/translate/7/tasks').body, { targetLang: 'zh-CN' });
+  assert.equal(s.q('[data-post-text]').hidden, true);
+  assert.equal(s.q('[data-translation-body]').textContent, '你好世界');
+  assert.equal(s.q('[data-translate-toggle]').textContent, '显示原文');
+  s.click(s.q('[data-translate-toggle]'));
+  assert.equal(s.q('[data-post-text]').hidden, false);
+});
+
+test('auto translate: not for same-language readers, long posts, or readers who stopped it', async () => {
+  const same = setup({ translation: { ...auto, sourceLang: 'en' }, nav: { languages: ['en-US'] } });
+  await same.flush();
+  assert.equal(same.calls.filter(c => c.url.startsWith('/api/translate')).length, 0);
+  const long = setup({ translation: { ...auto, auto: false }, nav: { languages: ['en-US'] } });
+  await long.flush();
+  assert.equal(long.calls.filter(c => c.url.startsWith('/api/translate')).length, 0);
+  assert.equal(long.q('[data-translate]').hidden, false);
+  assert.equal(long.q('[data-translate-toggle]').textContent, 'Translate post');
+  const stopped = setup({ translation: auto, nav: { languages: ['en-US'] }, storage: memoryStorage({ 'xput.autoTranslate': 'off' }) });
+  await stopped.flush();
+  assert.equal(stopped.calls.filter(c => c.url.startsWith('/api/translate')).length, 0);
+  assert.equal(stopped.q('[data-translation-auto]').textContent, 'Turn on auto-translate');
+});
+
+test('auto translate: Stop auto-translating is remembered, and can be turned back on', async () => {
+  const storage = memoryStorage();
+  const s = setup({ translation: auto, nav: { languages: ['en-US'] }, storage, routes: { '/api/translate/7/tasks': reply(200, { success: true, task: done }) } });
+  await s.flush();
+  const button = s.q('[data-translation-auto]');
+  assert.equal(button.hidden, false);
+  assert.equal(button.textContent, 'Stop auto-translating');
+  s.click(button);
+  assert.equal(storage.data['xput.autoTranslate'], 'off');
+  assert.equal(button.textContent, 'Turn on auto-translate');
+  s.click(button);
+  assert.equal('xput.autoTranslate' in storage.data, false);
+});
+
+test('auto translate: works when storage is blocked', async () => {
+  const blocked = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }, removeItem() { throw new Error('blocked'); } };
+  const s = setup({ translation: auto, nav: { languages: ['en-US'] }, storage: blocked, routes: { '/api/translate/7/tasks': reply(200, { success: true, task: done }) } });
+  await s.flush();
+  assert.equal(s.q('[data-translation-body]').hidden, false);
+  s.click(s.q('[data-translation-auto]'));
+  assert.equal(s.q('[data-translation-auto]').textContent, 'Turn on auto-translate');
 });
