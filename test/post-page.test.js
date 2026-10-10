@@ -352,6 +352,28 @@ test('translate: the translation replaces the text in place, then Show original 
   assert.equal(s.calls.filter(c => c.url === '/api/translate/7/tasks').length, 1);
 });
 
+test('translate: inline images and quoted-post structure stay visible in the translated view', async () => {
+  const content = 'Main text<br><br><img src="/images/inline.jpg"><blockquote class="quoted-post"><p><strong>Alice</strong> @alice <a href="https://x.com/alice/status/1">原帖 ↗</a></p><p>Quoted text</p></blockquote>';
+  const translated = task({ status: 'completed', completed: 2, blocks: [
+    { index: 0, type: 'p', text: '正文译文', translated: true },
+    { index: 1, type: 'blockquote', text: '引用译文', translated: true }
+  ] });
+  const s = setup({ post: { content, images: '[]', video: null, video_status: null }, translation: offer, lang: 'zh', nav: { languages: ['zh-CN'] }, routes: {
+    '/api/translate/7/tasks': reply(200, { success: true, task: translated })
+  } });
+  s.click(s.q('[data-translate-toggle]'));
+  await s.flush();
+  const body = s.q('[data-translation-body]');
+  assert.equal(body.hidden, false);
+  assert.equal(body.querySelectorAll('img').length, 1);
+  assert.equal(body.querySelector('img').getAttribute('src'), '/images/inline.jpg');
+  const quote = body.querySelector('blockquote.quoted-post');
+  assert.ok(quote);
+  assert.match(quote.querySelector('p:first-child').textContent, /Alice/);
+  assert.equal(quote.querySelector('p:first-child a').getAttribute('href'), 'https://x.com/alice/status/1');
+  assert.equal(quote.querySelector('p:last-child').textContent, '引用译文');
+});
+
 test('translate: rate limit keeps the original and offers retry; partial failure retries only the rest', async () => {
   const limited = setup({ translation: offer, nav: { languages: ['ja'] }, routes: { '/api/translate/7/tasks': reply(429, { success: false }) } });
   limited.click(limited.q('[data-translate-toggle]'));

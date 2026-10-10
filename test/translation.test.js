@@ -4,6 +4,7 @@ const {
   normalizeTargetLanguage,
   TranslationFormatError,
   detectContentLanguage,
+  prepareTranslatableContent,
   extractTranslatableBlocks,
   translateInBatches,
   createRateLimiter,
@@ -38,6 +39,19 @@ test('extracts all content and retains semantic block types', () => {
     { type: 'li', text: 'Second' },
     { type: 'blockquote', text: 'Quote' }
   ]);
+});
+
+test('marks text in place while preserving inline images and quoted-post chrome', () => {
+  const source = 'Intro<br><br><img src="/images/a.jpg"><blockquote class="quoted-post"><p><strong>Alice</strong> @alice <a href="https://x.com/alice/status/1">Original</a></p><p>Quoted<br>body</p></blockquote>';
+  const prepared = prepareTranslatableContent(source);
+  assert.deepEqual(prepared.blocks, [
+    { type: 'p', text: 'Intro' },
+    { type: 'blockquote', text: 'Quoted\nbody' }
+  ]);
+  const { document } = require('linkedom').parseHTML(`<div>${prepared.html}</div>`);
+  assert.equal(document.querySelectorAll('img').length, 1);
+  assert.equal(document.querySelector('.quoted-post p:first-child a').getAttribute('href'), 'https://x.com/alice/status/1');
+  assert.equal(document.querySelector('.quoted-post p:last-child').getAttribute('data-translation-index'), '1');
 });
 
 test('translates every part in ordered batches', async () => {

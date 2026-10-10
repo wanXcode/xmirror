@@ -213,13 +213,37 @@
         try { return new win.Intl.DisplayNames([cfg.lang], { type: 'language' }).of(code); } catch (error) { return ''; }
       };
       var showBlocks = function (task) {
-        var nodes = (task.blocks || []).map(function (block) {
-          var tag = block.type === 'h2' || block.type === 'h3' ? block.type : 'p';
-          var el = doc.createElement(tag);
-          el.textContent = block.text;
-          if (!block.translated) el.className = 'is-pending';
-          return el;
+        var blocks = task.blocks || [];
+        var template = original.cloneNode(true);
+        var marked = blocks.length > 0 && blocks.every(function (block) {
+          return !!template.querySelector('[data-translation-index="' + block.index + '"]');
         });
+        var setText = function (element, value) {
+          var lines = String(value || '').split('\n');
+          element.replaceChildren();
+          lines.forEach(function (line, index) {
+            if (index) element.appendChild(doc.createElement('br'));
+            element.appendChild(doc.createTextNode(line));
+          });
+        };
+        var nodes;
+        if (marked) {
+          blocks.forEach(function (block) {
+            var marker = template.querySelector('[data-translation-index="' + block.index + '"]');
+            setText(marker, block.text);
+            marker.classList.toggle('is-pending', !block.translated);
+          });
+          nodes = Array.from(template.childNodes);
+        } else {
+          nodes = blocks.map(function (block) {
+            var tag = /^h[1-6]$/.test(block.type) ? block.type : (block.type === 'blockquote' ? 'blockquote' : 'p');
+            var el = doc.createElement(tag);
+            if (block.type === 'blockquote') el.className = 'quoted-post';
+            setText(el, block.text);
+            if (!block.translated) el.classList.add('is-pending');
+            return el;
+          });
+        }
         trBody.replaceChildren.apply(trBody, nodes);
         trBody.setAttribute('lang', translation.target === 'zh-CN' ? 'zh-Hans' : translation.target === 'zh-TW' ? 'zh-Hant' : translation.target);
       };
