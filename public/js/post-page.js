@@ -192,7 +192,18 @@
         return source === target || (source === 'zh' && (target === 'zh-CN' || target === 'zh-TW'));
       };
       var languages = nav.languages && nav.languages.length ? nav.languages : (nav.language ? [nav.language] : []);
-      translation.target = pickTarget(languages, tr.fallbackTarget);
+      // A site language the reader chose beats the browser's: Chinese site -> Chinese (Traditional if their browser asks for it).
+      var siteTarget = function () {
+        if (tr.siteLang === 'en') return 'en';
+        if (tr.siteLang !== 'zh') return null;
+        for (var i = 0; i < languages.length; i += 1) {
+          var tag = String(languages[i] || '').toLowerCase();
+          if (/^zh-(tw|hk|mo|hant)/.test(tag)) return 'zh-TW';
+          if (/^zh/.test(tag)) return 'zh-CN';
+        }
+        return 'zh-CN';
+      };
+      translation.target = siteTarget() || pickTarget(languages, tr.fallbackTarget);
       // The link only appears when the reader's language differs from the post's.
       var differs = !sameLanguage(tr.sourceLang, translation.target);
       if (differs) translateRoot.hidden = false;

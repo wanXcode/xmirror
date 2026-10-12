@@ -322,6 +322,16 @@ test('translate: target follows the first supported browser language, else the p
   }
 });
 
+test('translate: a site language the reader chose beats the browser language', async () => {
+  const cases = [['zh', ['en-US'], 'zh-CN'], ['zh', ['zh-TW', 'en'], 'zh-TW'], ['zh', ['ja'], 'zh-CN'], ['en', ['zh-CN'], 'en'], [null, ['ja'], 'ja']];
+  for (const [siteLang, languages, expected] of cases) {
+    const s = setup({ translation: { sourceLang: 'fr', fallbackTarget: 'en', siteLang }, nav: { languages }, routes: { '/api/translate/7/tasks': reply(202, { success: true, task: task() }) } });
+    s.click(s.q('[data-translate-toggle]'));
+    await s.flush();
+    assert.equal(s.calls.find(c => c.url === '/api/translate/7/tasks').body.targetLang, expected, `${siteLang} ${languages.join()}`);
+  }
+});
+
 test('translate: the translation replaces the text in place, then Show original / Show translation switch without new requests', async () => {
   const s = setup({ translation: offer, lang: 'zh', nav: { languages: ['zh-CN'] }, routes: {
     '/api/translate/7/tasks': reply(202, { success: true, task: task() }),
