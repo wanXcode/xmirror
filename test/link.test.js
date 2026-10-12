@@ -67,7 +67,7 @@ test('API failures map to the states in the design', () => {
   assert.equal(classifyFailure(400, 'INVALID_URL'), 'invalid');
   assert.equal(classifyFailure(404, 'SOURCE_UNAVAILABLE'), 'unavailable');
   assert.equal(classifyFailure(422, 'CONTENT_MODERATION_REJECTED'), 'rejected');
-  assert.equal(classifyFailure(409, 'CONTENT_MODERATION_PENDING'), 'rejected');
+  assert.equal(classifyFailure(409, 'CONTENT_MODERATION_PENDING'), 'pending');
   assert.equal(classifyFailure(503, 'SERVICE_UNAVAILABLE'), 'busy');
   assert.equal(classifyFailure(504, 'REQUEST_TIMEOUT'), 'busy');
   assert.equal(classifyFailure(undefined, undefined), 'busy');

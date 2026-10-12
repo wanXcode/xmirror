@@ -47,7 +47,10 @@
     if (status === 429 || code === 'RATE_LIMITED') return 'tooMany';
     if (code === 'INVALID_URL' || status === 400) return 'invalid';
     if (code === 'SOURCE_UNAVAILABLE' || status === 404) return 'unavailable';
-    if (code === 'CONTENT_MODERATION_REJECTED' || code === 'CONTENT_MODERATION_PENDING' || status === 422 || status === 409) return 'rejected';
+    if (code === 'CONTENT_MODERATION_PENDING') return 'pending';
+    if (code === 'CONTENT_MODERATION_REJECTED') return 'rejected';
+    if (status === 409) return 'pending';
+    if (status === 422) return 'rejected';
     return 'busy';
   }
 

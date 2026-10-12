@@ -36,3 +36,17 @@ test('archives that were indexable before the redesign are marked once; later on
   const rows = Object.fromEntries((await all('SELECT short_code, legacy_indexed FROM posts')).map(r => [r.short_code, r.legacy_indexed]));
   assert.deepEqual(rows, { old1: 1, old2: 0, old3: 0, new1: 0 });
 });
+
+test('legacy removal records migrate to unknown without guessing from reference', async t => {
+  const {db, run, all, get} = open(); t.after(() => db.close());
+  await run('CREATE TABLE posts (id INTEGER PRIMARY KEY, short_code TEXT, seo_status TEXT)');
+  await run('CREATE TABLE removed_posts (short_code TEXT PRIMARY KEY, post_id INTEGER, reference TEXT, removed_at TEXT)');
+  await run("INSERT INTO removed_posts VALUES('Old001', 1, 'MOD-example', '2026-01-01')");
+  await migrateFrontendSchema({run, all, get});
+  assert.equal((await get("SELECT reason FROM removed_posts WHERE short_code='Old001'")).reason, 'unknown');
+  await run("UPDATE removed_posts SET reason='rights' WHERE short_code='Old001'");
+  await migrateFrontendSchema({run, all, get});
+  assert.deepEqual(await get("SELECT reason,reference,removed_at FROM removed_posts WHERE short_code='Old001'"), {reason:'rights',reference:'MOD-example',removed_at:'2026-01-01'});
+  await run("INSERT INTO removed_posts(short_code) VALUES('Old002')");
+  assert.equal((await get("SELECT reason FROM removed_posts WHERE short_code='Old002'")).reason, 'unknown');
+});

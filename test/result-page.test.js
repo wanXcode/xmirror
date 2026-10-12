@@ -176,7 +176,7 @@ test('removed copies answer 410 with the reference; unknown codes get the friend
   const removed = await page(s, 'Rm1234');
   assert.equal(removed.response.status, 410);
   assert.equal(removed.document.querySelector('h1').textContent, 'This copy was removed');
-  assert.match(removed.document.querySelector('.status-card__text').textContent, /taken down at the author's or rights holder's request\. Reference: RPT-42\./);
+  assert.match(removed.document.querySelector('.status-card__text').textContent, /no longer publicly available\. Reference: RPT-42\./);
   assert.equal(removed.document.querySelector('.status-card__actions a').getAttribute('href'), '/');
   assert.match(removed.document.querySelector('meta[name=robots]').getAttribute('content'), /noindex/);
   assert.doesNotMatch((await page(s, 'Rm5678')).text, /Reference:/);
@@ -506,4 +506,28 @@ test('cache headers by type of response', { timeout: 60000 }, async () => {
   for (const route of ['/sitemap.xml', '/sitemap-main.xml', '/sitemap-copies-1.xml']) assert.equal(await cc(route), 'no-cache', route);
   // download proxy: never stored
   assert.equal(await cc(`/node-dl?u=${encodeURIComponent('https://evil.example/a.mp4')}`), 'no-store', 'proxy errors; successful downloads are private, no-store (see download-proxy.test.js)');
+});
+
+test('admin removal validates and persists reasons with bilingual 410 copy', {timeout:60000}, async () => {
+  const s = await server();
+  const headers = {'Content-Type':'application/json', 'x-admin-token':'test-only-token'};
+  for (const reason of ['policy', 'rights', 'unknown']) {
+    const post = await seed(s);
+    const bad = await fetch(s.base+'/api/delete', {method:'POST',headers,body:JSON.stringify({id:post.id,reason:'invalid'})});
+    assert.equal(bad.status,400);
+    assert.ok(await s.get('SELECT id FROM posts WHERE id=?',[post.id]));
+    const result = await fetch(s.base+'/api/delete', {method:'POST',headers,body:JSON.stringify({id:post.id,reason,reference:'SYNTHETIC'})});
+    assert.equal(result.status,200);
+    assert.equal((await s.get('SELECT reason FROM removed_posts WHERE short_code=?',[post.short_code])).reason,reason);
+    for(const lang of ['zh','en']) {
+      const r=await page(s,post.short_code,{'Accept-Language':lang});
+      assert.equal(r.response.status,410);
+      assert.match(r.response.headers.get('cache-control'),/no-store/);
+      const t=require('../lib/i18n').createTranslator(lang);
+      const key=reason==='policy'?'removedPolicyText':reason==='rights'?'removedRightsText':'removedText';
+      assert.ok(r.document.querySelector('.status-card__text').textContent.includes(t('post.'+key)));
+      if(reason!=='rights') assert.ok(!r.document.querySelector('.status-card__text').textContent.includes(t('post.removedRightsText')));
+      assert.match(r.document.querySelector('meta[name=robots]').getAttribute('content'),/noindex/);
+    }
+  }
 });

@@ -23,3 +23,15 @@ Rule version changes invalidate content-bound manual review fingerprints. Preser
 confirmed removals in the source ledger independently of the rule version. Rolling
 back to a release without ledger support removes this pre-fetch protection; keep
 the content-bound rejection and verify takedowns after any rollback.
+
+## Removal feedback (v2.2.3)
+
+Startup adds `removed_posts.reason` with default `unknown`. The authenticated
+`POST /api/delete` accepts optional `reason`: `policy`, `rights`, or `unknown`.
+Omitting it preserves compatibility and gives neutral removal copy; invalid values
+return 400 before deletion. References remain identifiers, never reason classifiers.
+After a database snapshot, operators may mark individually verified historical
+removals as `policy` or `rights`; never infer reasons from all reference prefixes.
+The additive column may remain during code rollback. HTTP 410 and noindex stay intact.
+Pending review remains HTTP 409/retryable, while rejection remains 422/non-retryable;
+the frontend distinguishes them without automatically polling or promising approval.
