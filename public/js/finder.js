@@ -196,6 +196,11 @@
       setState('rejected');
     }
 
+    function showPending() {
+      card('info', 'clock', text.pending.title, text.pending.text, [button(text.pending.another, 'btn btn--outline btn--small', startOver)]);
+      setState('pending');
+    }
+
     function showBusy(retry) {
       card('warn', 'clock', text.busy.title, text.busy.text, [button(text.busy.retry, 'btn btn--primary btn--small', retry)]);
       setState('busy');
@@ -312,6 +317,7 @@
       if (kind === 'invalid') return showInvalid('invalid');
       if (kind === 'unavailable') return showUnavailable(url, false);
       if (kind === 'rejected') return showRejected();
+      if (kind === 'pending') return showPending();
       return showBusy(retry);
     }
 

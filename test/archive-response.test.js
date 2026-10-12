@@ -59,3 +59,12 @@ test('archive title ignores the quoted post appended to the content', () => {
   const post = { id: 1, short_code: 'abc123', content: 'my take<blockquote class="quoted-post"><p>Bob @bob</p><p>other words</p></blockquote>' };
   assert.equal(archiveSuccessResponse(post).title, 'my take');
 });
+
+ test('moderation API feedback distinguishes pending from policy rejection', () => {
+   const pending=archiveErrorResponse({code:'CONTENT_MODERATION_PENDING'});
+   const rejected=archiveErrorResponse({code:'CONTENT_MODERATION_REJECTED'});
+   assert.equal(pending.status,409); assert.equal(pending.body.retryable,true);
+   assert.match(pending.body.error,/等待审核/); assert.doesNotMatch(pending.body.error,/违反/);
+   assert.equal(rejected.status,422); assert.equal(rejected.body.retryable,false);
+   assert.match(rejected.body.error,/违反 XPut 的内容规则/);
+ });

@@ -39,7 +39,8 @@ function leaves(node, prefix = '') {
 // by development where the boards have no equivalent (flagged for design review).
 const NOT_ON_BOARDS = [
   /\.(title|description)$/,
-  /^input\.(errEmpty|pasteFailed|result\.|rejected\.|unavailable\.textNoCopy|saved\.(already|note)$|tooMany\.retryIn|tooMany\.retry$|sensitive\.text(Download|View)$|sensitive\.title$|label|viewPost)/
+  /^post\.removed(Text|PolicyText|RightsText)$/,
+  /^input\.(errEmpty|pasteFailed|result\.|rejected\.|pending\.|unavailable\.textNoCopy|saved\.(already|note)$|tooMany\.retryIn|tooMany\.retry$|sensitive\.text(Download|View)$|sensitive\.title$|label|viewPost)/
 ];
 
 const cases = [

@@ -1803,6 +1803,8 @@ app.post('/api/admin/moderation/reviews/:id', requireAdmin, async (req, res) => 
 app.post('/api/delete', requireAdmin, async (req, res) => {
   const {id} = req.body;
   if (!id) return res.status(400).json({error:'缺少存档ID'});
+  const reason = req.body.reason === undefined ? 'unknown' : req.body.reason;
+  if (!['unknown', 'policy', 'rights'].includes(reason)) return res.status(400).json({error:'无效的下架原因'});
 
   try {
     const post = await new Promise((r,j)=>db.get('SELECT * FROM posts WHERE id=?',[id],(e,row)=>e?j(e):r(row)));
@@ -1811,7 +1813,7 @@ app.post('/api/delete', requireAdmin, async (req, res) => {
     // Leave a removal notice so the old link says "this copy was removed" instead of "does not exist".
     if (post.short_code) {
       const reference = typeof req.body.reference === 'string' ? req.body.reference.trim().slice(0, 64) : '';
-      await runDbWrite('INSERT OR REPLACE INTO removed_posts(short_code, post_id, reference) VALUES(?,?,?)', [post.short_code, post.id, reference || null]);
+      await runDbWrite('INSERT OR REPLACE INTO removed_posts(short_code, post_id, reference, reason) VALUES(?,?,?,?)', [post.short_code, post.id, reference || null, reason]);
     }
 
     const htmlPath = path.join(ARCHIVES_DIR, post.html_file);

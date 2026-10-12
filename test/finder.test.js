@@ -315,3 +315,22 @@ test('scrolling respects prefers-reduced-motion and never happens on computers',
   await desktop.s.finder.runDownload();
   assert.deepEqual(desktop.scrolls, []);
 });
+
+for (const lang of ['zh', 'en']) for (const action of ['runDownload', 'runView']) {
+  test(`${lang} ${action}: pending review is not a rejection and offers another link`, async () => {
+    for (const [status, code, state] of [[409, 'CONTENT_MODERATION_PENDING', 'pending'], [422, 'CONTENT_MODERATION_REJECTED', 'rejected']]) {
+      const s = setup({ lang, routes: { '/api/resolve': reply(status, {code}), '/api/archive': reply(status, {code}) } });
+      s.q('[data-input]').value = POST;
+      await s.finder[action]();
+      assert.equal(s.root.getAttribute('data-state'), state);
+      assert.ok(s.root.textContent.includes(s.text[state].title));
+      assert.ok(s.root.textContent.includes(s.text[state].text));
+      const button = s.q('.status-card__actions button');
+      assert.equal(button.textContent, s.text[state].another);
+      button.click();
+      assert.equal(s.root.getAttribute('data-state'), 'idle');
+      assert.equal(s.q('[data-input]').value, '');
+      assert.equal(s.calls.length, 1, 'does not automatically retry pending reviews');
+    }
+  });
+}
