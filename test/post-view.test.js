@@ -84,3 +84,11 @@ test('downloads of the saved files, in the shape the result cards use', () => {
   assert.deepEqual(local.gifs.map(v => v.variants[0].url), ['/videos/20_video_1.mp4']);
   assert.deepEqual(local.images, [{ url: '/images/20_0.jpg', orig_url: '/images/20_0.jpg', width: null, height: null }]);
 });
+
+test('cleanContent links plain-text URLs without touching existing anchors', () => {
+  const html = cleanContent('<p>注册：https://wise.com/zh-hk/，然后 see https://a.com/x?y=1. <a href="https://b.com">https://b.com</a></p>', { keepImages: false });
+  assert.match(html, /<a [^>]*href="https:\/\/wise\.com\/zh-hk\/"[^>]*>https:\/\/wise\.com\/zh-hk\/<\/a>，/);
+  assert.match(html, /<a [^>]*href="https:\/\/a\.com\/x\?y=1"[^>]*>[^<]*<\/a>\./);
+  assert.equal((html.match(/<a /g) || []).length, 3);
+  assert.match(html, /rel="noopener noreferrer nofollow"/);
+});
