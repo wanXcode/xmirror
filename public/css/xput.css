@@ -895,8 +895,13 @@ h1.status-card__title { font-size: 20px; line-height: 1.3; }
 @media (min-width: 560px) { .me-secret__row { flex-direction: row; align-items: center; } .me-secret__code { flex: 1; } }
 .me-secret__code { padding: 8px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); font-size: 13px; overflow-wrap: anywhere; user-select: all; }
 .page--me section[aria-labelledby="me-list"] { display: flex; flex-direction: column; gap: 12px; }
-.me-item { display: flex; flex-direction: column; gap: 6px; }
-.me-item__remove { align-self: flex-end; }
+.me-item {
+  display: flex; align-items: center; gap: 8px; padding-right: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+}
+.me-item:hover { border-color: var(--line-strong); }
+.me-item__link { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 16px 0 16px 18px; color: var(--ink); text-decoration: none; }
+.me-item__link:hover { color: var(--ink); }
+.me-item__remove { flex: none; color: var(--ink-soft); }
 
 .me-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
 .me-tab { min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; font-size: 15px; font-weight: 600; color: var(--ink-soft); border-bottom: 2px solid transparent; margin-bottom: -1px; }
