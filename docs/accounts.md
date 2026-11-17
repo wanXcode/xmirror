@@ -1,6 +1,6 @@
 # 个人中心与 Google 登录
 
-登录后，在 `/me`（中文 `/zh/me`）查看自己保存过的帖子。页面不收录（`noindex`），不进 sitemap。
+登录后，在 `/me`（中文 `/zh/me`）查看自己保存过的帖子；密钥、认领历史存档和退出登录在“设置”标签页 `/me/settings`（`/zh/me/settings`）。入口在导航栏右上角。页面不收录（`noindex`），不进 sitemap。
 
 ## 工作方式
 

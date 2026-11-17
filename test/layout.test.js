@@ -73,7 +73,7 @@ test('header: mobile menu and language controls expose aria state, drawer lists 
   assert.equal(menu.getAttribute('aria-controls'), 'nav-drawer');
   assert.equal(document.querySelector('[data-lang-toggle]').getAttribute('aria-controls'), 'lang-panel');
   assert.equal(document.querySelector('[data-lang-toggle] .lang__current').textContent, '中文');
-  assert.deepEqual([...document.querySelectorAll('.drawer__link')].map(a => a.textContent.trim()), ['视频下载', '推特查看器', 'iPhone 快捷指令']);
+  assert.deepEqual([...document.querySelectorAll('.drawer__link')].map(a => a.textContent.trim()), ['视频下载', '推特查看器', 'iPhone 快捷指令', '我的存档']);
   assert.equal(document.querySelectorAll('.drawer__lang a').length, 2);
   assert.ok(document.querySelector('#nav-drawer').hasAttribute('hidden'));
 });
@@ -82,7 +82,7 @@ test('footer carries all links from the spec and the disclaimer', () => {
   const { document } = page('en', 'home');
   const links = [...document.querySelectorAll('.site-footer__links a')].map(a => [a.textContent, a.getAttribute('href')]);
   assert.deepEqual(links, [
-    ['Video Downloader', '/'], ['Twitter Viewer', '/twitter-viewer'], ['iPhone Shortcut', '/ios-shortcut'], ['Worth reading', '/browse'], ['My archives', '/me'],
+    ['Video Downloader', '/'], ['Twitter Viewer', '/twitter-viewer'], ['iPhone Shortcut', '/ios-shortcut'], ['Worth reading', '/browse'],
     ['English', '/'], ['中文', '/zh/'], ['Privacy', '/privacy'], ['Report content', '/report']
   ]);
   assert.match(document.querySelector('.site-footer').textContent, /Not affiliated with X Corp\./);
@@ -111,4 +111,21 @@ test('titles and descriptions are escaped, and fonts/css/js are wired with swap 
   assert.match(source, /<script src="\/js\/nav\.js\?v=[\d.]+-[0-9a-f]{8}" defer>/);
   assert.match(source, /href="\/css\/xput\.css\?v=[\d.]+-[0-9a-f]{8}"/);
   assert.match(source, /google-site-verification/);
+});
+
+test('header: the account entry sits at the top right before the language switcher, and is highlighted on /me pages', () => {
+  const { document } = page('en', 'home');
+  const end = document.querySelector('.site-header__end');
+  assert.deepEqual([...end.children].map(el => el.className.split(' ')[0]), ['account-link', 'lang', 'menu-button']);
+  const link = end.querySelector('.account-link');
+  assert.equal(link.getAttribute('href'), '/me');
+  assert.equal(link.getAttribute('aria-label'), 'My archives');
+  assert.ok(!link.classList.contains('is-active'));
+  for (const key of ['me', 'meSettings']) {
+    const doc = parseHTML(String(renderDocument({ lang: 'zh', baseUrl: BASE, page: key, title: 't', body: html`<h1>x</h1>` }))).document;
+    const active = doc.querySelector('.site-header__end .account-link');
+    assert.ok(active.classList.contains('is-active'), key);
+    assert.equal(active.getAttribute('href'), '/zh/me');
+    assert.equal(active.getAttribute('aria-current'), 'page');
+  }
 });

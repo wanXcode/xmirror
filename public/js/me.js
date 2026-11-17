@@ -22,15 +22,14 @@
       fetchJson('/api/me/key', { method: 'POST', body: '{}' }).then(function (result) {
         keyButton.disabled = false;
         if (!result.ok || !result.body.key) return show(error, page.getAttribute('data-key-failed'));
-        q('[data-me-key-value]').textContent = result.body.key;
-        q('[data-me-url-value]').textContent = page.getAttribute('data-quick-base') + '/api/archive/quick?format=text&key=' + result.body.key + '&url=';
+        q('[data-me-key-value]').textContent = '&key=' + result.body.key;
         q('[data-me-secret]').hidden = false;
       }, function () { keyButton.disabled = false; show(error, page.getAttribute('data-key-failed')); });
     });
 
     Array.prototype.forEach.call(page.querySelectorAll('[data-me-copy]'), function (button) {
       button.addEventListener('click', function () {
-        var target = q(button.getAttribute('data-me-copy') === 'key' ? '[data-me-key-value]' : '[data-me-url-value]');
+        var target = q('[data-me-key-value]');
         var original = button.textContent;
         if (win.navigator && win.navigator.clipboard) {
           win.navigator.clipboard.writeText(target.textContent).then(function () {
@@ -52,7 +51,6 @@
         if (!result.ok || !result.body.success) return show(status, page.getAttribute('data-claim-failed'));
         var b = result.body;
         show(status, page.getAttribute('data-claim-result').replace('{added}', b.added).replace('{already}', b.already).replace('{missing}', b.missing));
-        if (b.added > 0) win.setTimeout(function () { win.location.reload(); }, 1200);
       }, function () { claim.disabled = false; show(status, page.getAttribute('data-claim-failed')); });
     });
 
