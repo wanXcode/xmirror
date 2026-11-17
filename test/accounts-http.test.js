@@ -81,6 +81,12 @@ test('Google sign-in, shortcut key, ownership, claim, list page and sign-out wor
   assert.match(anonHtml, /name="robots" content="noindex, nofollow"/);
   assert.ok(anonHtml.includes('href="/auth/google?next=%2Fzh%2Fme"'));
   assert.equal((await json(base, '/api/me')).status, 401);
+  // Settings need a sign-in; the header entry is on every page.
+  const bounced = await fetch(`${base}/zh/me/settings`, { redirect: 'manual' });
+  assert.equal(bounced.status, 302);
+  assert.equal(bounced.headers.get('location'), '/zh/me');
+  const home = await (await fetch(`${base}/zh/`)).text();
+  assert.match(home, /<div class="site-header__end">\s*<a class="account-link" href="\/zh\/me" aria-label="我的存档">/);
 
   // Sign-in redirects to Google with a state, and a wrong state is refused.
   const start = await fetch(`${base}/auth/google?next=${encodeURIComponent('//evil.test')}`, { redirect: 'manual' });
@@ -128,6 +134,17 @@ test('Google sign-in, shortcut key, ownership, claim, list page and sign-out wor
   // The page lists them, in either language, with search.
   const page = await (await fetch(`${base}/zh/me`, { headers: { cookie } })).text();
   assert.match(page, /我的存档/); assert.ok(page.includes('href="/Ccc073"')); assert.ok(page.includes('data-me-remove="Aaa071"'));
+  assert.ok(page.includes('class="me-tab is-active" href="/zh/me"'));
+  assert.ok(!page.includes('data-me-key') && !page.includes('data-me-claim'), 'key and claim live under Settings');
+  const settings = await fetch(`${base}/zh/me/settings`, { headers: { cookie } });
+  assert.equal(settings.status, 200);
+  assert.match(settings.headers.get('cache-control'), /no-store/);
+  const settingsHtml = await settings.text();
+  assert.ok(settingsHtml.includes('<title>设置 – 我的存档 | XPut</title>'));
+  assert.ok(settingsHtml.includes('data-me-key') && settingsHtml.includes('data-me-claim') && settingsHtml.includes('data-me-logout'));
+  assert.ok(!settingsHtml.includes('data-me-remove'));
+  assert.ok(settingsHtml.includes('class="me-tab is-active" href="/zh/me/settings"'));
+  assert.equal((await fetch(`${base}/me/settings`, { headers: { cookie } })).status, 200);
   const found = await (await fetch(`${base}/me?q=${encodeURIComponent('status/71')}`, { headers: { cookie } })).text();
   assert.ok(found.includes('href="/Aaa071"')); assert.ok(!found.includes('href="/Bbb072"'));
   assert.equal((await fetch(`${base}/me?page=9`, { headers: { cookie } })).status, 404);

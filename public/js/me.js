@@ -51,7 +51,6 @@
         if (!result.ok || !result.body.success) return show(status, page.getAttribute('data-claim-failed'));
         var b = result.body;
         show(status, page.getAttribute('data-claim-result').replace('{added}', b.added).replace('{already}', b.already).replace('{missing}', b.missing));
-        if (b.added > 0) win.setTimeout(function () { win.location.reload(); }, 1200);
       }, function () { claim.disabled = false; show(status, page.getAttribute('data-claim-failed')); });
     });
 
