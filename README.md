@@ -130,6 +130,10 @@ curl "https://xput.app/api/archive/quick?url=https%3A%2F%2Fx.com%2Fxxx%2Fstatus%
 5. 动作：复制到剪贴板（内容即 XPut 存档短链）
 6. 可选：显示通知（“已生成并复制 XPut 链接”）
 
+想让快捷指令存的档出现在「我的存档」里：登录 `/zh/me`（Google 登录），在页面里生成快捷指令密钥，
+把第 3 步的链接改为 `https://xput.app/api/archive/quick?url=<编码后的链接>&format=text&key=<你的密钥>`。
+不带密钥的旧快捷指令照常可用，只是不会记入个人列表。详见 [`docs/accounts.md`](docs/accounts.md)。
+
 ## 部署
 
 生产环境应将代码 release 与数据库、媒体、存档和 `.env` 分离。VPS 的推荐目录结构、安全发布、回滚步骤见 [`ops/DEPLOYMENT.md`](ops/DEPLOYMENT.md)，不要用 `git pull` 或 `rsync --delete` 直接覆盖运行目录。

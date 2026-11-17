@@ -67,6 +67,9 @@ const { registerFeaturedAdminRoutes } = require('./lib/routes/featured-admin');
 const { registerOgRoutes } = require('./lib/routes/og');
 const { registerFontRoutes } = require('./lib/routes/fonts');
 const { registerBrowseRoutes } = require('./lib/routes/browse');
+const { registerAccountRoutes } = require('./lib/routes/account');
+const { createAccounts } = require('./lib/accounts');
+const { googleConfig } = require('./lib/google-auth');
 const { resolveDownloadConfig } = require('./lib/download-config');
 const compression = require('compression');
 const { downloadImage: downloadImageFile, imageExtension, isTwimgUrl } = require('./lib/media-download');
@@ -187,6 +190,20 @@ if (DOWNLOAD.mountPaths.length) {
 console.log(`下载代理: ${DOWNLOAD.via}（页面使用 ${DOWNLOAD.base}）`);
 const postStore = createPostStore({ get: dbGet, all: dbAll, run: runDbWrite });
 registerBrowseRoutes(app, { store: postStore, baseUrl: PUBLIC_BASE_URL });
+// Google sign-in, the personal archive list and the shortcut key (lib/routes/account.js).
+const accounts = createAccounts({ get: dbGet, all: dbAll, run: runDbWrite });
+const accountRoutes = registerAccountRoutes(app, {
+  accounts,
+  store: postStore,
+  google: googleConfig(process.env, PUBLIC_BASE_URL),
+  baseUrl: PUBLIC_BASE_URL,
+  extractTweetId,
+  normalizeUrl: normalizeArchiveUrl,
+  findPostsByTweetId: async id => (await dbAll(
+    'SELECT id, short_code, url FROM posts WHERE url=? OR url LIKE ? OR url LIKE ? ORDER BY id ASC',
+    [`https://x.com/i/status/${id}`, `%/status/${id}%`, `%/article/${id}%`]
+  )).filter(row => extractTweetId(row.url) === id && row.short_code)
+});
 registerSeoRoutes(app, { store: seoStore, postStore, ai: seoAI, publicDir: PUBLIC_DIR, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 registerReportRoutes(app, { store: seoStore, baseUrl: PUBLIC_BASE_URL, requireAdmin });
 registerFontRoutes(app);
@@ -1641,7 +1658,9 @@ const fetchRateLimit = createRateLimiter({
 
 app.post('/api/archive', fetchRateLimit, async (req, res) => {
   try {
+    const user = await accountRoutes.userFromRequest(req);
     const payload = await archiveXUrl(req.body?.url);
+    if (user) await accountRoutes.recordArchive(user.id, payload.short_code, 'web');
     return res.json(payload);
   } catch (error) {
     return sendArchiveError(res, error);
@@ -1704,7 +1723,14 @@ app.get('/api/archive/quick', fetchRateLimit, async (req, res) => {
   const format = (req.query.format || 'redirect').toString().toLowerCase();
 
   try {
+    // A shortcut key (?key= or X-XPut-Key) ties the archive to its owner. A wrong key is refused, not silently ignored.
+    const keyUser = await accountRoutes.userFromKey(req);
+    if (keyUser === false) {
+      return res.status(401).json({ success: false, code: 'INVALID_KEY', error: '快捷指令密钥无效，请到个人中心重新生成', retryable: false });
+    }
+    const owner = keyUser || await accountRoutes.userFromRequest(req);
     const payload = await archiveXUrl(rawUrl);
+    if (owner) await accountRoutes.recordArchive(owner.id, payload.short_code, keyUser ? 'shortcut' : 'web');
     const absoluteUrl = buildPublicUrl(payload.url, PUBLIC_BASE_URL);
 
     if (format === 'json') {
@@ -1846,6 +1872,7 @@ app.post('/api/delete', requireAdmin, async (req, res) => {
     await runDbWrite('DELETE FROM translations WHERE post_id=?',[id]);
     await runDbWrite('DELETE FROM subtitle_tracks WHERE post_id=?',[id]);
     await runDbWrite('DELETE FROM post_aliases WHERE target_post_id=?',[id]);
+    await runDbWrite('DELETE FROM user_archives WHERE post_id=?',[id]);
     await runDbWrite('DELETE FROM posts WHERE id=?',[id]);
 
     res.json({success:true,message:'删除成功'});
@@ -1914,6 +1941,8 @@ async function startServer() {
     await ensureVideoColumnsReady();
     await seoStore.migrate();
     await migrateFrontendSchema({ run: runDbWrite, all: dbAll, get: dbGet });
+    await accounts.migrate();
+    await accounts.purgeExpiredSessions();
     await seoAI.migrate();
     await migrateReports(seoStore);
     let hashBatch;
