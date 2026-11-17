@@ -35,6 +35,7 @@ async function main() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
     await run('CREATE INDEX IF NOT EXISTS idx_post_aliases_target ON post_aliases(target_post_id)');
+    const hasOwnerTable = (await all("SELECT 1 FROM sqlite_master WHERE type='table' AND name='user_archives'")).length > 0;
     for (const group of plan) {
       for (const duplicate of group.duplicates) {
         await run(
@@ -45,6 +46,11 @@ async function main() {
           [group.survivor.id, duplicate.id]
         );
         await run('DELETE FROM translations WHERE post_id=?', [duplicate.id]);
+        if (hasOwnerTable) {
+          // Whoever saved a merged duplicate keeps it in their personal list.
+          await run('INSERT OR IGNORE INTO user_archives(user_id,post_id,source,created_at) SELECT user_id,?,source,created_at FROM user_archives WHERE post_id=?', [group.survivor.id, duplicate.id]);
+          await run('DELETE FROM user_archives WHERE post_id=?', [duplicate.id]);
+        }
         await run('INSERT INTO post_aliases(alias_code,target_post_id) VALUES(?,?)', [duplicate.short_code, group.survivor.id]);
         await run('DELETE FROM posts WHERE id=?', [duplicate.id]);
       }
